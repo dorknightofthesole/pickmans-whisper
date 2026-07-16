@@ -1,0 +1,353 @@
+{
+	"modName": "PickmansWhisper",
+	"displayName": "Pickman's Whisper",
+	"minMcmVersion": 1,
+	"plugin": "PickmansWhisper.esp",
+	"content": [
+		{
+			"type": "spacer",
+			"numLines": 2
+		},
+		{
+			"text": "<p align='center'><font size='40'><b>Pickman's Whisper</b></font></p>",
+			"type": "text",
+			"html": true
+		},
+		{
+			"text": "<p align='center'><font size='20'>Knife voice · serial hunger (not sexual)</font></p>",
+			"type": "text",
+			"html": true
+		},
+		{
+			"text": "<p align='center'><font size='18'>Version 0.2.0 · Slice B</font></p>",
+			"type": "text",
+			"html": true
+		},
+		{
+			"type": "spacer",
+			"numLines": 1
+		},
+		{
+			"text": "<p align='center'>Companion to <b>Necromantic</b>. Open <b>Debug</b> to verify F4SE / forms.</p>",
+			"type": "text",
+			"html": true
+		}
+	],
+	"pages": [
+		{
+			"pageDisplayName": "How To Use",
+			"content": [
+				{
+					"text": "Hook",
+					"type": "section"
+				},
+				{
+					"text": "Enter <b>Pickman Gallery</b> (interior) or obtain / equip <b>Pickman's Blade</b>. A voice bonds with the wielder — toast-only for Slice A.",
+					"type": "text",
+					"html": true
+				},
+				{
+					"text": "Hunger",
+					"type": "section"
+				},
+				{
+					"text": "Once bonded, hunger rises with unused knife-time. High hunger applies <b>Knife Hunger</b> withdrawal (AGI/CHA −1). Kill a non-essential human with <b>Pickman's Blade</b> to sate hunger (praise toast + sated window).",
+					"type": "text",
+					"html": true
+				},
+				{
+					"text": "Suite",
+					"type": "section"
+				},
+				{
+					"text": "Soft load order: Occult Pact → Pickman's Whisper → Necromantic. This mod is <b>not sexual</b>; Necromantic handles corpse scenes afterward.",
+					"type": "text",
+					"html": true
+				}
+			]
+		},
+		{
+			"pageDisplayName": "Hunger",
+			"content": [
+				{
+					"text": "Status",
+					"type": "section"
+				},
+				{
+					"id": "sBondState:Hunger",
+					"text": "Bond",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sHungerLevel:Hunger",
+					"text": "Current hunger",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sHungerSated:Hunger",
+					"text": "Sated",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Show hunger info",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "ShowHungerInfo"
+					}
+				},
+				{
+					"text": "Test: push hunger to addicted",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "ForceHungerAddictedTest"
+					}
+				},
+				{
+					"text": "Test: satiate hunger (debug)",
+					"type": "button",
+					"help": "Clears hunger and plays a praise line without a real kill.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugSatiateHunger"
+					}
+				},
+				{
+					"text": "System",
+					"type": "section"
+				},
+				{
+					"id": "bAddictionSpell:Hunger",
+					"text": "Knife Hunger effect",
+					"type": "switcher",
+					"help": "When hunger is high, apply AGI/CHA withdrawal stand-in.",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"text": "Rates",
+					"type": "section"
+				},
+				{
+					"id": "fTimeGain:Hunger",
+					"text": "Hunger per game-hour",
+					"type": "slider",
+					"help": "Idle growth while bonded and not sated. Default 5.",
+					"valueOptions": {
+						"min": 0,
+						"max": 15,
+						"step": 0.5,
+						"sourceType": "ModSettingFloat"
+					}
+				},
+				{
+					"id": "fAddictedAt:Hunger",
+					"text": "Addicted threshold",
+					"type": "slider",
+					"valueOptions": {
+						"min": 25,
+						"max": 100,
+						"step": 5,
+						"sourceType": "ModSettingFloat"
+					}
+				},
+				{
+					"id": "fSatedHours:Hunger",
+					"text": "Sated duration (game hours)",
+					"type": "slider",
+					"help": "After satiation (Slice B knife kill / debug button).",
+					"valueOptions": {
+						"min": 0.5,
+						"max": 48,
+						"step": 0.5,
+						"sourceType": "ModSettingFloat"
+					}
+				}
+			]
+		},
+		{
+			"pageDisplayName": "Voice",
+			"content": [
+				{
+					"id": "bVoiceToasts:Voice",
+					"text": "Enable toast voice",
+					"type": "switcher",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"text": "Test next trust line",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugTestTrustLine"
+					}
+				},
+				{
+					"text": "Test next praise line",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugTestPraiseLine"
+					}
+				},
+				{
+					"text": "Reload line banks",
+					"type": "button",
+					"help": "Reloads builtin banks. Disk .txt reload arrives with GoE later.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugReloadLines"
+					}
+				},
+				{
+					"text": "Lines live under Data/PickmansWhisper/config/ (TrustLines, HungerLines, PraiseLines).",
+					"type": "text",
+					"html": true
+				}
+			]
+		},
+		{
+			"pageDisplayName": "Debug",
+			"content": [
+				{
+					"id": "bKillDebugToasts:Debug",
+					"text": "Kill / scan debug toasts",
+					"type": "switcher",
+					"help": "Blade status, scan heartbeats, HUMAN kill / ignore reasons. Off by default. Praise and hunger voice are separate (Voice page).",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"id": "sOverall:Debug",
+					"text": "Overall",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sF4SE:Debug",
+					"text": "F4SE",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sMCM:Debug",
+					"text": "MCM",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sBlade:Debug",
+					"text": "Blade form",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sBladeInv:Debug",
+					"text": "Blade inventory",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sBladeEq:Debug",
+					"text": "Blade equipped",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sCell:Debug",
+					"text": "Current cell",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sBond:Debug",
+					"text": "Bond",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sLastKill:Debug",
+					"text": "Last kill result",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sWatch:Debug",
+					"text": "Kill watch / alias",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sHungerSpell:Debug",
+					"text": "Hunger SPEL",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Refresh status",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "RefreshDebugStatus"
+					}
+				},
+				{
+					"text": "Force bond",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugForceBond"
+					}
+				}
+			]
+		}
+	]
+}

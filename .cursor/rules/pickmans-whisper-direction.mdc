@@ -1,0 +1,13 @@
+---
+description: Pickman's Whisper product hard rules for agents
+alwaysApply: true
+---
+
+# Pickman's Whisper — agent rules
+
+- This mod is **not sexual**. Do not add AAF, sex scenes, or Necromantic scene code here.
+- Do not hard-master or compile against `Necromantic.esp`. Soft complementarity only.
+- From Slice B onward: never urge or reward killing **essential** or **protected** story NPCs.
+- Prefer data-driven line banks under `Data/PickmansWhisper/config/`.
+- Voice delivery: toast / MessageBox first; no TopicInfo dialogue scenes.
+- Mirror Necromantic hunger/MCM/build patterns where useful; keep scripts prefixed `PickmansWhisper:`.

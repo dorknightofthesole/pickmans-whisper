@@ -1,0 +1,11 @@
+# Hunger-band whisper lines for Pickman's Whisper (one per line).
+# Slice A ships matching builtins in-script; GoE disk reload comes in a later slice.
+# Blank lines and lines starting with # are ignored.
+
+A restless edge... the blade wants use.
+Hunger grows while the knife sleeps.
+You feel it — that neat, bright need.
+Feed me. Just once. You'll see.
+The itching behind your eyes is for someone soft and still.
+Unused steel turns mean. You know how to fix that.
+They won't understand. We will.

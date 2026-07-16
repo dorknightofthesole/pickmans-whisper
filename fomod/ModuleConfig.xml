@@ -1,0 +1,15 @@
+<config xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://qconsulting.ca/fo3/ModConfig5.0.xsd">
+	<moduleName>Pickman's Whisper</moduleName>
+	<moduleDependencies operator="And">
+		<fileDependency file="Fallout4.esm" state="Active" />
+	</moduleDependencies>
+	<requiredInstallFiles>
+		<file source="PickmansWhisper.esp" destination="PickmansWhisper.esp" />
+		<folder source="Scripts" destination="Scripts" />
+		<folder source="MCM" destination="MCM" />
+		<folder source="PickmansWhisper" destination="PickmansWhisper" />
+		<folder source="docs" destination="docs" />
+		<file source="README.md" destination="README.md" />
+		<file source="meta.ini" destination="meta.ini" />
+	</requiredInstallFiles>
+</config>

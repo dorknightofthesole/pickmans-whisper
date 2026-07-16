@@ -1,0 +1,7 @@
+Flag Hidden 0
+Flag Conditional 1
+Flag Default 2
+Flag Mandatory 3
+Flag CollapsedOnRef 4
+Flag CollapsedOnBase 5
+Flag Collapsed 6

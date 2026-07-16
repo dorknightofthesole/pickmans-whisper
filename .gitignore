@@ -1,0 +1,6 @@
+tools/Caprica/
+tools/*.7z
+tools/__pycache__/
+dist/staging/
+*.pas
+.DS_Store
