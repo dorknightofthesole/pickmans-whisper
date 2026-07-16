@@ -5,6 +5,7 @@ Bool Function IsInCombat() Native
 Bool Function IsGhost() Native
 Bool Function IsChild() Native
 Bool Function IsPlayerTeammate() Native
+Bool Function IsHostileToActor(Actor akActor) Native
 Bool Function HasKeyword(Keyword akKeyword) Native
 Actor Function GetCombatTarget() Native
 Bool Function HasSpell(Form akSpell) Native
@@ -35,6 +36,8 @@ EndEvent
 Weapon Function GetEquippedWeapon(Int aiEquipIndex = 0) Native
 Bool Function IsEquipped(Form akItem) Native
 Event OnItemEquipped(Form akBaseObject, ObjectReference akReference)
+EndEvent
+Event OnItemUnequipped(Form akBaseObject, ObjectReference akReference)
 EndEvent
 Event OnItemAdded(Form akBaseItem, Int aiItemCount, ObjectReference akItemReference, ObjectReference akSourceContainer)
 EndEvent

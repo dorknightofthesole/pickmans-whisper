@@ -23,9 +23,8 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 ## Slice B — knife kills + satiation
 
 - Detect kills while weapon is Pickman's Blade (primary: nearby living→dead GoE scan; soft backups: `OnDeath` / hit-tag / combat target).
-- Valid target: non-**essential** human NPC (Protected settlers **do** count); skips children, teammates, ghoul/SM/synth/robot.
-- Praise toast (`PraiseLines.txt` / builtins); hunger → 0 + sated window; bump `BondIntensity` + `KnifeKillCount`.
-- Only kills with the blade equipped count; other weapons do not sate.
+- Valid target: adult **female** non-**essential** human, seen **non-hostile** while alive (Protected settlers **do** count after you aggro them); skips men, hostiles-from-first-sight (raiders), children, teammates, ghoul/SM/synth/robot.
+- Only kills with **Pickman's Blade** equipped count (brief post-swing sheath window only); other weapons do not sate.
 
 ## Slice C — NPC scan + fixation
 

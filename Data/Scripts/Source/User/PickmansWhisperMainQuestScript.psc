@@ -4,7 +4,10 @@ Scriptname PickmansWhisperMainQuestScript extends Quest
 ; Soft companion to Necromantic (no AAF, no compile coupling). Soft deps: F4SE, MCM.
 
 Actor PlayerRef
-Form PickmansBlade
+Form PickmansBlade ; LVLI CustomItem template 0x22595F — not the drawn WEAP
+Weapon CombatKnifeBase ; WEAP Knife 0x913CA — what GetEquippedWeapon returns for Pickman's
+ObjectMod OmodBleed ; mod_Legendary_Weapon_Bleed 0x1E7C20
+ObjectMod OmodStealthBlade ; mod_melee_Knife_SerratedStealth 0x187A10
 Cell PickmanGalleryCell
 
 ; --- Bond (Auto = saved with the quest) ----------------------------------------
@@ -20,8 +23,10 @@ Float Property BondIntensity = 0.0 Auto ; bumped on valid knife kills
 Float Property LastKnifeActivityGameTime = 0.0 Auto
 Int Property KnifeKillCount = 0 Auto ; valid blade kills that satiated hunger
 String BLADE_NAME_NEEDLE = "Pickman's Blade"
-; Runtime lofted form captured on equip (menu/world share this check)
-Form RuntimeBladeForm
+; Runtime lofted form: for Pickman's this is usually the Combat Knife WEAP base (GetEquippedWeapon
+; never returns LVLI 0x22595F / the display name). Captured when akReference name matches.
+; Auto so load with blade already drawn can resync against GetEquippedWeapon(0).
+Form Property RuntimeBladeForm Auto
 ; NOT Auto — runtime only; MCM bKillDebugToasts:Debug is the source of truth (default off).
 Bool DebugKillToastsCached = False
 Bool DebugKillToastsCacheValid = False
@@ -46,7 +51,6 @@ Int[] BladeTaggedIds
 Int BladeTaggedCount = 0
 Int BLADE_TAGGED_MAX = 24
 Float LastKnifeKillRealTime = 0.0
-Float BladeOutUntilRealTime = 0.0
 Float CombatGraceUntilRealTime = 0.0
 Float KNIFE_KILL_COOLDOWN = 1.5
 Float KILL_WATCH_RADIUS = 800.0
@@ -58,16 +62,24 @@ Cell LastBladeToastCell
 Int[] AliveSeenIds
 Int AliveSeenCount = 0
 Int ALIVE_SEEN_MAX = 32
+; FormIDs first seen while NOT hostile to player — settlers you later attack still count.
+; Hostiles (raiders) seen already angry never get this stamp → no satiation.
+Int[] FriendlySeenIds
+Int FriendlySeenCount = 0
+Int FRIENDLY_SEEN_MAX = 32
 Int[] BackgroundDeadIds
 Int BackgroundDeadCount = 0
 Int BACKGROUND_DEAD_MAX = 48
 Int LastGoeAliveCount = 0
 Int LastGoeDeadCount = 0
 Int LastDetectCount = 0
-String DEBUG_BUILD = "B19-human" ; fixed ActorTypeHuman vs robot FormID mixup
+String DEBUG_BUILD = "B27-goe" ; GoE equipped name/OMOD scan (Combat Knife base + bleed+stealth)
 Bool RefreshDebugBusy = False
 Int KillScanTickCount = 0
 Bool KillScanArmAnnounced = False
+; Drawn latch — refreshed by GoE scan + OnItemEquipped
+Bool BladeCurrentlyDrawn = False
+Bool DrawnWeaponStateValid = False
 
 ; --- Hunger / addiction stand-in ----------------------------------------------
 Float Property HungerLevel = 0.0 Auto ; 0–100 once bonded
@@ -94,7 +106,10 @@ Int TIMER_KILL = 4 ; legacy unused
 Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
 
 ; Vanilla anchors (Fallout4.esm)
-Int FID_PICKMANS_BLADE = 0x0022595F
+Int FID_PICKMANS_BLADE = 0x0022595F ; LVLI CustomItem template only
+Int FID_COMBAT_KNIFE = 0x000913CA ; WEAP Knife — equipped base for Pickman's
+Int FID_OMOD_BLEED = 0x001E7C20 ; mod_Legendary_Weapon_Bleed (Wounding)
+Int FID_OMOD_STEALTH = 0x00187A10 ; mod_melee_Knife_SerratedStealth
 Int FID_PICKMAN_GALLERY = 0x000379C5
 
 ; Local forms (PickmansWhisper.esp) — low word for GetFormFromFile
@@ -135,12 +150,14 @@ Event OnQuestInit()
 	EnsureHungerSpell()
 	RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
 	RegisterForRemoteEvent(PlayerRef, "OnItemEquipped")
+	RegisterForRemoteEvent(PlayerRef, "OnItemUnequipped")
 	RegisterForRemoteEvent(PlayerRef, "OnItemAdded")
 	RegisterForRemoteEvent(PlayerRef, "OnItemRemoved")
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
 	LoadLineBanks()
+	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	StartBondPoll()
 	StartHungerPoll()
@@ -159,10 +176,12 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
 	ResolveVanillaForms()
 	EnsureHungerSpell()
 	RegisterForRemoteEvent(PlayerRef, "OnItemEquipped")
+	RegisterForRemoteEvent(PlayerRef, "OnItemUnequipped")
 	RegisterForRemoteEvent(PlayerRef, "OnItemAdded")
 	RegisterForRemoteEvent(PlayerRef, "OnItemRemoved")
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	LoadLineBanks()
+	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	StartBondPoll()
 	StartHungerPoll()
@@ -177,22 +196,52 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
 EndEvent
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
-	If IsPickmansBladeForm(akBaseObject)
+	Weapon asW = akBaseObject as Weapon
+	If !asW
+		If FormLooksLikePickmansBlade(akBaseObject, akReference)
+			RuntimeBladeForm = akBaseObject
+			MarkOwnedBlade("equipped")
+		EndIf
+		Return
+	EndIf
+	DrawnWeaponStateValid = True
+	Bool isPickmans = FormLooksLikePickmansBlade(akBaseObject, akReference)
+	If !isPickmans && FormIsCombatKnife(akBaseObject)
+		; akReference often None — GoE sees the real equipped instance name/mods
+		isPickmans = (FindEquippedPickmansBladeIndex() >= 0)
+	EndIf
+	If isPickmans
+		BladeCurrentlyDrawn = True
 		RuntimeBladeForm = akBaseObject
 		MarkOwnedBlade("equipped")
-		ToastDebug("PW debug: blade EQUIPPED — form captured")
+		Int idx = FindEquippedPickmansBladeIndex()
+		String nm = "(goe)"
+		If idx >= 0
+			nm = GardenOfEden.GetNthItemName(PlayerRef, idx)
+		EndIf
+		ToastDebug("PW debug: blade DRAWN [" + DEBUG_BUILD + "] " + nm)
+	Else
+		BladeCurrentlyDrawn = False
+		ClearKillWatchForWeaponSwap()
+		ToastDebug("PW debug: other weapon DRAWN — " + akBaseObject.GetName())
 	EndIf
 EndEvent
 
+Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
+	; Drawn state cleared only when another weapon is equipped (FO4 unequip/re-equip flicker).
+EndEvent
+
 Event Actor.OnItemAdded(Actor akSender, Form akBaseItem, Int aiItemCount, ObjectReference akItemReference, ObjectReference akSourceContainer)
-	If IsPickmansBladeForm(akBaseItem)
+	If FormLooksLikePickmansBlade(akBaseItem, akItemReference)
+		If akBaseItem as Weapon
+			RuntimeBladeForm = akBaseItem
+		EndIf
 		MarkOwnedBlade("added")
 	EndIf
 EndEvent
 
 Event Actor.OnItemRemoved(Actor akSender, Form akBaseItem, Int aiItemCount, ObjectReference akItemReference, ObjectReference akDestContainer)
-	If IsPickmansBladeForm(akBaseItem)
-		; Unique instance left inventory — clear only if nothing blade-like remains equipped/templated.
+	If FormLooksLikePickmansBlade(akBaseItem, akItemReference) || IsPickmansBladeForm(akBaseItem)
 		If !IsBladeEquipped() && !HasTemplateBlade()
 			OwnedPickmansBlade = False
 			Debug.Trace("PickmansWhisper: blade ownership cleared (removed)")
@@ -239,10 +288,24 @@ Function ResolveVanillaForms()
 	If !PickmansBlade
 		PickmansBlade = Game.GetFormFromFile(FID_PICKMANS_BLADE, "Fallout4.esm")
 		If PickmansBlade
-			Debug.Trace("PickmansWhisper: blade form loaded")
+			Debug.Trace("PickmansWhisper: blade LVLI template loaded")
 		Else
-			Debug.Trace("PickmansWhisper: ERROR Pickman's Blade form missing")
+			Debug.Trace("PickmansWhisper: ERROR Pickman's Blade LVLI missing")
 		EndIf
+	EndIf
+	If !CombatKnifeBase
+		CombatKnifeBase = Game.GetFormFromFile(FID_COMBAT_KNIFE, "Fallout4.esm") as Weapon
+		If CombatKnifeBase
+			Debug.Trace("PickmansWhisper: Combat Knife WEAP loaded")
+		Else
+			Debug.Trace("PickmansWhisper: ERROR Combat Knife WEAP 0x913CA missing")
+		EndIf
+	EndIf
+	If !OmodBleed
+		OmodBleed = Game.GetFormFromFile(FID_OMOD_BLEED, "Fallout4.esm") as ObjectMod
+	EndIf
+	If !OmodStealthBlade
+		OmodStealthBlade = Game.GetFormFromFile(FID_OMOD_STEALTH, "Fallout4.esm") as ObjectMod
 	EndIf
 	If !PickmanGalleryCell
 		PickmanGalleryCell = Game.GetFormFromFile(FID_PICKMAN_GALLERY, "Fallout4.esm") as Cell
@@ -315,6 +378,168 @@ Bool Function IsPlayerInGallery()
 	Return low == FID_PICKMAN_GALLERY
 EndFunction
 
+Bool Function NameLooksLikePickmansBlade(String n)
+	If n == ""
+		Return False
+	EndIf
+	Return StringUtil.Find(n, BLADE_NAME_NEEDLE) >= 0
+EndFunction
+
+Bool Function FormIsCombatKnife(Form f)
+	If !f
+		Return False
+	EndIf
+	If CombatKnifeBase && (f == CombatKnifeBase || f.GetFormID() == CombatKnifeBase.GetFormID())
+		Return True
+	EndIf
+	; Fallback FormID if resolve failed
+	Int id = f.GetFormID()
+	Int low = id - (id / 0x01000000) * 0x01000000
+	Return low == FID_COMBAT_KNIFE
+EndFunction
+
+; GoE inventory slot: Pickman's = display name OR (Knife base + bleed + stealth OMODs).
+Bool Function InventorySlotIsPickmansBlade(Int aiItemIndex)
+	If !PlayerRef || aiItemIndex < 0
+		Return False
+	EndIf
+	String itemName = GardenOfEden.GetNthItemName(PlayerRef, aiItemIndex)
+	If NameLooksLikePickmansBlade(itemName)
+		Return True
+	EndIf
+	Int formId = GardenOfEden.GetNthItemFormID(PlayerRef, aiItemIndex)
+	Int low = formId - (formId / 0x01000000) * 0x01000000
+	If low != FID_COMBAT_KNIFE && !(CombatKnifeBase && formId == CombatKnifeBase.GetFormID())
+		Return False
+	EndIf
+	; CustomItemMods_DN101PickmansBlade: bleed legendary + serrated stealth
+	If OmodBleed && OmodStealthBlade
+		If GardenOfEden.GetNthItemHasMod(PlayerRef, aiItemIndex, OmodBleed) > 0
+			If GardenOfEden.GetNthItemHasMod(PlayerRef, aiItemIndex, OmodStealthBlade) > 0
+				Return True
+			EndIf
+		EndIf
+	EndIf
+	; Legendary-only soft match on knife (weaker — any Wounding knife)
+	ObjectMod leg = GardenOfEden.GetNthItemLegendaryMod(PlayerRef, aiItemIndex)
+	If OmodBleed && leg && leg == OmodBleed && OmodStealthBlade
+		If GardenOfEden.GetNthItemHasMod(PlayerRef, aiItemIndex, OmodStealthBlade) > 0
+			Return True
+		EndIf
+	EndIf
+	Return False
+EndFunction
+
+; Returns equipped inventory index of Pickman's Blade, or -1.
+Int Function FindEquippedPickmansBladeIndex()
+	If !PlayerRef
+		Return -1
+	EndIf
+	ResolveVanillaForms()
+	; Fast path: name lookup
+	Int[] byName = GardenOfEden.GetItemIndexesByName(PlayerRef, BLADE_NAME_NEEDLE, False, False)
+	If byName
+		Int n = byName.Length
+		Int i = 0
+		While i < n
+			Int idx = byName[i]
+			If GardenOfEden.GetNthItemIsEquipped(PlayerRef, idx) > 0
+				Return idx
+			EndIf
+			i += 1
+		EndWhile
+	EndIf
+	; Equipped slots: Combat Knife + Pickman's OMOD pair
+	Int[] eq = GardenOfEden.GetEquippedItemIndexes(PlayerRef)
+	If !eq
+		Return -1
+	EndIf
+	Int e = 0
+	While e < eq.Length
+		Int idx = eq[e]
+		If GardenOfEden.GetNthItemIsEquipped(PlayerRef, idx) > 0
+			If InventorySlotIsPickmansBlade(idx)
+				Return idx
+			EndIf
+		EndIf
+		e += 1
+	EndWhile
+	Return -1
+EndFunction
+
+Bool Function PlayerOwnsPickmansBladeInstance()
+	If !PlayerRef
+		Return False
+	EndIf
+	ResolveVanillaForms()
+	Int[] byName = GardenOfEden.GetItemIndexesByName(PlayerRef, BLADE_NAME_NEEDLE, False, False)
+	If byName && byName.Length > 0
+		Return True
+	EndIf
+	; Scan a bounded inventory window for OMOD pair (avoid huge bags)
+	Int count = GardenOfEden.GetInventoryItemCount(PlayerRef)
+	If count <= 0
+		Return False
+	EndIf
+	If count > 80
+		count = 80
+	EndIf
+	Int i = 0
+	While i < count
+		If InventorySlotIsPickmansBlade(i)
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; Legendary uniques: GetEquippedWeapon name is often "Combat Knife".
+Bool Function FormLooksLikePickmansBlade(Form f, ObjectReference akRef)
+	If IsPickmansBladeForm(f)
+		Return True
+	EndIf
+	If akRef
+		If NameLooksLikePickmansBlade(akRef.GetDisplayName())
+			Return True
+		EndIf
+		If NameLooksLikePickmansBlade(akRef.GetName())
+			Return True
+		EndIf
+		; F4SE OMOD scan on the instance ref
+		If FormIsCombatKnife(f) && RefHasPickmansMods(akRef)
+			Return True
+		EndIf
+	EndIf
+	If FormIsCombatKnife(f) && FindEquippedPickmansBladeIndex() >= 0
+		Return True
+	EndIf
+	Return False
+EndFunction
+
+Bool Function RefHasPickmansMods(ObjectReference akRef)
+	If !akRef || !OmodBleed || !OmodStealthBlade
+		Return False
+	EndIf
+	ObjectMod[] mods = akRef.GetAllMods()
+	If !mods || mods.Length == 0
+		Return False
+	EndIf
+	Bool hasBleed = False
+	Bool hasStealth = False
+	Int i = 0
+	While i < mods.Length
+		ObjectMod m = mods[i]
+		If m == OmodBleed
+			hasBleed = True
+		ElseIf m == OmodStealthBlade
+			hasStealth = True
+		EndIf
+		i += 1
+	EndWhile
+	Return hasBleed && hasStealth
+EndFunction
+
 Bool Function IsPickmansBladeForm(Form f)
 	If !f
 		Return False
@@ -322,12 +547,10 @@ Bool Function IsPickmansBladeForm(Form f)
 	If PickmansBlade && (f == PickmansBlade || f.GetFormID() == PickmansBlade.GetFormID())
 		Return True
 	EndIf
-	String n = f.GetName()
-	If n == ""
-		Return False
+	If NameLooksLikePickmansBlade(f.GetName())
+		Return True
 	EndIf
-	; Unique lofted instances keep the display name even when FormID != template.
-	Return StringUtil.Find(n, BLADE_NAME_NEEDLE) >= 0
+	Return False
 EndFunction
 
 Bool Function HasTemplateBlade()
@@ -374,6 +597,10 @@ Bool Function PlayerHasBlade()
 	If OwnedPickmansBlade
 		Return True
 	EndIf
+	If PlayerOwnsPickmansBladeInstance()
+		OwnedPickmansBlade = True
+		Return True
+	EndIf
 	If HasTemplateBlade()
 		Return True
 	EndIf
@@ -383,25 +610,117 @@ Bool Function PlayerHasBlade()
 	Return False
 EndFunction
 
-Bool Function IsBladeEquipped()
+Bool Function WeaponIsRanged(Weapon w)
+	If !w
+		Return False
+	EndIf
+	Ammo a = w.GetAmmo()
+	Return a != None
+EndFunction
+
+; Only the active hand from GetEquippedWeapon(0) — do NOT scan GoE (guns in inv can look "equipped").
+Bool Function ActiveWeaponIsRanged()
 	If !PlayerRef
 		Return False
 	EndIf
+	Return WeaponIsRanged(PlayerRef.GetEquippedWeapon(0))
+EndFunction
+
+; Recompute drawn state via GoE (authoritative for legendary instance name/mods).
+Bool Function ResyncDrawnBladeState()
+	If !PlayerRef
+		BladeCurrentlyDrawn = False
+		DrawnWeaponStateValid = False
+		Return False
+	EndIf
 	ResolveVanillaForms()
-	If RuntimeBladeForm && PlayerRef.IsEquipped(RuntimeBladeForm)
+	Weapon w = PlayerRef.GetEquippedWeapon(0)
+	If WeaponIsRanged(w)
+		BladeCurrentlyDrawn = False
+		DrawnWeaponStateValid = True
+		Return False
+	EndIf
+	Int idx = FindEquippedPickmansBladeIndex()
+	If idx >= 0
+		BladeCurrentlyDrawn = True
+		DrawnWeaponStateValid = True
 		OwnedPickmansBlade = True
+		If w
+			RuntimeBladeForm = w
+		ElseIf CombatKnifeBase
+			RuntimeBladeForm = CombatKnifeBase
+		EndIf
 		Return True
 	EndIf
-	If PickmansBlade && PlayerRef.IsEquipped(PickmansBlade)
-		Return True
+	BladeCurrentlyDrawn = False
+	DrawnWeaponStateValid = True
+	Return False
+EndFunction
+
+Bool Function IsBladeEquipped()
+	; Drawn Pickman's only — GoE instance scan; never LVLI template / inventory count alone.
+	If !PlayerRef
+		Return False
 	EndIf
 	Weapon w = PlayerRef.GetEquippedWeapon(0)
-	If IsPickmansBladeForm(w)
-		RuntimeBladeForm = w
+	If WeaponIsRanged(w)
+		BladeCurrentlyDrawn = False
+		DrawnWeaponStateValid = True
+		Return False
+	EndIf
+	; Always prefer live GoE scan (handles load + Combat Knife base name)
+	Int idx = FindEquippedPickmansBladeIndex()
+	If idx >= 0
+		BladeCurrentlyDrawn = True
+		DrawnWeaponStateValid = True
 		OwnedPickmansBlade = True
 		Return True
 	EndIf
+	BladeCurrentlyDrawn = False
+	DrawnWeaponStateValid = True
 	Return False
+EndFunction
+
+; Alias for kill checks — no sheath / empty-hand grace. Gun or fists = not ready.
+Bool Function IsBladeKillWeaponReady()
+	Return IsBladeEquipped()
+EndFunction
+
+String Function GetDrawnWeaponDebugName()
+	If !PlayerRef
+		Return "(no player)"
+	EndIf
+	Int idx = FindEquippedPickmansBladeIndex()
+	If idx >= 0
+		Return "PICKMANS=" + GardenOfEden.GetNthItemName(PlayerRef, idx)
+	EndIf
+	String latch = "latch=?"
+	If DrawnWeaponStateValid
+		If BladeCurrentlyDrawn
+			latch = "latch=BLADE"
+		Else
+			latch = "latch=no"
+		EndIf
+	EndIf
+	Weapon w = PlayerRef.GetEquippedWeapon(0)
+	If WeaponIsRanged(w)
+		String rn = "(ranged)"
+		If w
+			rn = w.GetName()
+			If rn == ""
+				rn = "(ranged id=" + w.GetFormID() + ")"
+			EndIf
+		EndIf
+		Return latch + " GUN=" + rn
+	EndIf
+	If !w
+		Return latch + " (none/fists)"
+	EndIf
+	String n = w.GetName()
+	If n == ""
+		Return latch + " (unnamed id=" + w.GetFormID() + ")"
+	EndIf
+	Return latch + " " + n
 EndFunction
 
 ; Debug kill/scan toasts — MCM "Kill debug toasts" (default OFF). Gameplay voice stays separate.
@@ -888,12 +1207,8 @@ Function RunKillScanTick()
 
 	AnnounceKillScanArmed()
 
-	If IsBladeEquipped()
-		BladeOutUntilRealTime = Utility.GetCurrentRealTime() + 6.0
-	EndIf
-
 	Actor ct = PlayerRef.GetCombatTarget()
-	If ct && !ct.IsDead()
+	If ct && !ct.IsDead() && IsBladeEquipped()
 		TrackLivingNear(ct)
 	EndIf
 
@@ -914,7 +1229,7 @@ Function ScanLivingToDeadTransitions()
 		Return
 	EndIf
 
-	Bool bladeWindow = IsBladeEquipped() || (Utility.GetCurrentRealTime() <= BladeOutUntilRealTime)
+	Bool bladeReady = IsBladeKillWeaponReady()
 
 	; --- Living sources -------------------------------------------------------
 	; GoE: lifeState 0=dead (Necromantic). 1=alive. selectiveProcessMode 0 = broad.
@@ -943,6 +1258,7 @@ Function ScanLivingToDeadTransitions()
 	If n > 24
 		n = 24
 	EndIf
+	; Stamp living links always; satiation still requires IsBladeEquipped at kill time.
 	While i < n
 		Actor ak = alive[i]
 		If ak && ak != PlayerRef && !ak.IsDead() && !ak.IsDisabled()
@@ -964,7 +1280,7 @@ Function ScanLivingToDeadTransitions()
 		i += 1
 	EndWhile
 
-	; Tracked living → dead
+	; Tracked living → dead (only evaluate satiation if blade is the kill weapon)
 	EnsureKillWatchList()
 	i = 0
 	While i < KillWatchCount
@@ -982,7 +1298,7 @@ Function ScanLivingToDeadTransitions()
 		EndIf
 	EndWhile
 
-	; Necromantic-style corpse pass + "new corpse while blade out"
+	; Necromantic-style corpse pass + "new corpse while blade equipped"
 	i = 0
 	n = LastGoeDeadCount
 	If n > 16
@@ -997,14 +1313,16 @@ Function ScanLivingToDeadTransitions()
 				HandlePotentialKnifeKill(ak, PlayerRef)
 				NoteBackgroundDead(id)
 			ElseIf !IsBackgroundDead(id)
-				If KillScanTickCount <= 2 || !bladeWindow
-					; Warm-up / blade holstered: remember existing corpses so they don't false-sate
+				If KillScanTickCount <= 2 || !bladeReady
+					; Warm-up / other weapon: remember existing corpses so they don't false-sate
 					NoteBackgroundDead(id)
-				Else
-					; New corpse appeared while blade was out
+				ElseIf WasFriendlySeen(ak)
+					; New corpse of someone we already marked non-hostile while living
 					NoteAliveSeen(ak)
 					ToastHumanKillDetected(ak, "new-corpse")
 					HandlePotentialKnifeKill(ak, PlayerRef)
+					NoteBackgroundDead(id)
+				Else
 					NoteBackgroundDead(id)
 				EndIf
 			EndIf
@@ -1070,6 +1388,20 @@ Function RemoveKillWatchAt(Int index)
 	KillWatchCount -= 1
 EndFunction
 
+; Drop active watch when switching to a non-blade weapon. Keep AliveSeen / FriendlySeen.
+Function ClearKillWatchForWeaponSwap()
+	PendingKillVictim = None
+	KillWatchCount = 0
+	If KillWatchList
+		Int i = 0
+		While i < KillWatchList.Length
+			KillWatchList[i] = None
+			i += 1
+		EndWhile
+	EndIf
+	BladeTaggedCount = 0
+EndFunction
+
 Function RemoveAliveSeenId(Int id)
 	If id == 0 || !AliveSeenIds
 		Return
@@ -1090,7 +1422,7 @@ Function RemoveAliveSeenId(Int id)
 EndFunction
 
 Function TrackLivingNear(Actor ak)
-	; Track loosely — validity (essential/human) enforced only at kill time.
+	; Track loosely — validity (sex / hostility / essential) enforced at kill time.
 	If !ak || ak == PlayerRef || ak.IsDead() || ak.IsDisabled()
 		Return
 	EndIf
@@ -1098,6 +1430,12 @@ Function TrackLivingNear(Actor ak)
 		Return
 	EndIf
 	NoteAliveSeen(ak)
+	; Stamp disposition while still living — before the player turns a settler hostile.
+	If PlayerRef && ak.IsHostileToActor(PlayerRef)
+		; Hostile when first/ongoing seen — do not mark friendly
+	Else
+		NoteFriendlySeen(ak)
+	EndIf
 	If IsInKillWatchList(ak)
 		Return
 	EndIf
@@ -1108,6 +1446,69 @@ Function TrackLivingNear(Actor ak)
 	KillWatchList[KillWatchCount] = ak
 	KillWatchCount += 1
 	Debug.Trace("PickmansWhisper: track living id=" + ak.GetFormID() + " n=" + KillWatchCount)
+EndFunction
+
+Function EnsureFriendlySeenList()
+	If !FriendlySeenIds || FriendlySeenIds.Length == 0
+		FriendlySeenIds = new Int[32]
+		FriendlySeenCount = 0
+	EndIf
+EndFunction
+
+Function NoteFriendlySeen(Actor ak)
+	If !ak
+		Return
+	EndIf
+	EnsureFriendlySeenList()
+	Int id = ak.GetFormID()
+	Int i = 0
+	While i < FriendlySeenCount
+		If FriendlySeenIds[i] == id
+			Return
+		EndIf
+		i += 1
+	EndWhile
+	If FriendlySeenCount >= FRIENDLY_SEEN_MAX
+		Int j = 0
+		While j < FRIENDLY_SEEN_MAX - 1
+			FriendlySeenIds[j] = FriendlySeenIds[j + 1]
+			j += 1
+		EndWhile
+		FriendlySeenCount = FRIENDLY_SEEN_MAX - 1
+	EndIf
+	FriendlySeenIds[FriendlySeenCount] = id
+	FriendlySeenCount += 1
+EndFunction
+
+Bool Function WasFriendlySeen(Actor ak)
+	If !ak
+		Return False
+	EndIf
+	EnsureFriendlySeenList()
+	Int id = ak.GetFormID()
+	Int i = 0
+	While i < FriendlySeenCount
+		If FriendlySeenIds[i] == id
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+Bool Function IsAdultFemale(Actor ak)
+	If !ak
+		Return False
+	EndIf
+	If ak.IsChild()
+		Return False
+	EndIf
+	ActorBase base = ak.GetLeveledActorBase()
+	If !base
+		Return False
+	EndIf
+	; 0 = male, 1 = female (same as Necromantic)
+	Return base.GetSex() == 1
 EndFunction
 
 Function ArmCombatTarget(Actor ak)
@@ -1243,12 +1644,9 @@ EndFunction
 Function OnPlayerCombatBegan(String path)
 	; Soft backup — living scan is primary; do not clear the living track list.
 	CombatGraceUntilRealTime = Utility.GetCurrentRealTime() + 10.0
-	If IsBladeEquipped()
-		BladeOutUntilRealTime = Utility.GetCurrentRealTime() + 8.0
-	EndIf
 	If PlayerRef
 		Actor ctNow = PlayerRef.GetCombatTarget()
-		If ctNow
+		If ctNow && IsBladeEquipped()
 			TrackLivingNear(ctNow)
 		EndIf
 	EndIf
@@ -1382,7 +1780,7 @@ Function HandleBladeHit(ObjectReference akTarget, ObjectReference akAggressor, F
 		EndIf
 		Return
 	EndIf
-	Bool fromBlade = IsPickmansBladeForm(akSource) || IsBladeEquipped()
+	Bool fromBlade = IsPickmansBladeForm(akSource) && IsBladeEquipped()
 	If fromBlade
 		NoteAliveSeen(victim)
 		If victim.IsDead()
@@ -1394,7 +1792,7 @@ Function HandleBladeHit(ObjectReference akTarget, ObjectReference akAggressor, F
 			WatchKillCandidate(victim, False)
 		EndIf
 	Else
-		LastKillIgnoreReason = "player hit but not with blade"
+		LastKillIgnoreReason = "hit not with blade; drawn=" + GetDrawnWeaponDebugName()
 	EndIf
 	If victim && !victim.IsDead() && IsBladeEquipped()
 		RegisterForHitEvent(victim, PlayerRef)
@@ -1526,6 +1924,15 @@ Bool Function IsValidKnifeKillVictim(Actor ak, Bool abRequireAlive = True)
 		LastKillIgnoreReason = "not human NPC"
 		Return False
 	EndIf
+	If !IsAdultFemale(ak)
+		LastKillIgnoreReason = "not adult female"
+		Return False
+	EndIf
+	; Must have been seen non-hostile while alive (raiders fail; settlers you aggro still pass).
+	If !WasFriendlySeen(ak)
+		LastKillIgnoreReason = "hostile / not seen friendly"
+		Return False
+	EndIf
 	Return True
 EndFunction
 
@@ -1543,18 +1950,17 @@ Function HandlePotentialKnifeKill(Actor victim, Actor akKiller)
 		Debug.Trace("PickmansWhisper: kill ignored — killer not player")
 		Return
 	EndIf
-	; Blade must be out (or brief sheath window), or we already blade-tagged a hit
-	Bool bladeOut = IsBladeEquipped() || (Utility.GetCurrentRealTime() <= BladeOutUntilRealTime)
-	Bool tagged = WasBladeTagged(victim)
-	Bool seenAlive = IsInKillWatchList(victim) || (victim == PendingKillVictim) || WasAliveSeen(victim)
-	If !tagged && !bladeOut
-		LastKillIgnoreReason = "death without blade equipped"
-		ToastDebug("PW debug: kill ignored — blade not out")
+	; Drawn weapon must be Pickman's Blade right now. No finish window, no hit-tag waiver.
+	String drawn = GetDrawnWeaponDebugName()
+	If !IsBladeEquipped()
+		LastKillIgnoreReason = "not blade; drawn=" + drawn
+		ToastDebug("PW debug: kill ignored — " + LastKillIgnoreReason)
 		Return
 	EndIf
-	; Blade out + (tracked living OR new-corpse path which Notes AliveSeen) is enough
-	If !tagged && !(bladeOut && seenAlive)
-		LastKillIgnoreReason = "death without living/new-corpse link"
+	Bool tagged = WasBladeTagged(victim)
+	Bool seenAlive = IsInKillWatchList(victim) || (victim == PendingKillVictim) || WasAliveSeen(victim)
+	If !tagged && !seenAlive
+		LastKillIgnoreReason = "blade out but victim not linked; drawn=" + drawn
 		ToastDebug("PW debug: kill ignored — " + LastKillIgnoreReason)
 		Debug.Trace("PickmansWhisper: kill ignored — no blade-link id=" + vid)
 		Return
@@ -1571,7 +1977,7 @@ Function HandlePotentialKnifeKill(Actor victim, Actor akKiller)
 	EndIf
 	LastKnifeKillRealTime = now
 	LastHandledKillId = vid
-	LastKillIgnoreReason = "ok satiated"
+	LastKillIgnoreReason = "ok satiated; drawn=" + drawn
 	If !BondStarted
 		StartBond("knife-kill")
 	EndIf
@@ -1579,6 +1985,12 @@ Function HandlePotentialKnifeKill(Actor victim, Actor akKiller)
 EndFunction
 
 Function ProcessKnifeKill(Actor victim)
+	; Final gate — never praise/sate unless blade is still the drawn weapon
+	If !IsBladeEquipped()
+		LastKillIgnoreReason = "abort satiate; drawn=" + GetDrawnWeaponDebugName()
+		ToastDebug("PW debug: " + LastKillIgnoreReason)
+		Return
+	EndIf
 	KnifeKillCount += 1
 	NoteKnifeActivity()
 	String line = PickPraiseLine()
@@ -1590,7 +2002,7 @@ Function ProcessKnifeKill(Actor victim)
 	If victim
 		vid = victim.GetFormID()
 	EndIf
-	Debug.Trace("PickmansWhisper: knife kill #" + KnifeKillCount + " victim=" + vid + " hunger=0")
+	Debug.Trace("PickmansWhisper: knife kill #" + KnifeKillCount + " victim=" + vid + " hunger=0 drawn=" + GetDrawnWeaponDebugName())
 	Debug.Notification("Pickman's Whisper: hunger sated")
 EndFunction
 
@@ -1916,6 +2328,14 @@ Function RefreshDebugStatus()
 	If eqName == ""
 		eqName = "(none)"
 	EndIf
+	Weapon eqW = None
+	If PlayerRef
+		eqW = PlayerRef.GetEquippedWeapon(0)
+	EndIf
+	String eqId = "(no weap)"
+	If eqW
+		eqId = GardenOfEden.GetHexFormID(eqW)
+	EndIf
 	If PlayerHasBlade()
 		String how = ""
 		If OwnedPickmansBlade
@@ -1935,9 +2355,14 @@ Function RefreshDebugStatus()
 		MCM.SetModSettingString(MOD_NAME, "sBladeInv:Debug", "not owned | eq=" + eqName)
 	EndIf
 	If IsBladeEquipped()
-		MCM.SetModSettingString(MOD_NAME, "sBladeEq:Debug", "equipped | " + eqName)
+		Int idx = FindEquippedPickmansBladeIndex()
+		String goeName = eqName
+		If idx >= 0
+			goeName = GardenOfEden.GetNthItemName(PlayerRef, idx)
+		EndIf
+		MCM.SetModSettingString(MOD_NAME, "sBladeEq:Debug", "DRAWN | " + goeName + " / base=" + eqName + " " + eqId)
 	Else
-		MCM.SetModSettingString(MOD_NAME, "sBladeEq:Debug", "not equipped | " + eqName)
+		MCM.SetModSettingString(MOD_NAME, "sBladeEq:Debug", "not drawn | base=" + eqName + " " + eqId)
 	EndIf
 	If IsPlayerInGallery()
 		MCM.SetModSettingString(MOD_NAME, "sCell:Debug", "Pickman Gallery")

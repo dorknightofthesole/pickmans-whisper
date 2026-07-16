@@ -9,6 +9,12 @@ String Function GetHexFormID(Form akForm) Native Global
 Int[] Function GetEquippedItemIndexes(ObjectReference akReference) Native Global
 Int Function GetNthItemIsEquipped(ObjectReference akReference, Int aiItemIndex) Native Global
 Int Function GetNthItemBaseID(ObjectReference akReference, Int aiItemIndex) Native Global
+Int Function GetNthItemFormID(ObjectReference akReference, Int aiItemIndex) Native Global
+String Function GetNthItemName(ObjectReference akReference, Int aiItemIndex) Native Global
+Int Function GetNthItemHasMod(ObjectReference akReference, Int aiItemIndex, ObjectMod akObjectMod) Native Global
+ObjectMod Function GetNthItemLegendaryMod(ObjectReference akReference, Int aiItemIndex) Native Global
+Int[] Function GetItemIndexesByName(ObjectReference akReference, String sItemName, Bool abExactMatch = True, Bool abReversedMode = False) Native Global
+Int Function GetInventoryItemCount(ObjectReference akReference) Native Global
 
 Actor[] Function FindActors(Keyword[] akMustHaveKeywords, Keyword[] akExcludeKeywords, \
 	int aiMustHaveKeywordsMode = 1, int aiExcludeKeywordsMode = 1, ObjectReference akOrigoRef = None, float afDistance = -1.0, \

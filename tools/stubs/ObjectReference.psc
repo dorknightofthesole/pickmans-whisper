@@ -10,6 +10,10 @@ Function SetPosition(Float x, Float y, Float z) Native
 Function SetAngle(Float x, Float y, Float z) Native
 Float Function GetDistance(ObjectReference akOther) Native
 Cell Function GetParentCell() Native
+; F4SE — inventory/world display name (legendary uniques); Form.GetName() is often the base WEAP name.
+String Function GetDisplayName() Native
+; F4SE — attached ObjectMods (legendary + weapon mods on this instance)
+ObjectMod[] Function GetAllMods() Native
 ObjectReference Function PlaceAtMe(Form akFormToPlace, Int aiCount = 1, Bool abForcePersist = False, Bool abInitiallyDisabled = False, Bool abDeleteWhenAble = True) Native
 Function ApplyHavokImpulse(Float afX, Float afY, Float afZ, Float afMagnitude) Native
 Function ForceAddRagdollToWorld() Native
