@@ -1,6 +1,6 @@
 # Bed corpse hallucination (design notes)
 
-**Status:** Design capture only — not implemented. Intended as roadmap **Slice F** (see [ROADMAP.md](ROADMAP.md)). Turn this doc into an implementation plan when that slice starts.
+**Status:** Design capture only — not implemented. Intended as roadmap **Slice G** (see [ROADMAP.md](ROADMAP.md)). Turn this doc into an implementation plan when that slice starts.
 
 **Fantasy beat:** After the knife bond is active, the player sleeps. While the screen is handling sleep (fade / menu), a corpse appears in or on the bed. On wake they see her. When they look away (and optionally look back), she is gone — a gift / hallucination / voice prank, not a permanent body.
 
@@ -87,7 +87,7 @@ Fallback if sleep-start timing is flaky: spawn in the first moments of wake whil
 - Prefer **on / beside** the bed over a perfect tucked-in mattress pose (Z and furniture clipping are fiddly).
 - Offset so she does not spawn inside the player.
 - Hold a quest-scoped `Actor BedCorpse` ref until despawn so cell reset does not purge her mid-beat.
-- Do **not** run Necromantic-style long-term `HoldCorpse` / claim token for this ephemeral instance (or strip on despawn). Slice E preserve is for knife-kill trophies, not hallucinations.
+- Do **not** run Necromantic-style long-term `HoldCorpse` / claim token for this ephemeral instance (or strip on despawn). Slice F preserve is for knife-kill trophies, not hallucinations.
 
 ---
 
@@ -185,7 +185,7 @@ Necromantic: if player somehow starts a scene on this body before despawn, that 
 
 ---
 
-## Open questions (resolve when planning Slice F)
+## Open questions (resolve when planning Slice G)
 
 1. Despawn on look-away only, or look-away + look-back?
 2. Count as knife activity / hunger interaction, or pure vignette?

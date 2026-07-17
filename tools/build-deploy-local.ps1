@@ -63,6 +63,12 @@ if (-not (Test-Path $Deploy)) {
   New-Item -ItemType Directory -Force -Path $Deploy | Out-Null
 }
 
+Write-Host "==> Stub native honesty contract test"
+& python (Join-Path $Root "tools\test_stub_natives.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_stub_natives.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> Blade detect contract test"
 & python (Join-Path $Root "tools\test_blade_detect_contract.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
@@ -73,6 +79,18 @@ Write-Host "==> Notice line / detection contract test"
 & python (Join-Path $Root "tools\test_notice_lines.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_notice_lines.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Look-fixation (C5 P1) contract test"
+& python (Join-Path $Root "tools\test_look_fixation.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_look_fixation.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> TargetOverrides filter contract test"
+& python (Join-Path $Root "tools\test_target_overrides.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_target_overrides.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "==> Env loader / no-hardcoded-path test"

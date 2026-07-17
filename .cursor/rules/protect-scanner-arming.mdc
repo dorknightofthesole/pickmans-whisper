@@ -1,0 +1,28 @@
+---
+description: Do not touch killscan/notice timer arming once working
+alwaysApply: true
+---
+
+# Protect scanner / timer arming (frozen)
+
+The killscan + ambient notice timer arming path is working after hard in-game
+debugging (load hooks, PlayerCombat quest start, boot re-arm). **Do not modify
+it unless the user explicitly asks.**
+
+## Frozen surface
+
+- `ArmRuntimeLoops`, `ScheduleBootArm`, `EnsurePlayerCombatQuest`
+- `StartKillScanLoop` / `OnTimer` killscan branch (re-arm **before** tick body)
+- `HandleGameResume` / `HandlePlayerLoadFromAlias` / alias `OnPlayerLoadGame`
+- Main `OnInit` / `OnQuestInit` arming calls into the above
+
+## Allowed nearby work
+
+- Filter / toast / fixation / line-bank changes that do **not** edit arming
+- Additive calls **after** proven ambient speak (e.g. `TickLookFixation`)
+
+## Not allowed without permission
+
+- “Cleanup” or reorder of boot/load arming
+- Removing `TIMER_BOOT_ARM`, PlayerCombat start, or load re-register
+- Putting risky natives back on the killscan hot path before re-arm

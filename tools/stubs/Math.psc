@@ -9,7 +9,7 @@ Float Function sqrt(Float afValue) Global Native
 Float Function pow(Float afBase, Float afPower) Global Native
 Float Function Floor(Float afValue) Global Native
 Float Function Ceiling(Float afValue) Global Native
-Int Function NumberOfSetBits(Int aiValue) Global Native
+; NumberOfSetBits is not in FO4 Math — do not stub it.
 Int Function LeftShift(Int aiValue, Int aiShiftAmount) Global Native
 Int Function RightShift(Int aiValue, Int aiShiftAmount) Global Native
 Int Function LogicalAnd(Int aiLeft, Int aiRight) Global Native

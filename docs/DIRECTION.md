@@ -18,7 +18,7 @@ On the surface, Occult Pact and Pickman's Whisper are **not sexual**. Necromanti
 - Later: fixation on nearby non-essential NPCs (default adult female); tone escalates over knife-use bond, not calendar alone.
 - Hunger / addiction shared concept with Necromantic — different satiation (knife kill vs corpse scene).
 - Soft ties later: Lady Killer / Black Widow, Cannibal, optional butcher cell.
-- Later vignette: wake to a bed corpse that vanishes when you look away (see [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) / Slice F).
+- Later vignette: wake to a bed corpse that vanishes when you look away (see [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) / Slice G).
 
 ## Product hard rules
 

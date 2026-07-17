@@ -34,6 +34,7 @@ Bool DebugKillToastsCacheValid = False
 ; Human / safety filters (Fallout4.esm keywords)
 Keyword KW_ActorTypeNPC
 Keyword KW_ActorTypeHuman
+Keyword KW_ActorTypeChild ; 0x1157E8 — IsChild() alone misses many settlement kids
 Keyword KW_ActorTypeGhoul
 Keyword KW_ActorTypeSuperMutant
 Keyword KW_ActorTypeSynth
@@ -107,7 +108,7 @@ Float HUNGER_POLL_SECONDS = 12.0
 Float BOND_POLL_SECONDS = 4.0
 Float TRUST_VOICE_SECONDS = 180.0
 Float NOTICE_VOICE_SECONDS = 45.0 ; C2 nearby-female comments (slow ambient backup)
-Float KILL_SCAN_SECONDS = 2.0 ; Necromantic-style StartTimer id 13 — also drives ambient notice
+Float KILL_SCAN_SECONDS = 2.0 ; killscan / fixation poll (<10s); hunger toasts gated separately by game-hour
 
 Int TIMER_HUNGER = 1
 Int TIMER_BOND = 2
@@ -115,7 +116,9 @@ Int TIMER_TRUST = 3
 Int TIMER_KILL = 4 ; legacy unused
 Int TIMER_NOTICE = 5 ; C2 notice voice (slow ambient)
 Int TIMER_NOTICE_APPROACH = 6 ; retired — CancelTimer only (0.5s poll silenced the quest)
+Int TIMER_BOOT_ARM = 7 ; post-load delayed ArmRuntimeLoops (OnInit often skips on mid-game saves)
 Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
+Float BOOT_ARM_SECONDS = 2.0
 
 ; Vanilla anchors (Fallout4.esm)
 Int FID_PICKMANS_BLADE = 0x0022595F ; LVLI CustomItem template only
@@ -129,6 +132,7 @@ Int FID_HUNGER_SPEL = 0x00000801
 Int FID_HUNGER_GLOB = 0x00000802
 Int FID_HUNGER_MGEF_AGI = 0x00000803
 Int FID_HUNGER_MGEF_CHA = 0x00000804
+Int FID_PLAYER_COMBAT_QUEST = 0x00000805 ; alias OnPlayerLoadGame lives here
 
 String MOD_NAME = "PickmansWhisper"
 Int LINE_FILE_MAX = 64
@@ -169,11 +173,13 @@ String LastStageLoadDiag = ""
 Float LastTrustToastRealTime = 0.0
 Float LastHungerToastRealTime = 0.0
 Float LastNoticeToastRealTime = 0.0
+Float LastNoticeToastGameTime = 0.0 ; hunger whisper cadence (game days)
 Float TRUST_TOAST_COOLDOWN = 8.0
 Float HUNGER_TOAST_COOLDOWN = 6.0
 Float PRAISE_TOAST_COOLDOWN = 2.0
-Float NOTICE_TOAST_COOLDOWN = 6.0 ; global gap between any two notice toasts (real s); matches the ~6s poll so a fresh target can whisper almost every pass
-Float NOTICE_NPC_COOLDOWN = 12.0 ; real seconds before commenting on same NPC again; low enough that a lone nearby female still whispers regularly
+Float NOTICE_TOAST_COOLDOWN = 6.0 ; legacy real-s gap (kept for probes); ambient uses NOTICE_MIN_GAME_HOURS
+Float NOTICE_MIN_GAME_HOURS = 1.0 ; max ~1 ambient hunger whisper per game hour
+Float NOTICE_NPC_COOLDOWN = 12.0 ; per-NPC cool after a hunger toast (does NOT block fixation)
 Float LastPraiseToastRealTime = 0.0
 Float LastGameResumeRealTime = 0.0 ; debounce HandleGameResume when alias + remote both fire
 Int[] NoticeCoolIds
@@ -184,15 +190,33 @@ Int NOTICE_COOL_MAX = 16
 ; path until ambient killscan whispers are verified working again in-game.
 String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't fire
 
+; C5 P1 — look-fixation (additive). Aim-edge counts; does not alter ambient whispers.
+; Aim via GoE camera/activate — NOT Game.GetCurrentCrosshairRef (not a FO4 native).
+Int FIXATION_MAX = 32
+Int[] FixationIds
+Int[] FixationCounts
+Int FixationSlotCount = 0
+Int LastLookFixationId = 0 ; FormID under aim last tick; 0 = none
+String Property LastFixationStatus = "" Auto ; MCM Debug — last look-fixation edge
+
+; TargetOverrides.txt — opt-in filter gates (default off = current safe blocks).
+Bool AllowChildFemalesOverride = False
+Bool AllowRobotsOverride = False
+String Property LastTargetOverridesStatus = "" Auto ; MCM / trace — last load result
+
 Event OnInit()
-	; Fires on attach AND on save load (OnQuestInit does NOT re-fire for mid-game saves).
-	; Timers must be armed here — do not wait for MCM Debug / Scan nearby.
+	; May fire on attach; often does NOT re-fire for mid-game saves — see HandleGameResume
+	; + alias OnPlayerLoadGame + TIMER_BOOT_ARM. Never rely on MCM Scan to start timers.
+	; Real-time clock resets each FO4 launch; clear saved debounce so load is not skipped.
+	LastGameResumeRealTime = 0.0
 	PlayerRef = Game.GetPlayer()
 	If PlayerRef
 		RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 		RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
 	EndIf
+	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
+	ScheduleBootArm()
 EndEvent
 
 Event OnQuestInit()
@@ -212,7 +236,9 @@ Event OnQuestInit()
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
 	; Arm timers on init/load — no MessageBox here (MCM Debug buttons only).
+	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
+	ScheduleBootArm()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	ResyncDrawnBladeState()
@@ -236,8 +262,16 @@ EndEvent
 ; Shared resume: game load / alias load. Idempotent; safe if both fire.
 Function HandleGameResume(String reason)
 	Float now = Utility.GetCurrentRealTime()
+	; Saved LastGameResumeRealTime can outlive a FO4 process (real-time resets on
+	; launch). Only debounce when the stamp is from THIS session (stamp <= now).
+	If LastGameResumeRealTime > now
+		LastGameResumeRealTime = 0.0
+	EndIf
 	If LastGameResumeRealTime > 0.0 && (now - LastGameResumeRealTime) < 2.0
+		; Duplicate alias+remote load within 2s — still re-arm + boot timer.
+		EnsurePlayerCombatQuest()
 		ArmRuntimeLoops()
+		ScheduleBootArm()
 		Return
 	EndIf
 	LastGameResumeRealTime = now
@@ -249,6 +283,7 @@ Function HandleGameResume(String reason)
 	InvalidateDebugToastCache()
 	ResolveVanillaForms()
 	EnsureHungerSpell()
+	RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
 	RegisterForRemoteEvent(PlayerRef, "OnItemEquipped")
 	RegisterForRemoteEvent(PlayerRef, "OnItemUnequipped")
 	RegisterForRemoteEvent(PlayerRef, "OnItemAdded")
@@ -258,7 +293,9 @@ Function HandleGameResume(String reason)
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
 	; Arm FIRST — MCM Debug must never be required to start the notice/killscan loops.
 	; No MessageBox on load (ReportNoticeLoadStatus is MCM "Test notice file load" only).
+	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
+	ScheduleBootArm()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	ResyncDrawnBladeState()
@@ -274,6 +311,20 @@ Function HandleGameResume(String reason)
 	ToastBladeDetectStatus("load")
 EndFunction
 
+; PlayerCombat quest owns the alias OnPlayerLoadGame hook. Start Game Enabled does
+; not always start new quests on mid-game saves — force it so load arming works.
+Function EnsurePlayerCombatQuest()
+	Quest pq = Game.GetFormFromFile(FID_PLAYER_COMBAT_QUEST, "PickmansWhisper.esp") as Quest
+	If !pq
+		Debug.Trace("PickmansWhisper: ERROR PlayerCombat quest 0x805 missing from esp")
+		Return
+	EndIf
+	If !pq.IsRunning()
+		pq.Start()
+		Debug.Trace("PickmansWhisper: started PlayerCombat quest (load arming)")
+	EndIf
+EndFunction
+
 ; Bond / hunger / trust / notice / kill-scan — always-on loops. Call on init, load, bond.
 Function ArmRuntimeLoops()
 	StartBondPoll()
@@ -282,6 +333,12 @@ Function ArmRuntimeLoops()
 	StartNoticeVoice()
 	CancelTimer(TIMER_NOTICE_APPROACH) ; kill any leftover C4 timer from older pex
 	StartKillScanLoop()
+EndFunction
+
+; StartTimer during early load can be dropped; re-arm once after BOOT_ARM_SECONDS.
+Function ScheduleBootArm()
+	CancelTimer(TIMER_BOOT_ARM)
+	StartTimer(BOOT_ARM_SECONDS, TIMER_BOOT_ARM)
 EndFunction
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
@@ -354,9 +411,17 @@ Event OnTimer(Int aiTimerID)
 	ElseIf aiTimerID == TIMER_NOTICE_APPROACH
 		; Legacy id — cancel and ignore (C4 parked; 0.5s poll silenced the quest).
 		CancelTimer(TIMER_NOTICE_APPROACH)
+	ElseIf aiTimerID == TIMER_BOOT_ARM
+		; Delayed load arm — catches mid-game saves where OnInit skipped and early
+		; StartTimer was dropped during the loading screen.
+		EnsurePlayerCombatQuest()
+		ArmRuntimeLoops()
+		Debug.Trace("PickmansWhisper: boot-arm timer fired " + DEBUG_BUILD)
 	ElseIf aiTimerID == TIMER_KILL || aiTimerID == TIMER_KILL_SCAN
-		RunKillScanTick()
+		; Re-arm FIRST — if RunKillScanTick aborts (bad native / stack dump), the
+		; quest must not go silent the way a mid-tick crash killed ambient before.
 		StartKillScanLoop()
+		RunKillScanTick()
 	EndIf
 EndEvent
 
@@ -1020,10 +1085,14 @@ String Function FormatNoticeActorChecklist(Actor ak)
 	Else
 		out += "  npcCool=no\n"
 	EndIf
-	If ak.IsChild()
-		out += "  child=YES <<\n"
-		If !fail
-			fail = "child"
+	If IsChildNpc(ak)
+		If IsChildTargetAllowed()
+			out += "  child=YES (allowed by TargetOverrides)\n"
+		Else
+			out += "  child=YES <<\n"
+			If !fail
+				fail = "child"
+			EndIf
 		EndIf
 	Else
 		out += "  child=no\n"
@@ -1075,9 +1144,13 @@ String Function FormatNoticeActorChecklist(Actor ak)
 		out += "  creature=no\n"
 	EndIf
 	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot)
-		out += "  robot=YES <<\n"
-		If !fail
-			fail = "robot"
+		If IsRobotTargetAllowed()
+			out += "  robot=YES (allowed by TargetOverrides)\n"
+		Else
+			out += "  robot=YES <<\n"
+			If !fail
+				fail = "robot"
+			EndIf
 		EndIf
 	Else
 		out += "  robot=no\n"
@@ -1158,11 +1231,13 @@ Function MaybeSpeakNoticeLine(String source)
 		Return
 	EndIf
 
-	; Toast cooldown — ambient path is toast/MCM status only (no MessageBox; that is MCM Scan button).
-	Float now = Utility.GetCurrentRealTime()
-	If LastNoticeToastRealTime > 0.0 && LastNoticeToastRealTime <= now
-		If (now - LastNoticeToastRealTime) < NOTICE_TOAST_COOLDOWN
-			LastNoticeStatus = "skip: toast cooldown"
+	; Ambient hunger cadence: at most once per NOTICE_MIN_GAME_HOURS (game time).
+	; Fixation has its own look-edge path and must not share this gate.
+	Float gnow = Utility.GetCurrentGameTime()
+	If LastNoticeToastGameTime > 0.0
+		Float hoursSince = (gnow - LastNoticeToastGameTime) * 24.0
+		If hoursSince < NOTICE_MIN_GAME_HOURS
+			LastNoticeStatus = "skip: hunger hour cooldown"
 			WriteNoticeStatusToMcm()
 			Return
 		EndIf
@@ -1211,6 +1286,7 @@ Function ToastNoticeLine(String line)
 		Return
 	EndIf
 	LastNoticeToastRealTime = Utility.GetCurrentRealTime()
+	LastNoticeToastGameTime = Utility.GetCurrentGameTime()
 	Debug.Notification(line)
 	Debug.Trace("PickmansWhisper: notice | " + line)
 EndFunction
@@ -1232,12 +1308,148 @@ EndFunction
 
 Bool Function IsNoticeCandidate(Actor ak)
 	; Prefer boolean empty-check — Caprica/runtime can be finicky with == ""
-	String reason = ExplainNoticeReject(ak)
+	String reason = ExplainNoticeReject(ak, False)
 	Return !reason
 EndFunction
 
+; Fixation ignores hunger/NPC toast cooldown so a hunger whisper never suppresses "seen xN".
+Bool Function IsFixationEligible(Actor ak)
+	String reason = ExplainNoticeReject(ak, True)
+	Return !reason
+EndFunction
+
+; --- C5 P1 look-fixation (additive; ambient MaybeSpeakNoticeLine untouched) ------
+
+Function EnsureFixationLists()
+	If !FixationIds || FixationIds.Length == 0
+		FixationIds = new Int[32]
+		FixationCounts = new Int[32]
+		FixationSlotCount = 0
+	EndIf
+EndFunction
+
+Function WriteFixationStatusToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If !LastFixationStatus
+		MCM.SetModSettingString(MOD_NAME, "sFixation:Debug", "(none yet)")
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sFixation:Debug", LastFixationStatus)
+	EndIf
+EndFunction
+
+; Drop lowest count (tie → lowest index / oldest). Leaves one free slot.
+Function EvictLowestFixation()
+	EnsureFixationLists()
+	If FixationSlotCount < 1
+		Return
+	EndIf
+	Int best = 0
+	Int bestCount = FixationCounts[0]
+	Int i = 1
+	While i < FixationSlotCount
+		If FixationCounts[i] < bestCount
+			best = i
+			bestCount = FixationCounts[i]
+		EndIf
+		i += 1
+	EndWhile
+	Int j = best
+	While j < FixationSlotCount - 1
+		FixationIds[j] = FixationIds[j + 1]
+		FixationCounts[j] = FixationCounts[j + 1]
+		j += 1
+	EndWhile
+	FixationIds[FixationSlotCount - 1] = 0
+	FixationCounts[FixationSlotCount - 1] = 0
+	FixationSlotCount -= 1
+EndFunction
+
+; Returns new seen count for formId (1 on first insert).
+Int Function IncrementFixation(Int formId)
+	EnsureFixationLists()
+	Int i = 0
+	While i < FixationSlotCount
+		If FixationIds[i] == formId
+			FixationCounts[i] = FixationCounts[i] + 1
+			Return FixationCounts[i]
+		EndIf
+		i += 1
+	EndWhile
+	If FixationSlotCount >= FIXATION_MAX
+		EvictLowestFixation()
+	EndIf
+	If FixationSlotCount >= FIXATION_MAX
+		Return 0
+	EndIf
+	FixationIds[FixationSlotCount] = formId
+	FixationCounts[FixationSlotCount] = 1
+	FixationSlotCount += 1
+	Return 1
+EndFunction
+
+; Aim actor for fixation — real GoE APIs only (never Game.GetCurrentCrosshairRef).
+Actor Function GetLookAimActor()
+	ObjectReference cam = GardenOfEden3.GetCameraTargetReference()
+	Actor ak = cam as Actor
+	If ak
+		Return ak
+	EndIf
+	ObjectReference pick = GardenOfEden2.GetLastActivateTargetRef()
+	Return pick as Actor
+EndFunction
+
+; Aim edge → bump seen count → toast "PW fixation: … seen xN".
+; Runs before hunger whisper on killscan so look-edge is not lost to Notification drop / cooldown.
+Function TickLookFixation()
+	If !BondStarted
+		Return
+	EndIf
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef
+		Return
+	EndIf
+
+	Actor ak = GetLookAimActor()
+	If !ak || ak == PlayerRef || !IsFixationEligible(ak)
+		LastLookFixationId = 0
+		Return
+	EndIf
+
+	Int id = ak.GetFormID()
+	If id == 0
+		LastLookFixationId = 0
+		Return
+	EndIf
+	If id == LastLookFixationId
+		Return
+	EndIf
+	LastLookFixationId = id
+
+	Int count = IncrementFixation(id)
+	If count < 1
+		LastFixationStatus = "skip: fixation table full"
+		WriteFixationStatusToMcm()
+		Return
+	EndIf
+
+	String nm = GetActorDisplayName(ak)
+	If !nm
+		nm = "id=" + id
+	EndIf
+	LastFixationStatus = nm + " seen x" + count + " (" + FixationSlotCount + "/" + FIXATION_MAX + ")"
+	WriteFixationStatusToMcm()
+	; No real-time toast cooldown — every look-edge (look away then back) may toast.
+	Debug.Notification("PW fixation: " + nm + " seen x" + count)
+	Debug.Trace("PickmansWhisper: fixation | " + LastFixationStatus)
+EndFunction
+
 ; Empty string = passes. Otherwise a short reject reason for MCM / MessageBox.
-String Function ExplainNoticeReject(Actor ak)
+; abIgnoreCooldown=True for fixation (hunger NPC cool must not suppress look-edge toasts).
+String Function ExplainNoticeReject(Actor ak, Bool abIgnoreCooldown = False)
 	If !ak || ak == PlayerRef
 		Return "no actor"
 	EndIf
@@ -1250,10 +1462,10 @@ String Function ExplainNoticeReject(Actor ak)
 	If PlayerRef && PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
 		Return "too far"
 	EndIf
-	If IsNoticeOnCooldown(ak)
+	If !abIgnoreCooldown && IsNoticeOnCooldown(ak)
 		Return "cooldown"
 	EndIf
-	If ak.IsChild()
+	If IsChildNpc(ak) && !IsChildTargetAllowed()
 		Return "child"
 	EndIf
 	If ak.IsPlayerTeammate()
@@ -1290,7 +1502,7 @@ String Function ExplainNonHumanForNotice(Actor ak)
 	If KW_ActorTypeCreature && ak.HasKeyword(KW_ActorTypeCreature)
 		Return "creature"
 	EndIf
-	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot)
+	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot) && !IsRobotTargetAllowed()
 		Return "robot"
 	EndIf
 	If KW_ActorTypeTurret && ak.HasKeyword(KW_ActorTypeTurret)
@@ -1538,6 +1750,7 @@ Function LoadLineBanks()
 	LoadHungerLines()
 	LoadPraiseLines()
 	LoadNoticeLines()
+	LoadTargetOverrides()
 EndFunction
 
 Function LoadTrustLines()
@@ -2251,11 +2464,13 @@ Function RunKillScanTick()
 	ScanLivingToDeadTransitions()
 
 	KillScanTickCount += 1
-	; Notice driver on proven kill-scan timer (~every 3 ticks). C4 approach is parked.
-	If BondStarted && (KillScanTickCount % 3) == 0
+	; Fixation first (every ~2s tick) — look-edge must not lose to hunger toast / NPC cool.
+	TickLookFixation()
+	; Hunger whisper: poll often; ToastNoticeLine gated to ~1 per game hour.
+	If BondStarted
 		MaybeSpeakNoticeLine("killscan")
-	ElseIf !BondStarted && (KillScanTickCount % 6) == 0
-		; Still prove the timer fires before bond — dialog shows gate reason
+	ElseIf (KillScanTickCount % 6) == 0
+		; Still prove the timer fires before bond — status only
 		MaybeSpeakNoticeLine("killscan-prebond")
 	EndIf
 	If KillScanTickCount == 1 || (KillScanTickCount % 3) == 0
@@ -2469,7 +2684,7 @@ Function TrackLivingNear(Actor ak)
 	If !ak || ak == PlayerRef || ak.IsDead() || ak.IsDisabled()
 		Return
 	EndIf
-	If ak.IsChild()
+	If IsChildNpc(ak) && !IsChildTargetAllowed()
 		Return
 	EndIf
 	NoteAliveSeen(ak)
@@ -2539,11 +2754,85 @@ Bool Function WasFriendlySeen(Actor ak)
 	Return False
 EndFunction
 
-Bool Function IsAdultFemale(Actor ak)
+; Children: native IsChild() is incomplete in FO4 — also require ActorTypeChild keyword.
+Bool Function IsChildNpc(Actor ak)
 	If !ak
 		Return False
 	EndIf
 	If ak.IsChild()
+		Return True
+	EndIf
+	EnsureFilterKeywords()
+	If KW_ActorTypeChild && ak.HasKeyword(KW_ActorTypeChild)
+		Return True
+	EndIf
+	Return False
+EndFunction
+
+Bool Function IsChildTargetAllowed()
+	Return AllowChildFemalesOverride
+EndFunction
+
+Bool Function IsRobotTargetAllowed()
+	Return AllowRobotsOverride
+EndFunction
+
+; Opt-in TargetOverrides.txt — 1/true/yes/on enable a category for notice + fixation + knife kills.
+Bool Function ParseOverrideTruthy(String v)
+	If !v
+		Return False
+	EndIf
+	If v == "1" || v == "true" || v == "yes" || v == "on"
+		Return True
+	EndIf
+	Return False
+EndFunction
+
+Function LoadTargetOverrides()
+	; OPTIONAL file — missing is fine. Fail closed (both flags False = blocked).
+	; Copy TargetOverrides.example.txt → TargetOverrides.txt to opt in.
+	AllowChildFemalesOverride = False
+	AllowRobotsOverride = False
+	String fileName = "TargetOverrides.txt"
+	String path = NoticeConfigPath()
+	If !GardenOfEden2.DoesFileExist(fileName, path)
+		LastTargetOverridesStatus = "optional file absent (defaults: blocked)"
+		Debug.Trace("PickmansWhisper: TargetOverrides.txt not present — using safe defaults (see TargetOverrides.example.txt)")
+		Return
+	EndIf
+	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
+	If !raw || raw.Length == 0
+		LastTargetOverridesStatus = "EMPTY/UNREADABLE (defaults: blocked)"
+		Debug.Trace("PickmansWhisper: TargetOverrides.txt present but empty/unreadable — using safe defaults")
+		Return
+	EndIf
+	Int i = 0
+	While i < raw.Length
+		String line = TrimString(raw[i])
+		i += 1
+		If line == ""
+			; skip
+		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
+			; comment
+		Else
+			Int eq = GardenOfEden.StrFind(line, "=")
+			If eq > 0
+				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
+				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				If key == "AllowChildFemales"
+					AllowChildFemalesOverride = ParseOverrideTruthy(val)
+				ElseIf key == "AllowRobots"
+					AllowRobotsOverride = ParseOverrideTruthy(val)
+				EndIf
+			EndIf
+		EndIf
+	EndWhile
+	LastTargetOverridesStatus = "childFemales=" + (AllowChildFemalesOverride as Int) + " robots=" + (AllowRobotsOverride as Int)
+	Debug.Trace("PickmansWhisper: TargetOverrides loaded | " + LastTargetOverridesStatus)
+EndFunction
+
+Bool Function IsAdultFemale(Actor ak)
+	If !ak
 		Return False
 	EndIf
 	ActorBase base = ak.GetLeveledActorBase()
@@ -2551,7 +2840,14 @@ Bool Function IsAdultFemale(Actor ak)
 		Return False
 	EndIf
 	; 0 = male, 1 = female (same as Necromantic)
-	Return base.GetSex() == 1
+	If base.GetSex() != 1
+		Return False
+	EndIf
+	; Child females only when TargetOverrides AllowChildFemales=1
+	If IsChildNpc(ak) && !IsChildTargetAllowed()
+		Return False
+	EndIf
+	Return True
 EndFunction
 
 Function ArmCombatTarget(Actor ak)
@@ -2869,6 +3165,9 @@ Function EnsureFilterKeywords()
 		; 0x2CB72 is ActorTypeHuman — was wrongly used as Robot before (B18 and earlier).
 		KW_ActorTypeHuman = Game.GetFormFromFile(0x0002CB72, "Fallout4.esm") as Keyword
 	EndIf
+	If !KW_ActorTypeChild
+		KW_ActorTypeChild = Game.GetFormFromFile(0x001157E8, "Fallout4.esm") as Keyword
+	EndIf
 	If !KW_ActorTypeGhoul
 		KW_ActorTypeGhoul = Game.GetFormFromFile(0x000EAFB7, "Fallout4.esm") as Keyword
 	EndIf
@@ -2920,6 +3219,10 @@ Bool Function IsHumanNpc(Actor ak)
 		Return False
 	EndIf
 	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot)
+		; Robots normally excluded; TargetOverrides AllowRobots=1 opts them in fully.
+		If IsRobotTargetAllowed()
+			Return True
+		EndIf
 		Return False
 	EndIf
 	If KW_ActorTypeAnimal && ak.HasKeyword(KW_ActorTypeAnimal)
@@ -2951,7 +3254,7 @@ Bool Function IsValidKnifeKillVictim(Actor ak, Bool abRequireAlive = True)
 		LastKillIgnoreReason = "already dead"
 		Return False
 	EndIf
-	If ak.IsChild()
+	If IsChildNpc(ak) && !IsChildTargetAllowed()
 		LastKillIgnoreReason = "child"
 		Return False
 	EndIf
@@ -3195,6 +3498,8 @@ Function OnMCMMenuOpen(String modName)
 	; RefreshMenu FIRST (it reloads page state from settings.ini), THEN reload
 	; notice files and push status — same order as Necromantic. Loading before
 	; RefreshMenu was getting wiped back to settings.ini "(not loaded)".
+	EnsurePlayerCombatQuest()
+	ArmRuntimeLoops() ; recovery if load hooks missed; not the sole arm path
 	RefreshHungerPanel(False)
 	If MCM.IsInstalled()
 		MCM.RefreshMenu()
@@ -3590,6 +3895,7 @@ Function RefreshDebugStatus()
 	Else
 		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus + " | " + stageInfo)
 	EndIf
+	WriteFixationStatusToMcm()
 	WriteNoticeLoadStatusToMcm()
 	WriteNearbyStatusToMcm()
 

@@ -11,7 +11,11 @@ Event OnAliasInit()
 	EnsurePlayerFill()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
+		main.EnsurePlayerCombatQuest()
 		main.ArmRuntimeLoops()
+		main.ScheduleBootArm()
+	Else
+		Debug.Trace("PickmansWhisper: alias OnAliasInit — main quest script not found")
 	EndIf
 EndEvent
 
@@ -20,6 +24,8 @@ Event OnPlayerLoadGame()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.HandlePlayerLoadFromAlias()
+	Else
+		Debug.Trace("PickmansWhisper: alias OnPlayerLoadGame — main quest script not found (timers not armed)")
 	EndIf
 EndEvent
 
@@ -37,9 +43,14 @@ EndFunction
 PickmansWhisperMainQuestScript Function GetMain()
 	Quest q = Game.GetFormFromFile(FID_MAIN_QUEST, "PickmansWhisper.esp") as Quest
 	If !q
+		Debug.Trace("PickmansWhisper: GetFormFromFile main quest 0x800 failed")
 		Return None
 	EndIf
-	Return q as PickmansWhisperMainQuestScript
+	PickmansWhisperMainQuestScript main = q as PickmansWhisperMainQuestScript
+	If !main
+		Debug.Trace("PickmansWhisper: main quest cast to PickmansWhisperMainQuestScript failed")
+	EndIf
+	Return main
 EndFunction
 
 Event OnCombatStateChanged(Actor akTarget, Int aeCombatState)

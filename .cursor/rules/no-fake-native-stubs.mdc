@@ -8,9 +8,14 @@ alwaysApply: true
 Papyrus compiles against source stubs in `tools/stubs/`. Declaring a function
 `Native` tells the compiler "the engine provides this at runtime." If the engine
 does **not** actually provide it, the script compiles green but **fails silently
-in-game**. This already burned a sibling project: a fake `Input.IsKeyPressed`
-stub (a Skyrim-only function that does **not** exist in Fallout 4 F4SE) made the
-build pass while the feature never worked at runtime.
+in-game**. This already burned projects here:
+
+- Fake `Input.IsKeyPressed` (Skyrim SKSE; not FO4 F4SE)
+- Fake `Game.GetCurrentCrosshairRef` (not base FO4; silenced killscan when called)
+- Fake `RegisterForUpdate*` / `OnUpdate` (removed in FO4; use `StartTimer` / `OnTimer`)
+- Fake `Math.NumberOfSetBits` (not in FO4 `Math.psc`)
+
+Regression gate: `tools/test_stub_natives.py` (run by `build-deploy-local`).
 
 ## Rules
 
@@ -20,11 +25,12 @@ build pass while the feature never worked at runtime.
 - If the compiler errors that a function doesn't exist, that error is usually
   **correct**. Fix the code to use a real API instead of stubbing the error away.
 - Before using an F4SE/Papyrus native you're unsure about, **verify it exists in
-  Fallout 4** (not just Skyrim/SKSE). Check the FO4 Creation Kit / F4SE docs.
-  `Input` in FO4 only has `GetMappedKey` / `GetMappedControl` — no
-  `IsKeyPressed`, `TapKey`, etc. (those are Skyrim SKSE).
+  Fallout 4** (not just Skyrim/SKSE). Check the FO4 Creation Kit / F4SE docs
+  under `Data/Scripts/Source`, or the real extender source (e.g. GoE). Presence
+  in `tools/stubs/` is **not** verification.
 - Detect keys the FO4 way: `RegisterForKey(int)` + the `OnKeyDown(int)` event
   (see `tools/stubs/ScriptObject.psc`). There is no key-polling native in FO4.
+- Timers: `StartTimer` / `OnTimer` only — never `RegisterForUpdate`.
 
 ## Example
 

@@ -9,20 +9,11 @@ EndEvent
 Event OnTimer(Int aiTimerID)
 EndEvent
 
-Bool Function Start()
-	Return True
-EndFunction
-
-Function Stop()
-EndFunction
-
-Bool Function IsRunning()
-	Return True
-EndFunction
-
-Bool Function IsStopping()
-	Return False
-EndFunction
+; Real FO4 Quest natives — do not stub with dummy Return True/False bodies.
+Bool Function Start() Native
+Function Stop() Native
+Bool Function IsRunning() Native
+Bool Function IsStopping() Native
 
 Function StartTimer(Float afInterval, Int aiTimerID = 0) Native
 Function CancelTimer(Int aiTimerID = 0) Native

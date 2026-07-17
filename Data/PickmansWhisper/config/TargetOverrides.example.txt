@@ -1,0 +1,8 @@
+# Pickman's Whisper — target filter overrides (OPTIONAL).
+# Copy this file to TargetOverrides.txt in the same folder, then edit.
+# If TargetOverrides.txt is missing, all overrides stay off (safe defaults).
+# 0 = blocked. 1 / true / yes / on = allow for whispers, look-fixation, and knife kills.
+# Blank and # lines ignored. Unknown keys ignored.
+
+# Example: allow robots as targets
+AllowRobots=0

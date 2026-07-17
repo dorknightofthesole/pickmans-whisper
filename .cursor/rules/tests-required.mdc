@@ -17,8 +17,11 @@ alwaysApply: true
 After any script/logic/config change that affects behavior:
 
 ```powershell
+python tools/test_stub_natives.py
 python tools/test_blade_detect_contract.py
 python tools/test_notice_lines.py
+python tools/test_look_fixation.py
+python tools/test_target_overrides.py
 ```
 
 Or the full gate (preferred when touching the mod):

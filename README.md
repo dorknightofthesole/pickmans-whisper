@@ -24,9 +24,10 @@ Fixation scans, audio VO, corpse hold sync, bed hallucination, and perk gates ar
 - Fallout 4 + [F4SE](https://f4se.silverlock.org/)
 - [Mod Configuration Menu](https://www.nexusmods.com/fallout4/mods/21497) (MCM)
 
-Optional (the five `NoticeLines_*.txt` hunger-stage whisper banks are read from disk and editable; without it, builtin notice lines are used):
+Optional (editable under `Data/PickmansWhisper/config/` — needs GoE2 file APIs):
 
-- Garden of Eden Papyrus Script Extender (GoE2 file APIs)
+- Five `NoticeLines_*.txt` hunger-stage whisper banks
+- `TargetOverrides.txt` (optional) — opt-in filter flags. Missing file = all blocked (safe defaults). Copy from `TargetOverrides.example.txt` to enable (e.g. `AllowRobots=1`). When `1`, that category is allowed for whispers, look-fixation, and knife-kill satiation.
 
 No AAF / BP70. Necromantic is a recommended companion, not a hard dependency.
 

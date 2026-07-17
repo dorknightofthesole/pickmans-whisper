@@ -374,7 +374,11 @@ def test_psc_contracts() -> None:
         errors.append('StripNamePlaceholder must not concatenate +"them"')
 
     # Detection must not use IsHostileToActor inside ExplainNoticeReject
-    m = re.search(r"String Function ExplainNoticeReject\(Actor ak\)(.*?)EndFunction", text, re.S)
+    m = re.search(
+        r"String Function ExplainNoticeReject\(Actor ak(?:, Bool abIgnoreCooldown = False)?\)(.*?)EndFunction",
+        text,
+        re.S,
+    )
     if not m:
         errors.append("ExplainNoticeReject not found")
     else:
@@ -385,6 +389,66 @@ def test_psc_contracts() -> None:
             errors.append("ExplainNoticeReject must call ExplainNonHumanForNotice")
         if "IsAdultFemale" not in body:
             errors.append("ExplainNoticeReject must call IsAdultFemale")
+        if "IsChildNpc" not in body:
+            errors.append("ExplainNoticeReject must use IsChildNpc (ActorTypeChild + IsChild)")
+        if re.search(r"\bak\.IsChild\s*\(", body):
+            errors.append("ExplainNoticeReject must not call ak.IsChild() directly — use IsChildNpc")
+
+    # Child filter: FO4 IsChild() alone is incomplete; keyword 0x1157E8 required
+    if "Function IsChildNpc" not in text and "Bool Function IsChildNpc" not in text:
+        errors.append("IsChildNpc helper missing")
+    else:
+        child_fn = re.search(r"Bool Function IsChildNpc\(Actor ak\)(.*?)EndFunction", text, re.S)
+        if not child_fn:
+            errors.append("IsChildNpc body not found")
+        else:
+            cbody = child_fn.group(1)
+            if "IsChild()" not in cbody:
+                errors.append("IsChildNpc must still check native IsChild()")
+            if "KW_ActorTypeChild" not in cbody or "HasKeyword" not in cbody:
+                errors.append("IsChildNpc must check KW_ActorTypeChild keyword")
+        if "0x001157E8" not in text:
+            errors.append("ActorTypeChild FormID 0x001157E8 must be loaded in EnsureFilterKeywords")
+        else:
+            # Lock FormID against Fallout4.esm when available (same pattern as blade contract).
+            try:
+                from _env import load_dotenv
+                import os
+                from pathlib import Path as _P
+
+                load_dotenv()
+                esm = os.environ.get("FALLOUT4_ESM")
+                if esm and _P(esm).is_file():
+                    data = _P(esm).read_bytes()
+                    if b"ActorTypeChild\x00" not in data:
+                        errors.append("Fallout4.esm missing EDID ActorTypeChild")
+                    else:
+                        target = (0x001157E8).to_bytes(4, "little")
+                        edid = b"ActorTypeChild\x00"
+                        pos = 0
+                        found = False
+                        while True:
+                            j = data.find(edid, pos)
+                            if j < 0:
+                                break
+                            k = data.rfind(b"KYWD", max(0, j - 200), j)
+                            if k >= 0 and data[k + 12 : k + 16] == target:
+                                found = True
+                                break
+                            pos = j + 1
+                        if not found:
+                            errors.append(
+                                "0x001157E8 must be KYWD ActorTypeChild in Fallout4.esm"
+                            )
+            except Exception as ex:  # pragma: no cover — env optional
+                pass
+    adult = re.search(r"Bool Function IsAdultFemale\(Actor ak\)(.*?)EndFunction", text, re.S)
+    if adult:
+        abody = adult.group(1)
+        if "IsChildNpc" not in abody:
+            errors.append("IsAdultFemale must check IsChildNpc")
+        if "IsChildTargetAllowed" not in abody:
+            errors.append("IsAdultFemale must honor IsChildTargetAllowed (TargetOverrides)")
 
     # PickNoticeLine must select by stage + guard immediate repeat.
     pnl = re.search(r"String Function PickNoticeLine\(String npcName\)(.*?)EndFunction", text, re.S)
@@ -465,34 +529,48 @@ def _psc_int(text: str, name: str) -> int:
 
 
 def test_notice_cadence() -> None:
-    """A lone nearby female must still whisper regularly.
+    """Hunger whispers are rare; the killscan poll stays frequent for fixation.
 
-    The notice poll fires every KILL_SCAN_SECONDS * (killscan modulo) seconds.
-    If the cooldowns creep back up (e.g. 20s per-NPC), a sparse settlement with
-    one eligible woman goes effectively silent — exactly the 'no toasts' report.
-    Lock the cadence so it can't regress.
+    Ambient hunger: ~1 per game hour (NOTICE_MIN_GAME_HOURS).
+    Killscan timer: KILL_SCAN_SECONDS < 10 so look-fixation can edge often.
     """
     text = PSC.read_text(encoding="utf-8", errors="replace")
-    toast_cd = _psc_float(text, "NOTICE_TOAST_COOLDOWN")
-    npc_cd = _psc_float(text, "NOTICE_NPC_COOLDOWN")
     scan_secs = _psc_float(text, "KILL_SCAN_SECONDS")
-
-    m = re.search(r"KillScanTickCount % (\d+)\) == 0\s*\n\s*MaybeSpeakNoticeLine\(\"killscan\"\)", text)
-    if not m:
-        raise AssertionError("could not find killscan -> MaybeSpeakNoticeLine cadence in quest script")
-    poll_secs = scan_secs * int(m.group(1))
+    hour_gate = _psc_float(text, "NOTICE_MIN_GAME_HOURS")
 
     errors: list[str] = []
-    if toast_cd <= 0:
-        errors.append("NOTICE_TOAST_COOLDOWN must be > 0")
-    if toast_cd > npc_cd:
-        errors.append(f"global toast cooldown ({toast_cd}) should not exceed per-NPC cooldown ({npc_cd})")
-    # A lone nearby female must re-whisper often enough to feel alive.
-    if npc_cd > 15.0:
-        errors.append(f"NOTICE_NPC_COOLDOWN {npc_cd} too long — lone female goes silent; keep <= 15s")
-    # Global cooldown should not starve the ~poll cadence so a fresh target can speak.
-    if toast_cd > poll_secs + 2.0:
-        errors.append(f"NOTICE_TOAST_COOLDOWN {toast_cd} > poll cadence {poll_secs}+2 — whispers get throttled off")
+    if scan_secs <= 0 or scan_secs >= 10.0:
+        errors.append(f"KILL_SCAN_SECONDS {scan_secs} must be in (0, 10)")
+    if hour_gate < 1.0:
+        errors.append(f"NOTICE_MIN_GAME_HOURS {hour_gate} must be >= 1 (max ~1 hunger toast / game hour)")
+
+    speak = re.search(r"Function MaybeSpeakNoticeLine\(String source\)(.*?)EndFunction", text, re.S)
+    if not speak:
+        errors.append("MaybeSpeakNoticeLine missing")
+    else:
+        body = speak.group(1)
+        if "NOTICE_MIN_GAME_HOURS" not in body and "LastNoticeToastGameTime" not in body:
+            errors.append("MaybeSpeakNoticeLine must gate ambient hunger on LastNoticeToastGameTime / NOTICE_MIN_GAME_HOURS")
+        if "skip: hunger hour cooldown" not in body:
+            errors.append("MaybeSpeakNoticeLine must surface hunger hour cooldown in LastNoticeStatus")
+
+    toast = re.search(r"Function ToastNoticeLine\(String line\)(.*?)EndFunction", text, re.S)
+    if not toast or "LastNoticeToastGameTime" not in toast.group(1):
+        errors.append("ToastNoticeLine must stamp LastNoticeToastGameTime")
+
+    scan = re.search(r"Function RunKillScanTick\(\)(.*?)EndFunction", text, re.S)
+    if not scan:
+        errors.append("RunKillScanTick missing")
+    else:
+        body = scan.group(1)
+        if 'MaybeSpeakNoticeLine("killscan")' not in body:
+            errors.append("RunKillScanTick must still call MaybeSpeakNoticeLine(killscan)")
+        # Hunger may poll every tick; must not require % 3 anymore.
+        if re.search(
+            r"KillScanTickCount % 3\) == 0\s*\n\s*MaybeSpeakNoticeLine\(\"killscan\"\)",
+            body,
+        ):
+            errors.append("hunger killscan must not be locked to % 3 — poll often, gate by game hour")
 
     if errors:
         raise AssertionError("notice cadence failures:\n  - " + "\n  - ".join(errors))
@@ -566,9 +644,30 @@ def test_runtime_loops_armed_without_mcm() -> None:
             if needle not in body:
                 errors.append(f"ArmRuntimeLoops must call {needle}")
 
+    if "Function EnsurePlayerCombatQuest()" not in text:
+        errors.append("EnsurePlayerCombatQuest missing (alias load hook quest)")
+    if "Function ScheduleBootArm()" not in text:
+        errors.append("ScheduleBootArm missing (delayed load re-arm)")
+    if "TIMER_BOOT_ARM" not in text:
+        errors.append("TIMER_BOOT_ARM missing")
+
+    on_timer = re.search(r"Event OnTimer\(Int aiTimerID\)(.*?)EndEvent", text, re.S)
+    if not on_timer:
+        errors.append("OnTimer missing")
+    else:
+        body = on_timer.group(1)
+        if "TIMER_BOOT_ARM" not in body or "ArmRuntimeLoops()" not in body:
+            errors.append("OnTimer TIMER_BOOT_ARM must ArmRuntimeLoops")
+
     on_init = re.search(r"Event OnInit\(\)(.*?)EndEvent", text, re.S)
     if not on_init or "ArmRuntimeLoops()" not in on_init.group(1):
         errors.append("OnInit must ArmRuntimeLoops (save load reattaches; OnQuestInit may not re-fire)")
+    if on_init:
+        body = on_init.group(1)
+        if "ScheduleBootArm()" not in body:
+            errors.append("OnInit must ScheduleBootArm (early StartTimer can drop on load screen)")
+        if "EnsurePlayerCombatQuest()" not in body:
+            errors.append("OnInit must EnsurePlayerCombatQuest")
 
     if "Function HandleGameResume(" not in text:
         errors.append("HandleGameResume missing (shared load resume)")
@@ -577,16 +676,48 @@ def test_runtime_loops_armed_without_mcm() -> None:
         body = hgr.group(1) if hgr else ""
         if "ArmRuntimeLoops()" not in body:
             errors.append("HandleGameResume must ArmRuntimeLoops")
+        if "ScheduleBootArm()" not in body:
+            errors.append("HandleGameResume must ScheduleBootArm")
+        if "EnsurePlayerCombatQuest()" not in body:
+            errors.append("HandleGameResume must EnsurePlayerCombatQuest")
+        if 'RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")' not in body:
+            errors.append("HandleGameResume must re-register OnPlayerLoadGame")
+        # Stale debounce: saved LastGameResumeRealTime > GetCurrentRealTime after relaunch
+        # must not skip boot arm (that silenced killscan until MCM Scan).
+        if "LastGameResumeRealTime > now" not in body and "LastGameResumeRealTime > now" not in text:
+            # allow either order of operands
+            if not re.search(
+                r"LastGameResumeRealTime\s*>\s*now|now\s*<\s*LastGameResumeRealTime",
+                body,
+            ):
+                errors.append(
+                    "HandleGameResume must invalidate stale LastGameResumeRealTime "
+                    "(saved stamp > current real-time after FO4 relaunch)"
+                )
         if "ReportNoticeLoadStatus()" in body:
             errors.append("HandleGameResume must not popup ReportNoticeLoadStatus")
         if "Debug.MessageBox(" in body:
             errors.append("HandleGameResume must not Debug.MessageBox (no launch dialog)")
+        # Debounce early-return path must still ScheduleBootArm (duplicate load events).
+        debounce = re.search(
+            r"LastGameResumeRealTime\s*>\s*0\.0.*?Return",
+            body,
+            re.S,
+        )
+        if debounce and "ScheduleBootArm()" not in debounce.group(0):
+            errors.append("HandleGameResume debounce path must still ScheduleBootArm")
+
+    on_init2 = re.search(r"Event OnInit\(\)(.*?)EndEvent", text, re.S)
+    if on_init2 and "LastGameResumeRealTime = 0.0" not in on_init2.group(1):
+        errors.append("OnInit must clear LastGameResumeRealTime (stale save debounce)")
 
     oqi = re.search(r"Event OnQuestInit\(\)(.*?)EndEvent", text, re.S)
     if oqi:
         body = oqi.group(1)
         if "ArmRuntimeLoops()" not in body:
             errors.append("OnQuestInit must ArmRuntimeLoops")
+        if "ScheduleBootArm()" not in body:
+            errors.append("OnQuestInit must ScheduleBootArm")
         if "ReportNoticeLoadStatus()" in body:
             errors.append("OnQuestInit must not popup ReportNoticeLoadStatus")
         if "Debug.MessageBox(" in body:
@@ -598,12 +729,25 @@ def test_runtime_loops_armed_without_mcm() -> None:
         errors.append("Player alias OnPlayerLoadGame must forward HandlePlayerLoadFromAlias")
     if "ArmRuntimeLoops()" not in alias:
         errors.append("Player alias OnAliasInit must ArmRuntimeLoops")
+    if "ScheduleBootArm()" not in alias:
+        errors.append("Player alias OnAliasInit must ScheduleBootArm")
 
-    # MCM open may re-arm, but must not be the sole path (Scan nearby / Refresh status).
+    # MCM open / Scan are recovery aids — must not be the sole path.
     if "Function DebugScanNearbyNpcs()" in text:
         dbg = re.search(r"Function DebugScanNearbyNpcs\(\)(.*?)EndFunction", text, re.S)
         if dbg and "ArmRuntimeLoops()" not in dbg.group(1):
             errors.append("DebugScanNearbyNpcs should re-arm loops as a recovery aid")
+    mcm_open = re.search(r"Function OnMCMMenuOpen\(String modName\)(.*?)EndFunction", text, re.S)
+    if not mcm_open or "ArmRuntimeLoops()" not in mcm_open.group(1):
+        errors.append("OnMCMMenuOpen should re-arm loops as a recovery aid")
+
+    quest_stub = (ROOT / "tools" / "stubs" / "Quest.psc").read_text(encoding="utf-8", errors="replace")
+    if re.search(r"Bool Function IsRunning\(\)\s*\n\s*Return", quest_stub):
+        errors.append("Quest.psc IsRunning must be Native (no dummy Return body)")
+    if "Bool Function IsRunning() Native" not in quest_stub and "Bool Function IsRunning() native" not in quest_stub.lower():
+        # Caprica casing
+        if not re.search(r"Bool\s+Function\s+IsRunning\s*\(\s*\)\s*Native", quest_stub, re.I):
+            errors.append("Quest.psc IsRunning must be declared Native")
 
     if errors:
         raise AssertionError("runtime loop arming failures:\n  - " + "\n  - ".join(errors))
@@ -722,18 +866,25 @@ def test_notice_stage_control() -> None:
 
 
 def test_no_dead_config_files() -> None:
-    """Every shipped config .txt must actually be read by the quest script.
+    """Every shipped notice-bank .txt must actually be read by the quest script.
 
     We removed TrustLines/HungerLines/PraiseLines/NoticeLines.txt because the code
     never read them (editing did nothing). Guard so unread 'editable' files can't
     ship again and mislead users.
+
+    Exception: ``*_Audio.txt`` maps are Slice D staging (clip filenames). They may
+    exist before Sound.Play wiring; they are not whisper text banks.
+    Exception: ``*.example.txt`` are optional templates (e.g. TargetOverrides.example.txt).
     """
     if not CONFIG.is_dir():
         raise AssertionError(f"missing config dir {CONFIG}")
     text = PSC.read_text(encoding="utf-8", errors="replace")
     orphans = [
-        p.name for p in sorted(CONFIG.glob("*.txt"))
+        p.name
+        for p in sorted(CONFIG.glob("*.txt"))
         if p.name not in text
+        and not p.name.endswith("_Audio.txt")
+        and not p.name.endswith(".example.txt")
     ]
     if orphans:
         raise AssertionError(
@@ -766,7 +917,7 @@ def main() -> int:
     print("PASS notice line / detection contracts")
     print("  5 hunger stages parse; generic settlers -> nameless whisper (not 'them')")
     print("  PickNoticeLine: stage-select + no-immediate-repeat; probe/toast invariants held")
-    print("  cadence: lone female still whispers (toast<=6s poll, npc<=15s)")
+    print("  cadence: killscan <10s; hunger ~1/game hour; fixation separate")
     print("  C4 parked: ambient killscan ToastNoticeLine only (C3 restore)")
     print("  runtime loops: ArmRuntimeLoops on OnInit + alias/game load (not MCM-only)")
     print("  ambient UX: no MessageBox in notice loop; MCM Scan nearby keeps dialog")

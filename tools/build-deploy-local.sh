@@ -99,11 +99,20 @@ SRC_WIN="$(to_win_path "$SRC")"
 OUT_WIN="$(to_win_path "$PEX_OUT")"
 FLAGS_WIN="$(to_win_path "$STUBS/Institute_Papyrus_Flags.flg")"
 
+echo "==> Stub native honesty contract test"
+python "$ROOT/tools/test_stub_natives.py" || exit 1
+
 echo "==> Blade detect contract test"
 python "$ROOT/tools/test_blade_detect_contract.py" || exit 1
 
 echo "==> Notice line / detection contract test"
 python "$ROOT/tools/test_notice_lines.py" || exit 1
+
+echo "==> Look-fixation (C5 P1) contract test"
+python "$ROOT/tools/test_look_fixation.py" || exit 1
+
+echo "==> TargetOverrides filter contract test"
+python "$ROOT/tools/test_target_overrides.py" || exit 1
 
 echo "==> Env loader / no-hardcoded-path test"
 python "$ROOT/tools/test_env_loader.py" || exit 1

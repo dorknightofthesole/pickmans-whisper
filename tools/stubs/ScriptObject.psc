@@ -16,13 +16,9 @@ Function RegisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilt
 Function UnregisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilter = None, Form akSourceFilter = None, Form akProjectileFilter = None, Int aiPowerFilter = -1, Int aiSneakFilter = -1, Int aiBashFilter = -1, Int aiBlockFilter = -1, Bool abMatch = True) Native
 Function UnregisterForAllHitEvents(ScriptObject akTarget = None) Native
 
-; Real-time update loop (more reliable than StartTimer on some quest scripts)
-Function RegisterForUpdate(Float afInterval) Native
-Function RegisterForSingleUpdate(Float afInterval) Native
-Function UnregisterForUpdate() Native
-
-Event OnUpdate()
-EndEvent
+; FO4 timers: StartTimer / CancelTimer / OnTimer (on Quest/ScriptObject in engine).
+; Do NOT stub Skyrim RegisterForUpdate* — removed in FO4; fake Natives compile green
+; and fail at runtime. See .cursor/rules/no-fake-native-stubs.mdc.
 
 Event OnKeyDown(Int keyCode)
 EndEvent

@@ -11,15 +11,20 @@
 - [x] **C2** Nearby non-hostile female notice toasts + `OnNoticeSpoken` hook
 - [x] **C3** Hunger-staged file whispers (`NoticeLines_*.txt` by hunger band; files-only)
 - [x] **C4** Approach / ambient restore + always-on killscan arming (verified in-game)
-- [ ] **C5** Look-fixation POC (crosshair edge counts; 1st silent / 2nd stage whisper / 3rd+ recognition; ambient unchanged)
+- [ ] **C5** Look-fixation POC (ambient unchanged)
+  - [x] **P1** Aim edge (GoE) → FormID count (cap 32) → toast `PW fixation: … seen xN` + MCM `sFixation:Debug` (fixed: no fake crosshair native)
+  - [ ] **P2** RecognitionLines.txt (3rd+ look voice)
+  - [ ] **P3** MCM Potential Victims name ↔ FormID
+  - [ ] **P4** RefCollectionAlias + verified SetDisplayName
 
 ## Later
 
 - [ ] Audio bank research / playback (D)
-- [ ] Corpse hold sync with Necromantic (E)
-- [ ] Bed corpse hallucination (F) — see docs/BED_CORPSE_HALLUCINATION.md
-- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (G)
-- [ ] I want to make sure that it takes longer to move from one cycle to the next. It should take longer to get to 100%. At least 3 days but maybe a week or longer. 
+- [ ] **E** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
+- [ ] Corpse hold sync with Necromantic (F)
+- [ ] Bed corpse hallucination (G) — see docs/BED_CORPSE_HALLUCINATION.md
+- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (H)
+- [ ] Witnesses / killer rumors (I)
 
 ## LoversLab release / visibility
 

@@ -1,0 +1,11 @@
+---
+description: Do not edit OnInit / load arming without discussing first
+alwaysApply: true
+---
+
+# Protect OnInit and load arming
+
+Startup scanning / timer arming is working after careful in-game fixes.
+**Do not modify `OnInit`, `HandleGameResume`, `ScheduleBootArm`, `EnsurePlayerCombatQuest`, or the killscan `OnTimer` re-arm order unless the user explicitly discusses and approves the change first.**
+
+Related: [protect-scanner-arming.mdc](protect-scanner-arming.mdc).

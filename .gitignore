@@ -10,3 +10,5 @@ dist/staging/
 .env
 
 Data/PickmansWhisper/whispers/*.mp3
+
+Data/PickmansWhisper/config/TargetOverrides.txt

@@ -1,0 +1,51 @@
+---
+description: Freeze core hunger whisper path; additive hooks only, must not break core
+alwaysApply: true
+---
+
+# Protect hunger / notice whisper core (frozen)
+
+The hunger-staged notice whisper path and its contract tests took hard in-game iteration to get working. **Treat that core as frozen for now.** We may refactor later — only with explicit user permission.
+
+## Intent
+
+- **Frozen core:** ambient hunger whispers (stage files → pick → toast, killscan driver, GoE load) stay as they are.
+- **Additive features OK** (Slice D audio, C5 look-fixation / personalization, etc.): they may be **invoked from** the existing hunger-whisper routines.
+- Those calls must be **new helper functions**, best-effort, structured so a failure in the additive path **cannot break or skip** the core hunger whisper.
+
+## Rules
+
+1. **No refactor of core whisper logic or its tests without explicit user permission.** No “cleanup,” merges, or rewrites of the ambient poll / stage pick / file-load path while adding features.
+2. **Do not weaken or rewrite** [tools/test_notice_lines.py](tools/test_notice_lines.py) core contracts without permission. New tests for new features are fine; do not delete or gut existing ones.
+3. **Prefer additive changes.** New behavior = new functions / banks / ticks. Wire with a **single call** into/out of the frozen path.
+4. **Best-effort hooks (Papyrus has no try/catch):**
+   - Run **core toast first** (`ToastNoticeLine` / proven speak path), then call the additive helper — never the reverse for required voice.
+   - Additive work lives in its **own function** (e.g. `MaybePlayNoticeAudio`, `TickLookFixation`).
+   - That helper must be defensive (null checks, early returns, no fake natives, no risky allocations on the hot path). A failure there must leave the player with the hunger whisper still delivered.
+   - Do not let additive logic `Return` out of `MaybeSpeakNoticeLine` before the core toast when a line was already chosen to speak.
+5. **If a feature seems to need a core rewrite,** stop and ask.
+
+## Protected surface (non-exhaustive)
+
+- `MaybeSpeakNoticeLine`, `PickNoticeLine`, `ToastNoticeLine`, `GetNoticeStage` / stage banks
+- `LoadNoticeLines`, `LoadStageBank`, `NoticeConfigPath`, notice GoE trim/parse
+- Killscan ambient: `MaybeSpeakNoticeLine("killscan")`
+- `Data/PickmansWhisper/config/NoticeLines_*.txt`
+- `tools/test_notice_lines.py` contracts for the above
+
+## Example
+
+```papyrus
+; ✅ GOOD — core frozen; additive after toast; own function
+ToastNoticeLine(line)
+MarkNoticeCooldown(target)
+; ... core status / OnNoticeSpoken ...
+MaybePlayNoticeAudio(stage, lineIndex) ; best-effort; must not undo toast
+; or from killscan:
+TickLookFixation() ; separate tick; does not rewrite MaybeSpeakNoticeLine
+
+; ❌ BAD — additive gate skips or replaces core whisper
+If !TryLookFixationAndAudio()
+  Return ; hunger toast never ran
+EndIf
+```

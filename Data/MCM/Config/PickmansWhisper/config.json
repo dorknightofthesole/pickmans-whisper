@@ -382,6 +382,15 @@
 					}
 				},
 				{
+					"id": "sFixation:Debug",
+					"text": "Look fixation (C5)",
+					"type": "textinput",
+					"help": "Aim-edge counts on eligible NPCs (seen xN). Ambient hunger whispers unchanged.",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
 					"text": "Notice line files (editable, under Data/PickmansWhisper/config/)",
 					"type": "section"
 				},
