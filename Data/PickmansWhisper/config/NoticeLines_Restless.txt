@@ -1,0 +1,16 @@
+# Pickman's Whisper notice whispers — STAGE 2 of 5: RESTLESS (infatuation).
+# Escalates by hunger %: 1 admiration > 2 infatuation > 3 jealousy > 4 anger > 5 kill-urge.
+# {name} = NPC name when known (auto-omitted for generic settlers). Blank/# lines ignored.
+
+{name}. You could be happy with her, you know.
+Imagine the mornings. Her voice. A home.
+A whole life with {name}. Picture it.
+She'd understand you. She's the one.
+You already love her a little, don't you?
+Stay near {name}. This feels like fate.
+Think of the years you'd share.
+{name} was meant to find you. Or you her.
+Doesn't she feel like home already?
+You could grow old beside {name}.
+Don't let her wander far. Not her.
+She's perfect. Say her name — {name}.

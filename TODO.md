@@ -1,13 +1,23 @@
 # TODO
 
-## Slice B+ (gameplay)
+## Slice B (done)
 
-- [x] Knife-kill detection + praise toasts + hunger satiation (0.2.0)
-- [ ] NPC scan + fixation tiers (Garden of Eden)
-- [ ] Audio bank research / playback
-- [ ] Corpse hold sync with Necromantic
-- [ ] Bed corpse hallucination (sleep spawn + look-away despawn) — see docs/BED_CORPSE_HALLUCINATION.md
-- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch
+- [x] Knife-kill detection + praise toasts + hunger satiation
+- [x] Blade vs gun drawn gate (GoE instance / OMOD contract)
+
+## Slice C (in progress)
+
+- [x] **C1** GoE living NPC scan + adult female / non-hostile filters
+- [x] **C2** Nearby non-hostile female notice toasts (`NoticeLines.txt`) + `OnNoticeSpoken` C3 hook
+- [ ] **C3** Escalation / remembered fixations (from `OnNoticeSpoken`)
+
+## Later
+
+- [ ] Audio bank research / playback (D)
+- [ ] Corpse hold sync with Necromantic (E)
+- [ ] Bed corpse hallucination (F) — see docs/BED_CORPSE_HALLUCINATION.md
+- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (G)
+- [ ] I want to make sure that it takes longer to move from one cycle to the next. It should take longer to get to 100%. At least 3 days but maybe a week or longer. 
 
 ## LoversLab release / visibility
 

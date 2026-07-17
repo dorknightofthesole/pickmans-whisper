@@ -1,0 +1,16 @@
+# Pickman's Whisper notice whispers — STAGE 4 of 5: STARVING (anger).
+# Escalates by hunger %: 1 admiration > 2 infatuation > 3 jealousy > 4 anger > 5 kill-urge.
+# {name} = NPC name when known (auto-omitted for generic settlers). Blank/# lines ignored.
+
+After everything, {name} ignores you. Ungrateful.
+She made you feel small. Remember that.
+You gave her a chance. She spat on it.
+{name} doesn't deserve your patience.
+The way she looked at you — she'll regret it.
+All that longing, wasted on her. It burns.
+She thinks she's better than you. She isn't.
+{name} laughed. Was it at you? Feels like it.
+You offered everything. She offered nothing.
+That smile is a lie. It always was.
+She should have been kinder to you.
+{name} has taken enough from you.

@@ -1,0 +1,44 @@
+---
+description: Never hard-code data that duplicates a file/config/data source; fail loud instead
+alwaysApply: true
+---
+
+# No hard-coded fallbacks
+
+Do NOT embed hard-coded copies of data that has an authoritative external source
+(config files, data files, plugin records, APIs). A hard-coded fallback that
+mirrors the real source **silently masks failures** — the code looks data-driven
+while actually running on stale, baked-in values.
+
+This burned a sibling project: a `UseBuiltinPositionFallback()` hard-coded the same
+ids as its `Positions.txt`, so a failed file read was invisible — impossible to
+tell whether the mod was reading the file or the copy.
+
+## Rules
+
+- If a required source can't be read, **fail loudly** (error log + user-visible
+  notification), do not substitute look-alike data.
+- A "safety default" may exist only if it is **minimal and obviously distinct**
+  from the real data (e.g. a single clearly-labeled placeholder), never a full
+  mirror of the source.
+- Never keep the same list/values in both code and a file (see
+  `single-source-of-truth`).
+
+## Example
+
+```papyrus
+; BAD — hidden mirror of a data file; a broken read looks identical to success
+Function UseBuiltinFallback()
+    Lines[0] = "some value that also lives in the file"
+    ; ...more identical to the file...
+EndFunction
+
+; GOOD — the file is the source; a failure is impossible to miss
+If !GardenOfEden.DoesFileExist(FILE, PATH)
+    Debug.Notification("PickmansWhisper: <file> NOT FOUND — nothing loaded")
+    Debug.Trace("PickmansWhisper: ERROR <file> missing at " + PATH)
+    Return
+EndIf
+```
+
+A silent fallback that copies the source is worse than an honest error.

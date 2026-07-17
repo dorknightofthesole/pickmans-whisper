@@ -1,0 +1,16 @@
+# Pickman's Whisper notice whispers — STAGE 5 of 5: DESPERATE (kill-urge).
+# Escalates by hunger %: 1 admiration > 2 infatuation > 3 jealousy > 4 anger > 5 kill-urge.
+# {name} = NPC name when known (auto-omitted for generic settlers). Blank/# lines ignored.
+
+End it. {name} would be so quiet, so still.
+One cut and she's yours forever.
+She was always meant for the knife.
+Stop waiting. The blade is ready. So are you.
+Make her still. Make her yours.
+{name}. The last soft breath. Take it.
+No one else can have what you keep.
+The knife knows what she's for. So do you.
+Quiet her. Then she can never leave.
+She'd look so peaceful. Give her that.
+Finish it. The hunger ends with her.
+{name} belongs to the blade now.

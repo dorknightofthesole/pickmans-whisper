@@ -1,0 +1,16 @@
+# Pickman's Whisper notice whispers — STAGE 3 of 5: HUNGRY (jealousy).
+# Escalates by hunger %: 1 admiration > 2 infatuation > 3 jealousy > 4 anger > 5 kill-urge.
+# {name} = NPC name when known (auto-omitted for generic settlers). Blank/# lines ignored.
+
+Who was she smiling at? Not you.
+{name} looked right past you. She has others.
+Someone else will have her if you wait.
+Does she even think of you? Doubt it.
+She's not yours yet. That should sting.
+They don't deserve {name}'s attention. You do.
+Watch how freely she gives that smile away.
+{name} talks to everyone but you. Notice that.
+She'd forget you in a heartbeat.
+All those eyes on her. It isn't right.
+You want her to yourself, don't you? Admit it.
+{name} shouldn't belong to anyone else.

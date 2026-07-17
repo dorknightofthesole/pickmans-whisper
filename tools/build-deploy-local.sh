@@ -5,21 +5,51 @@
 # Usage (Git Bash / WSL / macOS* with Caprica.exe via wine not covered):
 #   ./tools/build-deploy-local.sh
 #
-# Optional env:
+# Machine-specific paths are read from a git-ignored .env at repo root.
+# Copy .env.example to .env and fill in your paths. Real env vars override .env.
+# Settings:
 #   PICKMANS_WHISPER_ROOT   — repo root (default: parent of tools/)
-#   PICKMANS_WHISPER_DEPLOY - MO2 mod folder (default: D:/mods/Fallout 4/mods/PickmansWhisper)
+#   PICKMANS_WHISPER_DEPLOY - MO2 mod folder (REQUIRED; set in .env or env)
 #   CAPRICA                — path to Caprica.exe
-#   FALLOUT4_ESM           — path to Fallout4.esm (for ESP MGEF clone)
+#   FALLOUT4_ESM           — path to Fallout4.esm (for ESP MGEF clone; set in .env)
 #
 # * Caprica is a Windows binary; this script expects it runnable under your shell.
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# Load machine-specific settings from a git-ignored .env at repo root
+# (KEY=VALUE lines). Real environment variables take precedence over .env.
+load_dotenv() {
+  local f="$1"
+  [[ -f "$f" ]] || return 0
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line="${line#"${line%%[![:space:]]*}"}"   # ltrim
+    [[ -z "$line" || "$line" == \#* ]] && continue
+    line="${line#export }"
+    [[ "$line" != *=* ]] && continue
+    local key="${line%%=*}" val="${line#*=}"
+    key="${key%"${key##*[![:space:]]}"}"       # rtrim key
+    val="${val#"${val%%[![:space:]]*}"}"       # ltrim val
+    # strip one layer of surrounding quotes
+    val="${val%\"}"; val="${val#\"}"
+    val="${val%\'}"; val="${val#\'}"
+    [[ -z "$key" ]] && continue
+    [[ -z "${!key:-}" ]] && export "$key=$val"
+  done < "$f"
+}
+load_dotenv "$SCRIPT_DIR/../.env"
+
 ROOT="$(cd "${PICKMANS_WHISPER_ROOT:-$SCRIPT_DIR/..}" && pwd)"
 
 # Git Bash on Windows: prefer /d/... style; also accept Windows paths in env.
-DEPLOY="${PICKMANS_WHISPER_DEPLOY:-/d/mods/Fallout 4/mods/PickmansWhisper}"
+DEPLOY="${PICKMANS_WHISPER_DEPLOY:-}"
+if [[ -z "$DEPLOY" ]]; then
+  echo "ERROR: PICKMANS_WHISPER_DEPLOY is not set." >&2
+  echo "       Copy .env.example to .env and set it to your MO2 mods/PickmansWhisper folder." >&2
+  exit 1
+fi
 CAPRICA="${CAPRICA:-$ROOT/tools/Caprica/Caprica.exe}"
 STUBS="$ROOT/tools/stubs"
 SRC="$ROOT/Data/Scripts/Source/User"
@@ -68,6 +98,15 @@ STUBS_WIN="$(to_win_path "$STUBS")"
 SRC_WIN="$(to_win_path "$SRC")"
 OUT_WIN="$(to_win_path "$PEX_OUT")"
 FLAGS_WIN="$(to_win_path "$STUBS/Institute_Papyrus_Flags.flg")"
+
+echo "==> Blade detect contract test"
+python "$ROOT/tools/test_blade_detect_contract.py" || exit 1
+
+echo "==> Notice line / detection contract test"
+python "$ROOT/tools/test_notice_lines.py" || exit 1
+
+echo "==> Env loader / no-hardcoded-path test"
+python "$ROOT/tools/test_env_loader.py" || exit 1
 
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"

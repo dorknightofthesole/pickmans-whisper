@@ -9,6 +9,8 @@ Bool Function DoesFileExist(String asFileName, String asFilePath = "") Native Gl
 String Function GetLineFromFile(String asFileName, Int aiLine, String asFilePath = "") Native Global
 String[] Function GetLinesFromFile(String asFileName, String asFilePath = "") Native Global
 Int Function CountLinesOfFile(String asFileName, String asFilePath = "") Native Global
+; Splits on whitespace (drops edge/control whitespace). Used for TrimString — FO4 has no StringUtil.
+String[] Function GetWordsInStringAsArray(String asString) Native Global
 
 Int Function GetModelNodeCount(ObjectReference akReference) Native Global
 String[] Function GetModelNodes(ObjectReference akReference) Native Global

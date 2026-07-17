@@ -5,12 +5,13 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | Slice | Deliverable | Status |
 |-------|-------------|--------|
 | **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM | **Shipped (0.1.0)** |
-| **B** | Kill-with-knife praise + satiation rules | **Shipped (0.2.0)** |
-| **C** | NPC scan + fixation mentions + tone tiers | Planned |
+| **B** | Kill-with-knife praise + satiation rules | **Done** |
+| **C** | NPC scan + nearby comments + hunger-staged whispers | **In progress** — C1+C2 done; C3 files-only, verifying reliability |
 | **D** | Audio bank playback (research + implement) | Planned |
 | **E** | Corpse preserve sync with Necromantic | Planned |
 | **F** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
 | **G** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
+| **H** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
 
 ## Slice A — trigger, toast, hunger, MCM
 
@@ -22,15 +23,18 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 
 ## Slice B — knife kills + satiation
 
+**Status: Done** (verified: blade sates on non-hostile adult females; gun with blade in inventory does not). Regression: [TEST.md](../TEST.md) + `tools/test_blade_detect_contract.py` + MCM **Verify blade detect**.
+
 - Detect kills while weapon is Pickman's Blade (primary: nearby living→dead GoE scan; soft backups: `OnDeath` / hit-tag / combat target).
+- **Blade identity (B27):** GoE equipped-slot name / OMOD pair (`Knife` `0x913CA` + bleed `0x1E7C20` + stealth `0x187A10`). Do **not** trust `GetEquippedWeapon` name alone (reports Combat Knife) or LVLI `0x22595F` as the drawn WEAP.
 - Valid target: adult **female** non-**essential** human, seen **non-hostile** while alive (Protected settlers **do** count after you aggro them); skips men, hostiles-from-first-sight (raiders), children, teammates, ghoul/SM/synth/robot.
-- Only kills with **Pickman's Blade** equipped count (brief post-swing sheath window only); other weapons do not sate.
+- Only kills with **Pickman's Blade** drawn count; gun with blade only in inventory must **not** sate.
 
-## Slice C — NPC scan + fixation
+## Slice C — NPC scan + comments + fixation
 
-- Periodic Garden of Eden scan; default adult female non-essential.
-- Fixation list + tone tiers from bond / knife-days.
-- Lines: crush → jealousy → remove → kill urge.
+- [x] **C1** — Periodic Garden of Eden living scan; default adult female non-essential (shared with B kill-watch / filters).
+- [x] **C2** — Soft toast comments on nearby **non-hostile** adult women (`NoticeLines.txt`, `{name}` when known). Success path calls `OnNoticeSpoken` (C3 hook). Poll debug dialogs optional (MCM Debug).
+- [ ] **C3** — Hunger-staged whispers: five editable stage files (`NoticeLines_<Stage>.txt`) chosen by `HungerLevel` band — admiration → infatuation → jealousy → anger → kill-urge — with no-immediate-repeat selection. Files-only (no builtin fallback); per-file load status + error toast in MCM Debug, plus a stage dropdown / force toggle for testing. **Unchecked until verified reliably in-game.** Remembered per-NPC fixations remain a later idea (hook: `OnNoticeSpoken`).
 
 ## Slice D — audio
 
@@ -59,9 +63,22 @@ Design notes (for a later implementation plan): [BED_CORPSE_HALLUCINATION.md](BE
 - Optional Cannibal; stretch butcher-shop cell.
 - Occult Pact bridges documented only until that mod exists.
 
+## Slice H — witnesses
+
+NPCs who witness a knife kill (or catch the player mid-crime) react instead of ignoring it.
+
+- **Reaction on witness:** either
+  - **Flee** — run in fear / scream / call for help, or
+  - **Fight** — turn hostile and attack the player.
+- Reuse existing GoE proximity / LOS scanning (kill-watch + `GetActorsDetecting`) to find who actually saw it; gate by distance/line-of-sight so unseen kills stay quiet.
+- **H1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
+- Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
+- Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
+
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
 - Essential NPC filters must never break main quests.
 - Tone is extreme — keep lines in editable config files.
 - Bed hallucination: sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice F doc).
+- Witnesses (H): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.

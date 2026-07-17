@@ -200,6 +200,16 @@
 					}
 				},
 				{
+					"text": "Test notice (nearby woman)",
+					"type": "button",
+					"help": "Comments on the nearest non-hostile adult female in range (C2).",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugTestNoticeLine"
+					}
+				},
+				{
 					"text": "Test next praise line",
 					"type": "button",
 					"action": {
@@ -211,7 +221,7 @@
 				{
 					"text": "Reload line banks",
 					"type": "button",
-					"help": "Reloads builtin banks. Disk .txt reload arrives with GoE later.",
+					"help": "Re-reads the five NoticeLines_*.txt files from disk (no game restart) and reports each file's load status.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -219,7 +229,7 @@
 					}
 				},
 				{
-					"text": "Lines live under Data/PickmansWhisper/config/ (TrustLines, HungerLines, PraiseLines).",
+					"text": "Notice whispers are editable under Data/PickmansWhisper/config/ (NoticeLines_Calm/Restless/Hungry/Starving/Desperate.txt). Trust/hunger/praise are builtin. See the Debug page for per-file load status.",
 					"type": "text",
 					"html": true
 				}
@@ -233,6 +243,40 @@
 					"text": "Kill / scan debug toasts",
 					"type": "switcher",
 					"help": "Blade status, scan heartbeats, HUMAN kill / ignore reasons. Off by default. Praise and hunger voice are separate (Voice page).",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "bNoticePollDebug:Debug",
+					"text": "Notice poll dialogs",
+					"type": "switcher",
+					"help": "Auto MessageBox every ~8s while notice polling: who was nearby and why each failed or passed. No button needed. Turn off when done debugging.",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "iNoticeStage:Debug",
+					"text": "Notice stage",
+					"type": "menu",
+					"help": "Current whisper escalation stage. When 'Force notice stage' is off this tracks hunger (updates on Refresh). When on, this pins the stage so you can test each one without grinding hunger.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"1 Calm",
+							"2 Restless",
+							"3 Hungry",
+							"4 Starving",
+							"5 Desperate"
+						]
+					}
+				},
+				{
+					"id": "bForceNoticeStage:Debug",
+					"text": "Force notice stage",
+					"type": "switcher",
+					"help": "When on, the Notice stage dropdown overrides the hunger-derived stage (debug/testing).",
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
 					}
@@ -322,6 +366,66 @@
 					}
 				},
 				{
+					"id": "sNearby:Debug",
+					"text": "Nearby NPC scan",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sNotice:Debug",
+					"text": "Last notice poll",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Notice line files (editable, under Data/PickmansWhisper/config/)",
+					"type": "section"
+				},
+				{
+					"id": "sNoticeCalm:Debug",
+					"text": "1 Calm file",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sNoticeRestless:Debug",
+					"text": "2 Restless file",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sNoticeHungry:Debug",
+					"text": "3 Hungry file",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sNoticeStarving:Debug",
+					"text": "4 Starving file",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sNoticeDesperate:Debug",
+					"text": "5 Desperate file",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
 					"id": "sHungerSpell:Debug",
 					"text": "Hunger SPEL",
 					"type": "textinput",
@@ -336,6 +440,36 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "RefreshDebugStatus"
+					}
+				},
+				{
+					"text": "Scan nearby NPCs (raw)",
+					"type": "button",
+					"help": "Unfiltered GoE living + detecting scan within kill-watch radius. Verifies detection before notice filters.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugScanNearbyNpcs"
+					}
+				},
+				{
+					"text": "Verify blade detect",
+					"type": "button",
+					"help": "GoE check: PASS only when Pickman's Blade is actually drawn (not a gun with blade in inventory).",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugVerifyBladeDetect"
+					}
+				},
+				{
+					"text": "Test notice file load",
+					"type": "button",
+					"help": "Reloads all five NoticeLines_*.txt via GoE2 and pops a MessageBox with the full path/exists/raw/parsed/RESULT trace (Necromantic-style). Screenshot this if load fails.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugTestNoticeFiles"
 					}
 				},
 				{

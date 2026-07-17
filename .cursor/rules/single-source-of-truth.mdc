@@ -1,0 +1,38 @@
+---
+description: Every piece of data has exactly one authoritative source; never duplicate it
+alwaysApply: true
+---
+
+# Single source of truth
+
+Each piece of data (a list, a set of ids, a config value, a FormID, a default)
+must have **exactly one** authoritative definition. Never maintain the same
+values in two places — they drift, and duplicates hide bugs.
+
+This burned a sibling project: its position ids lived in BOTH a text file AND a
+hard-coded array in the script. Because the two matched, nobody could tell which
+was actually in use, and a broken file read was undetectable.
+
+## Rules
+
+- Define data once. Everything else **reads** from that one source.
+- If code needs a value that also lives in a file/record, read it from the
+  file/record — do not re-declare it in code.
+- Constants that mirror external records (FormIDs, EDIDs, ids) must be the ONLY
+  copy and should be covered by a contract test that verifies they still match
+  the source (see `tools/test_blade_detect_contract.py` for the pattern).
+- A default/placeholder is allowed only when it is clearly NOT a duplicate of the
+  real data (see `no-hardcoded-fallbacks`).
+
+## Example
+
+```papyrus
+; BAD — same ids defined in a data file and again here (two sources of truth)
+Lines[0] = "value that is also line 1 of the file"
+
+; GOOD — the file is the ONLY source; code just reads it
+String[] raw = GardenOfEden.GetLinesFromFile(FILE, PATH)
+```
+
+If you find yourself copy-pasting values that exist elsewhere, stop and read from
+the original instead.

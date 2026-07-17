@@ -6,6 +6,12 @@ Function InitHavok(ObjectReference akReference) Native Global
 Function ClampToGround(ObjectReference akReference) Native Global
 String Function GetHexFormID(Form akForm) Native Global
 
+; String helpers (real GoE natives — FO4 has no StringUtil; see no-fake-native-stubs)
+Int Function StrFind(String sourceString, String findString, Int aiStartAt = 0, Bool abCaseSensitive = False) Native Global
+Int Function StrLength(String sourceString) Native Global
+String Function SubStr(String sourceString, Int aiStartAt = 0, Int aiLength = -1) Native Global
+String Function ReplaceStr(String asSource, String asFrom, String asTo) Native Global
+
 Int[] Function GetEquippedItemIndexes(ObjectReference akReference) Native Global
 Int Function GetNthItemIsEquipped(ObjectReference akReference, Int aiItemIndex) Native Global
 Int Function GetNthItemBaseID(ObjectReference akReference, Int aiItemIndex) Native Global

@@ -1,0 +1,16 @@
+# Pickman's Whisper notice whispers — STAGE 1 of 5: CALM (admiration).
+# Escalates by hunger %: 1 admiration > 2 infatuation > 3 jealousy > 4 anger > 5 kill-urge.
+# {name} = NPC name when known (auto-omitted for generic settlers). Blank/# lines ignored.
+
+She has a quiet face. Look — {name}.
+Pretty, isn't she? Worth a second glance.
+{name} moves so easily. You noticed.
+Soft eyes nearby. Nothing wrong with looking.
+Someone lovely just passed. {name}.
+A gentle shape in the crowd. Enjoy it.
+She has a kind way about her, don't you think?
+{name}. There's something calming about her.
+Look how the light likes her.
+A pleasant face. Let yourself smile.
+{name} seems gentle. Sweet, even.
+Just admire her a moment. That's all.

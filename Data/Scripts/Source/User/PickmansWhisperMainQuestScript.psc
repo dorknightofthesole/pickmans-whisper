@@ -73,7 +73,16 @@ Int BACKGROUND_DEAD_MAX = 48
 Int LastGoeAliveCount = 0
 Int LastGoeDeadCount = 0
 Int LastDetectCount = 0
-String DEBUG_BUILD = "B27-goe" ; GoE equipped name/OMOD scan (Combat Knife base + bleed+stealth)
+String DEBUG_BUILD = "C2-stable" ; detection = C2-pipe filters; Settler uses nameless whisper only
+; Notice poll dialogs — OFF by default now that pick path works. Enable on Debug page if needed.
+Bool NoticePollDebugDefault = False
+Int NoticePollCount = 0
+String LastNoticeDiag = ""
+String LastNoticeBreakAt = "" ; short "where it broke" for dialog header
+String LastNoticePollSource = ""
+String LastNearbySummary = "" ; MCM Debug "Nearby NPC scan" — updated by every PickNoticeTarget
+Float LastNoticeDiagRealTime = 0.0
+Float NOTICE_DIAG_MIN_GAP = 5.0 ; real seconds between poll MessageBoxes
 Bool RefreshDebugBusy = False
 Int KillScanTickCount = 0
 Bool KillScanArmAnnounced = False
@@ -97,12 +106,14 @@ Bool HungerSpellLoadWarned
 Float HUNGER_POLL_SECONDS = 12.0
 Float BOND_POLL_SECONDS = 4.0
 Float TRUST_VOICE_SECONDS = 180.0
+Float NOTICE_VOICE_SECONDS = 45.0 ; C2 nearby-female comments
 Float KILL_SCAN_SECONDS = 2.0 ; Necromantic-style StartTimer id 13
 
 Int TIMER_HUNGER = 1
 Int TIMER_BOND = 2
 Int TIMER_TRUST = 3
 Int TIMER_KILL = 4 ; legacy unused
+Int TIMER_NOTICE = 5 ; C2 notice voice
 Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
 
 ; Vanilla anchors (Fallout4.esm)
@@ -127,12 +138,47 @@ String[] HungerLines
 Int HungerLineCount = 0
 String[] PraiseLines
 Int PraiseLineCount = 0
+; C3 — hunger-staged notice banks. Content lives ONLY in the editable config .txt
+; files (no hardcoded builtin copies). Stage by hunger %: 0 calm / 1 restless /
+; 2 hungry / 3 starving / 4 desperate. If a file fails to load, that stage stays
+; silent and the failure is surfaced (load-time error toast + MCM Debug rows).
+String[] NoticeCalmLines
+Int NoticeCalmCount = 0
+String[] NoticeRestlessLines
+Int NoticeRestlessCount = 0
+String[] NoticeHungryLines
+Int NoticeHungryCount = 0
+String[] NoticeStarvingLines
+Int NoticeStarvingCount = 0
+String[] NoticeDesperateLines
+Int NoticeDesperateCount = 0
+String LastNoticeLine = "" ; C3 no-immediate-repeat guard (raw template, pre-name)
+; Per-stage load status for MCM Debug rows (e.g. "8 lines", "MISSING FILE",
+; "READ FAILED (GoE2?)", "EMPTY"). LastStageLoadStatus is set by LoadStageBank.
+String NoticeCalmStatus = ""
+String NoticeRestlessStatus = ""
+String NoticeHungryStatus = ""
+String NoticeStarvingStatus = ""
+String NoticeDesperateStatus = ""
+String LastStageLoadStatus = ""
+; Step-by-step load trace (path/exists/raw/parsed/RESULT), shown in one MessageBox
+; via ReportNoticeLoadStatus — mirrors Necromantic PosLoadDiag / InsLoadDiag.
+String NoticeLoadDiag = ""
+String LastStageLoadDiag = ""
 Float LastTrustToastRealTime = 0.0
 Float LastHungerToastRealTime = 0.0
+Float LastNoticeToastRealTime = 0.0
 Float TRUST_TOAST_COOLDOWN = 8.0
 Float HUNGER_TOAST_COOLDOWN = 6.0
 Float PRAISE_TOAST_COOLDOWN = 2.0
+Float NOTICE_TOAST_COOLDOWN = 6.0 ; global gap between any two notice toasts (real s); matches the ~6s poll so a fresh target can whisper almost every pass
+Float NOTICE_NPC_COOLDOWN = 12.0 ; real seconds before commenting on same NPC again; low enough that a lone nearby female still whispers regularly
 Float LastPraiseToastRealTime = 0.0
+Int[] NoticeCoolIds
+Float[] NoticeCoolTimes
+Int NoticeCoolCount = 0
+Int NOTICE_COOL_MAX = 16
+String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't fire
 
 Event OnInit()
 	; Also fires once when the script attaches (pairs with OnQuestInit on fresh starts).
@@ -143,6 +189,8 @@ Event OnInit()
 EndEvent
 
 Event OnQuestInit()
+	DEBUG_BUILD = "C2-stable"
+	KILL_WATCH_RADIUS = 800.0
 	ToastDebug("PW OnQuestInit FIRED [" + DEBUG_BUILD + "]")
 	PlayerRef = Game.GetPlayer()
 	InvalidateDebugToastCache()
@@ -157,11 +205,13 @@ Event OnQuestInit()
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
 	LoadLineBanks()
+	ReportNoticeLoadStatus()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	StartBondPoll()
 	StartHungerPoll()
 	StartTrustVoice()
+	StartNoticeVoice()
 	EnsureCombatKillHooks()
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
@@ -171,6 +221,9 @@ Event OnQuestInit()
 EndEvent
 
 Event Actor.OnPlayerLoadGame(Actor akSender)
+	; Save games persist script vars — force build id from this PEX every load
+	DEBUG_BUILD = "C2-stable"
+	KILL_WATCH_RADIUS = 800.0
 	PlayerRef = Game.GetPlayer()
 	InvalidateDebugToastCache()
 	ResolveVanillaForms()
@@ -181,13 +234,18 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
 	RegisterForRemoteEvent(PlayerRef, "OnItemRemoved")
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	LoadLineBanks()
+	ReportNoticeLoadStatus()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	StartBondPoll()
 	StartHungerPoll()
 	StartTrustVoice()
+	StartNoticeVoice()
 	EnsureCombatKillHooks()
 	SyncHungerAddictionSpell()
+	LastNoticeToastRealTime = 0.0
+	LastNoticeDiagRealTime = 0.0
+	NoticeCoolCount = 0
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
 	Debug.Trace("PickmansWhisper: player load " + DEBUG_BUILD)
@@ -259,6 +317,9 @@ Event OnTimer(Int aiTimerID)
 	ElseIf aiTimerID == TIMER_TRUST
 		MaybeSpeakTrustLine()
 		StartTrustVoice()
+	ElseIf aiTimerID == TIMER_NOTICE
+		MaybeSpeakNoticeLine("timer")
+		StartNoticeVoice()
 	ElseIf aiTimerID == TIMER_KILL || aiTimerID == TIMER_KILL_SCAN
 		RunKillScanTick()
 		StartKillScanLoop()
@@ -784,8 +845,10 @@ Function StartBond(String reason)
 		If line == ""
 			line = "Something in the gallery leans closer... glad you came."
 		EndIf
-		ToastVoice(line)
+	ToastVoice(line)
 	EndIf
+	StartTrustVoice()
+	StartNoticeVoice()
 	RefreshHungerPanel(False)
 	If !RefreshDebugBusy
 		RefreshDebugStatus()
@@ -822,6 +885,594 @@ Function MaybeSpeakTrustLine()
 	EndIf
 EndFunction
 
+Function StartNoticeVoice()
+	CancelTimer(TIMER_NOTICE)
+	If !IsVoiceEnabled()
+		Return
+	EndIf
+	StartTimer(NOTICE_VOICE_SECONDS, TIMER_NOTICE)
+EndFunction
+
+Bool Function IsNoticePollDebugEnabled()
+	If MCM.IsInstalled()
+		Return MCM.GetModSettingBool(MOD_NAME, "bNoticePollDebug:Debug")
+	EndIf
+	Return NoticePollDebugDefault
+EndFunction
+
+Function ShowNoticePollDialog(String body)
+	If !IsNoticePollDebugEnabled()
+		Return
+	EndIf
+	If Utility.IsInMenuMode()
+		Return
+	EndIf
+	Float now = Utility.GetCurrentRealTime()
+	If (now - LastNoticeDiagRealTime) < NOTICE_DIAG_MIN_GAP
+		Return
+	EndIf
+	LastNoticeDiagRealTime = now
+	DEBUG_BUILD = "C2-stable"
+	Debug.Trace("PickmansWhisper: notice pipe | " + body)
+	Debug.MessageBox(body)
+EndFunction
+
+Function WriteNearbyStatusToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If !LastNearbySummary
+		MCM.SetModSettingString(MOD_NAME, "sNearby:Debug", "(awaiting poll)")
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sNearby:Debug", LastNearbySummary)
+	EndIf
+EndFunction
+
+Function WriteNoticeStatusToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If !LastNoticeStatus
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", "(none yet)")
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus)
+	EndIf
+EndFunction
+
+; Full YES/NO checklist — first failing check is the break point for this actor.
+String Function FormatNoticeActorChecklist(Actor ak)
+	If !ak || ak == PlayerRef
+		Return "  (invalid actor)\n"
+	EndIf
+	String nm = GetActorDisplayName(ak)
+	If !nm
+		nm = "?"
+	EndIf
+	Int dist = 0
+	If PlayerRef
+		dist = PlayerRef.GetDistance(ak) as Int
+	EndIf
+	String out = "#" + nm + " d=" + dist + "\n"
+	String fail = ""
+
+	If ak.IsDead()
+		out += "  dead=YES <<\n"
+		If !fail
+			fail = "dead"
+		EndIf
+	Else
+		out += "  dead=no\n"
+	EndIf
+	If ak.IsDisabled()
+		out += "  disabled=YES <<\n"
+		If !fail
+			fail = "disabled"
+		EndIf
+	Else
+		out += "  disabled=no\n"
+	EndIf
+	If PlayerRef && PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
+		out += "  far=YES (>" + (KILL_WATCH_RADIUS as Int) + ") <<\n"
+		If !fail
+			fail = "too far"
+		EndIf
+	Else
+		out += "  far=no\n"
+	EndIf
+	If IsNoticeOnCooldown(ak)
+		out += "  npcCool=YES <<\n"
+		If !fail
+			fail = "npc cooldown"
+		EndIf
+	Else
+		out += "  npcCool=no\n"
+	EndIf
+	If ak.IsChild()
+		out += "  child=YES <<\n"
+		If !fail
+			fail = "child"
+		EndIf
+	Else
+		out += "  child=no\n"
+	EndIf
+	If ak.IsPlayerTeammate()
+		out += "  teammate=YES <<\n"
+		If !fail
+			fail = "teammate"
+		EndIf
+	Else
+		out += "  teammate=no\n"
+	EndIf
+
+	Bool ess = IsStoryEssential(ak)
+	Bool prot = False
+	ActorBase base = ak.GetLeveledActorBase()
+	If base
+		prot = base.IsProtected()
+	EndIf
+	If ess
+		out += "  essential=YES <<\n"
+		If !fail
+			fail = "essential"
+		EndIf
+	Else
+		out += "  essential=no\n"
+	EndIf
+	If prot
+		out += "  protected=YES (ok for notice)\n"
+	Else
+		out += "  protected=no\n"
+	EndIf
+
+	EnsureFilterKeywords()
+	If KW_ActorTypeAnimal && ak.HasKeyword(KW_ActorTypeAnimal)
+		out += "  animal=YES <<\n"
+		If !fail
+			fail = "animal"
+		EndIf
+	Else
+		out += "  animal=no\n"
+	EndIf
+	If KW_ActorTypeCreature && ak.HasKeyword(KW_ActorTypeCreature)
+		out += "  creature=YES <<\n"
+		If !fail
+			fail = "creature"
+		EndIf
+	Else
+		out += "  creature=no\n"
+	EndIf
+	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot)
+		out += "  robot=YES <<\n"
+		If !fail
+			fail = "robot"
+		EndIf
+	Else
+		out += "  robot=no\n"
+	EndIf
+	If KW_ActorTypeGhoul && ak.HasKeyword(KW_ActorTypeGhoul)
+		out += "  ghoul=YES <<\n"
+		If !fail
+			fail = "ghoul"
+		EndIf
+	Else
+		out += "  ghoul=no\n"
+	EndIf
+	If KW_ActorTypeSuperMutant && ak.HasKeyword(KW_ActorTypeSuperMutant)
+		out += "  supermutant=YES <<\n"
+		If !fail
+			fail = "supermutant"
+		EndIf
+	Else
+		out += "  supermutant=no\n"
+	EndIf
+	If KW_ActorTypeSynth && ak.HasKeyword(KW_ActorTypeSynth)
+		out += "  synth=YES (allowed for notice)\n"
+	Else
+		out += "  synth=no\n"
+	EndIf
+
+	Int sex = -1
+	If base
+		sex = base.GetSex()
+	EndIf
+	If sex == 1
+		out += "  female=YES sex=1\n"
+	Else
+		out += "  female=NO sex=" + sex + " <<\n"
+		If !fail
+			fail = "not female"
+		EndIf
+	EndIf
+
+	If IsHumanNpc(ak)
+		out += "  knifeHuman=YES\n"
+	Else
+		out += "  knifeHuman=NO (notice uses exclusions)\n"
+	EndIf
+
+	If !fail
+		out += "  → PASS\n"
+	Else
+		out += "  → FAIL: " + fail + "\n"
+	EndIf
+	Return out
+EndFunction
+
+Function MaybeSpeakNoticeLine(String source)
+	; Keep this path boring. Detection filters live in ExplainNoticeReject / PickNoticeTarget.
+	NoticePollCount += 1
+	LastNoticePollSource = source
+	LastNoticeBreakAt = ""
+	DEBUG_BUILD = "C2-stable"
+
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef
+		LastNoticeStatus = "skip: no player"
+		WriteNoticeStatusToMcm()
+		Return
+	EndIf
+	If !BondStarted
+		LastNoticeStatus = "skip: not bonded"
+		WriteNoticeStatusToMcm()
+		Return
+	EndIf
+	If !IsVoiceEnabled()
+		LastNoticeStatus = "skip: voice off"
+		WriteNoticeStatusToMcm()
+		Return
+	EndIf
+
+	; Toast cooldown — same whether debug dialogs are on or off (dialogs are observe-only).
+	Float now = Utility.GetCurrentRealTime()
+	If LastNoticeToastRealTime > 0.0 && LastNoticeToastRealTime <= now
+		If (now - LastNoticeToastRealTime) < NOTICE_TOAST_COOLDOWN
+			LastNoticeStatus = "skip: toast cooldown"
+			WriteNoticeStatusToMcm()
+			Return
+		EndIf
+	EndIf
+
+	Actor target = PickNoticeTarget()
+	If !target
+		WriteNoticeStatusToMcm()
+		WriteNearbyStatusToMcm()
+		ShowNoticePollDialog("PW [C2-stable] #" + NoticePollCount + " via " + source + "\nBREAKS AT: " + LastNoticeBreakAt + "\n\n" + LastNoticeDiag)
+		Return
+	EndIf
+
+	String npcName = GetActorDisplayName(target)
+	String line = PickNoticeLine(npcName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		; Files-only: the current stage's file did not load. Skip silently (the
+		; failure is surfaced by the load-time error toast + MCM Debug rows).
+		; Do NOT arm the cooldown, so the whisper fires the moment the file works.
+		LastNoticeStatus = "skip: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") not loaded"
+		WriteNoticeStatusToMcm()
+		WriteNearbyStatusToMcm()
+		Return
+	EndIf
+
+	; Toast FIRST — do not put MCM / MessageBox before this (abort = silent voice).
+	ToastNoticeLine(line)
+	MarkNoticeCooldown(target)
+	If npcName
+		LastNoticeStatus = "ok: " + npcName
+	Else
+		LastNoticeStatus = "ok: (unnamed)"
+	EndIf
+	WriteNoticeStatusToMcm()
+	WriteNearbyStatusToMcm()
+	ShowNoticePollDialog("PW [C2-stable] #" + NoticePollCount + " via " + source + "\nRESULT: TOAST\n" + line + "\n\n" + LastNoticeDiag)
+	OnNoticeSpoken(target, npcName, line)
+EndFunction
+
+; Slice C3 will grow fixation memory + escalation banks from successful notices.
+Function OnNoticeSpoken(Actor akTarget, String npcName, String line)
+	If !akTarget
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: C3 hook notice | " + npcName + " | " + line)
+EndFunction
+
+Function ToastNoticeLine(String line)
+	If !line
+		Return
+	EndIf
+	LastNoticeToastRealTime = Utility.GetCurrentRealTime()
+	Debug.Notification(line)
+	Debug.Trace("PickmansWhisper: notice | " + line)
+EndFunction
+
+String Function GetActorDisplayName(Actor ak)
+	If !ak
+		Return ""
+	EndIf
+	ActorBase base = ak.GetLeveledActorBase()
+	If !base
+		Return ""
+	EndIf
+	String n = base.GetName()
+	If n == ""
+		Return ""
+	EndIf
+	Return n
+EndFunction
+
+Bool Function IsNoticeCandidate(Actor ak)
+	; Prefer boolean empty-check — Caprica/runtime can be finicky with == ""
+	String reason = ExplainNoticeReject(ak)
+	Return !reason
+EndFunction
+
+; Empty string = passes. Otherwise a short reject reason for MCM / MessageBox.
+String Function ExplainNoticeReject(Actor ak)
+	If !ak || ak == PlayerRef
+		Return "no actor"
+	EndIf
+	If ak.IsDead()
+		Return "dead"
+	EndIf
+	If ak.IsDisabled()
+		Return "disabled"
+	EndIf
+	If PlayerRef && PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
+		Return "too far"
+	EndIf
+	If IsNoticeOnCooldown(ak)
+		Return "cooldown"
+	EndIf
+	If ak.IsChild()
+		Return "child"
+	EndIf
+	If ak.IsPlayerTeammate()
+		Return "teammate"
+	EndIf
+	If IsStoryEssential(ak)
+		Return "essential"
+	EndIf
+	; Exclusion-based — blocks Brahmin/animals; do not gate on hostility (settler false positives)
+	String nonHuman = ExplainNonHumanForNotice(ak)
+	If nonHuman
+		Return nonHuman
+	EndIf
+	If !IsAdultFemale(ak)
+		ActorBase base = ak.GetLeveledActorBase()
+		Int sex = -1
+		If base
+			sex = base.GetSex()
+		EndIf
+		Return "not female (sex=" + sex + ")"
+	EndIf
+	Return ""
+EndFunction
+
+; For notice only: reject clear non-humans. Synths allowed (look human). No positive keyword required.
+String Function ExplainNonHumanForNotice(Actor ak)
+	If !ak
+		Return "no actor"
+	EndIf
+	EnsureFilterKeywords()
+	If KW_ActorTypeAnimal && ak.HasKeyword(KW_ActorTypeAnimal)
+		Return "animal"
+	EndIf
+	If KW_ActorTypeCreature && ak.HasKeyword(KW_ActorTypeCreature)
+		Return "creature"
+	EndIf
+	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot)
+		Return "robot"
+	EndIf
+	If KW_ActorTypeTurret && ak.HasKeyword(KW_ActorTypeTurret)
+		Return "turret"
+	EndIf
+	If KW_ActorTypeGhoul && ak.HasKeyword(KW_ActorTypeGhoul)
+		Return "ghoul"
+	EndIf
+	If KW_ActorTypeSuperMutant && ak.HasKeyword(KW_ActorTypeSuperMutant)
+		Return "supermutant"
+	EndIf
+	Return ""
+EndFunction
+
+Actor Function PickNoticeTarget()
+	LastNoticeDiag = ""
+	If !PlayerRef
+		LastNoticeStatus = "skip: no player"
+		LastNoticeDiag = "no player"
+		LastNearbySummary = "live=? (no player)"
+		Return None
+	EndIf
+
+	Actor[] living = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, -1, -1, -1, -1, -1, None, None, "", 0, 1, 0)
+	Int nLive = 0
+	If living
+		nLive = living.Length
+	EndIf
+
+	; Checklist: two closest only (MessageBox size). Pick: all living via PickBestNoticeFromList.
+	Actor a0 = None
+	Actor a1 = None
+	Float d0 = 999999.0
+	Float d1 = 999999.0
+	Int i = 0
+	Int n = nLive
+	If n > 48
+		n = 48
+	EndIf
+	While i < n
+		Actor ak = living[i]
+		i += 1
+		If ak && ak != PlayerRef && !ak.IsDead()
+			Float d = PlayerRef.GetDistance(ak)
+			If d < d0
+				d1 = d0
+				a1 = a0
+				d0 = d
+				a0 = ak
+			ElseIf d < d1
+				d1 = d
+				a1 = ak
+			EndIf
+		EndIf
+	EndWhile
+
+	String report = "GoE living=" + nLive + " r=" + (KILL_WATCH_RADIUS as Int) + "\n"
+	If a0
+		report += FormatNoticeActorChecklist(a0)
+		If !IsNoticeCandidate(a0)
+			String why0 = ExplainNoticeReject(a0)
+			If why0
+				LastNoticeBreakAt = why0
+			EndIf
+		EndIf
+	EndIf
+	If a1
+		report += FormatNoticeActorChecklist(a1)
+	EndIf
+	If nLive == 0
+		report += "(no living actors in radius)\n"
+		If !LastNoticeBreakAt
+			LastNoticeBreakAt = "GoE living=0"
+		EndIf
+	EndIf
+
+	; Real pick — not limited to the two checklist actors (Brahmin/men closer used to block toast).
+	Actor best = PickBestNoticeFromList(living)
+	If best
+		LastNoticeStatus = "pick live=" + nLive
+		LastNoticeDiag = report + "PICK: " + GetActorDisplayName(best)
+		LastNoticeBreakAt = "(none — pick ok)"
+		CommitNearbyPickSummary(nLive, best)
+		Return best
+	EndIf
+
+	; Fallback detecting (one-line only to save space)
+	Actor[] detecting = GardenOfEden2.GetActorsDetecting(PlayerRef, False)
+	Int nDet = 0
+	If detecting
+		nDet = detecting.Length
+	EndIf
+	report += "Detecting=" + nDet + " (no living PASS)\n"
+	best = PickBestNoticeFromList(detecting)
+	If best
+		LastNoticeStatus = "pick detecting"
+		LastNoticeDiag = report + FormatNoticeActorChecklist(best) + "PICK: detecting"
+		LastNoticeBreakAt = "(none — pick ok)"
+		CommitNearbyPickSummary(nLive, best)
+		Return best
+	EndIf
+
+	LastNoticeStatus = "no notice pass live=" + nLive
+	If !LastNoticeBreakAt || LastNoticeBreakAt == "(none — pick ok)"
+		LastNoticeBreakAt = "no PASS actor"
+	EndIf
+	LastNoticeDiag = report + "PICK: none"
+	CommitNearbyPickSummary(nLive, None)
+	Return None
+EndFunction
+
+Function CommitNearbyPickSummary(Int nLive, Actor best)
+	; Memory only during poll — MCM writes happen after ToastNoticeLine / on Refresh.
+	String s = "live=" + nLive + " r=" + (KILL_WATCH_RADIUS as Int)
+	If best
+		String nm = GetActorDisplayName(best)
+		If !nm
+			nm = "?"
+		EndIf
+		s = s + " pick=" + nm
+	Else
+		s = s + " pick=none"
+		If LastNoticeBreakAt
+			s = s + " (" + LastNoticeBreakAt + ")"
+		EndIf
+	EndIf
+	LastNearbySummary = s
+EndFunction
+
+Actor Function PickBestNoticeFromList(Actor[] alive)
+	If !alive || alive.Length == 0
+		Return None
+	EndIf
+	Actor best = None
+	Float bestDist = 999999.0
+	Int n = alive.Length
+	If n > 48
+		n = 48
+	EndIf
+	Int i = 0
+	While i < n
+		Actor ak = alive[i]
+		If IsNoticeCandidate(ak)
+			Float d = PlayerRef.GetDistance(ak)
+			If d < bestDist
+				bestDist = d
+				best = ak
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	Return best
+EndFunction
+
+Function EnsureNoticeCoolLists()
+	If !NoticeCoolIds || NoticeCoolIds.Length == 0
+		NoticeCoolIds = new Int[16]
+		NoticeCoolTimes = new Float[16]
+		NoticeCoolCount = 0
+	EndIf
+EndFunction
+
+Bool Function IsNoticeOnCooldown(Actor ak)
+	If !ak
+		Return True
+	EndIf
+	EnsureNoticeCoolLists()
+	Int id = ak.GetFormID()
+	Float now = Utility.GetCurrentRealTime()
+	Int i = 0
+	While i < NoticeCoolCount
+		If NoticeCoolIds[i] == id
+			If (now - NoticeCoolTimes[i]) < NOTICE_NPC_COOLDOWN
+				Return True
+			EndIf
+			Return False
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+Function MarkNoticeCooldown(Actor ak)
+	If !ak
+		Return
+	EndIf
+	EnsureNoticeCoolLists()
+	Int id = ak.GetFormID()
+	Float now = Utility.GetCurrentRealTime()
+	Int i = 0
+	While i < NoticeCoolCount
+		If NoticeCoolIds[i] == id
+			NoticeCoolTimes[i] = now
+			Return
+		EndIf
+		i += 1
+	EndWhile
+	If NoticeCoolCount >= NOTICE_COOL_MAX
+		; Drop oldest slot 0
+		Int j = 0
+		While j < NOTICE_COOL_MAX - 1
+			NoticeCoolIds[j] = NoticeCoolIds[j + 1]
+			NoticeCoolTimes[j] = NoticeCoolTimes[j + 1]
+			j += 1
+		EndWhile
+		NoticeCoolCount = NOTICE_COOL_MAX - 1
+	EndIf
+	NoticeCoolIds[NoticeCoolCount] = id
+	NoticeCoolTimes[NoticeCoolCount] = now
+	NoticeCoolCount += 1
+EndFunction
+
 Function ToastVoice(String line)
 	If line == "" || !IsVoiceEnabled()
 		Return
@@ -856,10 +1507,12 @@ Function LoadLineBanks()
 	LoadTrustLines()
 	LoadHungerLines()
 	LoadPraiseLines()
+	LoadNoticeLines()
 EndFunction
 
 Function LoadTrustLines()
-	; Builtin banks (config .txt ships for editing; GoE disk reload later).
+	; Builtin-only bank. Only the Notice whispers are file-editable (per-stage txt);
+	; trust/hunger/praise ship no config .txt to avoid dead, unread files.
 	UseBuiltinTrustFallback()
 	Debug.Trace("PickmansWhisper: trust lines ready (" + TrustLineCount + ")")
 EndFunction
@@ -872,6 +1525,197 @@ EndFunction
 Function LoadPraiseLines()
 	UseBuiltinPraiseFallback()
 	Debug.Trace("PickmansWhisper: praise lines ready (" + PraiseLineCount + ")")
+EndFunction
+
+; C3 — hunger-stage whispers, FILES-ONLY. Content lives solely in the editable
+; config .txt files; there are no hardcoded builtin copies. Each stage's load
+; result is recorded for the MCM Debug rows, and any failure raises a load-time
+; error toast so a missing/unreadable file is never silently masked.
+; Does NOT MessageBox itself — callers that want the Necromantic-style popup call
+; ReportNoticeLoadStatus() (init/load + Debug button). Lazy retries from PickNoticeLine
+; must not spam dialogs.
+Function LoadNoticeLines()
+	; Pre-arm every row with a pessimistic sentinel and PUSH it to MCM *before* any
+	; GoE2 call. If a GoE2 native aborts the Papyrus stack, these rows survive and
+	; show the abort point instead of silently reading "(not loaded)".
+	NoticeCalmStatus = "load did not complete (GoE2 file read aborted?)"
+	NoticeRestlessStatus = NoticeCalmStatus
+	NoticeHungryStatus = NoticeCalmStatus
+	NoticeStarvingStatus = NoticeCalmStatus
+	NoticeDesperateStatus = NoticeCalmStatus
+	WriteNoticeLoadStatusToMcm()
+
+	NoticeLoadDiag = "NOTICE | path=" + NoticeConfigPath() + " | GoE rel=" + GardenOfEden.GetVersionRelease()
+
+	NoticeCalmLines = new String[64]
+	NoticeCalmCount = LoadStageBank("NoticeLines_Calm.txt", NoticeCalmLines)
+	NoticeCalmStatus = LastStageLoadStatus
+	NoticeLoadDiag += " || " + LastStageLoadDiag
+	WriteNoticeLoadStatusToMcm()
+	NoticeRestlessLines = new String[64]
+	NoticeRestlessCount = LoadStageBank("NoticeLines_Restless.txt", NoticeRestlessLines)
+	NoticeRestlessStatus = LastStageLoadStatus
+	NoticeLoadDiag += " || " + LastStageLoadDiag
+	WriteNoticeLoadStatusToMcm()
+	NoticeHungryLines = new String[64]
+	NoticeHungryCount = LoadStageBank("NoticeLines_Hungry.txt", NoticeHungryLines)
+	NoticeHungryStatus = LastStageLoadStatus
+	NoticeLoadDiag += " || " + LastStageLoadDiag
+	WriteNoticeLoadStatusToMcm()
+	NoticeStarvingLines = new String[64]
+	NoticeStarvingCount = LoadStageBank("NoticeLines_Starving.txt", NoticeStarvingLines)
+	NoticeStarvingStatus = LastStageLoadStatus
+	NoticeLoadDiag += " || " + LastStageLoadDiag
+	WriteNoticeLoadStatusToMcm()
+	NoticeDesperateLines = new String[64]
+	NoticeDesperateCount = LoadStageBank("NoticeLines_Desperate.txt", NoticeDesperateLines)
+	NoticeDesperateStatus = LastStageLoadStatus
+	NoticeLoadDiag += " || " + LastStageLoadDiag
+	WriteNoticeLoadStatusToMcm()
+
+	String failed = NoticeLoadFailureList()
+	If failed != ""
+		Debug.Notification("Pickman's Whisper: notice lines failed to load — " + failed + ". See MCM > Debug.")
+	EndIf
+
+	Debug.Trace("PickmansWhisper: notice stages calm=" + NoticeCalmCount + " restless=" + NoticeRestlessCount + " hungry=" + NoticeHungryCount + " starving=" + NoticeStarvingCount + " desperate=" + NoticeDesperateCount)
+EndFunction
+
+; One modal dialog with the full step-by-step load trace (screenshot-friendly).
+; Mirrors Necromantic ReportConfigLoadStatus. Call after LoadNoticeLines on
+; init/load and from the Debug "Test notice file load" button — not from every
+; lazy PickNoticeLine retry.
+Function ReportNoticeLoadStatus()
+	String msg = "PICKMANS WHISPER NOTICE LOAD || " + NoticeLoadDiag
+	Debug.Trace("PickmansWhisper notice load: " + msg)
+	Debug.MessageBox(msg)
+EndFunction
+
+; Space-joined list of stages whose file did not load (count <= 0), else "".
+String Function NoticeLoadFailureList()
+	String s = ""
+	If NoticeCalmCount <= 0
+		s += "calm "
+	EndIf
+	If NoticeRestlessCount <= 0
+		s += "restless "
+	EndIf
+	If NoticeHungryCount <= 0
+		s += "hungry "
+	EndIf
+	If NoticeStarvingCount <= 0
+		s += "starving "
+	EndIf
+	If NoticeDesperateCount <= 0
+		s += "desperate "
+	EndIf
+	Return TrimString(s)
+EndFunction
+
+; Push the five per-stage load results to their MCM Debug rows.
+Function WriteNoticeLoadStatusToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	MCM.SetModSettingString(MOD_NAME, "sNoticeCalm:Debug", NoticeCalmStatus)
+	MCM.SetModSettingString(MOD_NAME, "sNoticeRestless:Debug", NoticeRestlessStatus)
+	MCM.SetModSettingString(MOD_NAME, "sNoticeHungry:Debug", NoticeHungryStatus)
+	MCM.SetModSettingString(MOD_NAME, "sNoticeStarving:Debug", NoticeStarvingStatus)
+	MCM.SetModSettingString(MOD_NAME, "sNoticeDesperate:Debug", NoticeDesperateStatus)
+EndFunction
+
+; Game-root-relative config path, exactly mirroring Necromantic's proven
+; WitnessInsults/Positions loader (".\Data\<Mod>\config\"). This is the form GoE
+; documents (asFilePath relative to the Fallout 4 root, leading ".\", trailing "\").
+; Returned from a function so it can never be "" on an old save (a stale script
+; String var can deserialize empty, which would break the read).
+String Function NoticeConfigPath()
+	Return ".\\Data\\PickmansWhisper\\config\\"
+EndFunction
+
+; Load one config .txt into a pre-allocated String[64] bank; returns usable count.
+; Mirrors Necromantic LoadWitnessInsults / LoadPositionList: DoesFileExist ->
+; GetLinesFromFile -> parse (# and blank lines skipped). Files-only (no builtin
+; fallback). Sets LastStageLoadStatus (MCM) and LastStageLoadDiag (MessageBox trace).
+Int Function LoadStageBank(String fileName, String[] bank)
+	String path = NoticeConfigPath()
+	String nl = " | "
+	LastStageLoadDiag = fileName
+	; Pessimistic default survives a GoE2 native abort (e.g. GoE not installed).
+	LastStageLoadStatus = "READ FAILED (GoE2 missing?)"
+	Bool exists = GardenOfEden2.DoesFileExist(fileName, path)
+	LastStageLoadDiag += nl + "exists=" + exists
+	If !exists
+		LastStageLoadStatus = "MISSING FILE (" + path + fileName + ")"
+		LastStageLoadDiag += nl + "RESULT: NOT FOUND"
+		Return 0
+	EndIf
+	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
+	Int rawLen = 0
+	If raw
+		rawLen = raw.Length
+	EndIf
+	LastStageLoadDiag += nl + "raw lines=" + rawLen
+	If raw && rawLen > 0
+		LastStageLoadDiag += nl + "line0='" + raw[0] + "' len=" + GardenOfEden.StrLength(raw[0])
+	EndIf
+	If !raw || raw.Length == 0
+		LastStageLoadStatus = "READ FAILED / EMPTY (GoE2 returned nothing)"
+		LastStageLoadDiag += nl + "RESULT: EMPTY/UNREADABLE"
+		Return 0
+	EndIf
+	Int n = ParseRawIntoBank(raw, bank)
+	LastStageLoadDiag += nl + "parsed=" + n
+	If n <= 0
+		LastStageLoadStatus = "EMPTY (no usable lines)"
+		LastStageLoadDiag += nl + "RESULT: NO USABLE LINES"
+	Else
+		LastStageLoadStatus = n + " lines"
+		LastStageLoadDiag += nl + "RESULT: OK (" + n + ")"
+	EndIf
+	Return n
+EndFunction
+
+; Copy trimmed, non-comment, non-blank lines into bank (max 64). Returns count.
+; Comment check uses GoE SubStr — FO4 has no StringUtil (see no-fake-native-stubs).
+Int Function ParseRawIntoBank(String[] raw, String[] bank)
+	Int n = 0
+	Int i = 0
+	While i < raw.Length && n < 64
+		String line = TrimString(raw[i])
+		i += 1
+		If line == ""
+			; skip
+		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
+			; comment
+		Else
+			bank[n] = line
+			n += 1
+		EndIf
+	EndWhile
+	Return n
+EndFunction
+
+; Trims leading/trailing whitespace (spaces, tabs, trailing CR that GetLinesFromFile
+; can leave on CRLF files) and normalizes internal runs of whitespace to single
+; spaces. FO4/F4SE has NO built-in StringUtil (Skyrim/SKSE only), so this goes
+; through Garden of Eden: GetWordsInStringAsArray. See no-fake-native-stubs.
+; Mirrors Necromantic TrimString exactly.
+String Function TrimString(String s)
+	If s == ""
+		Return s
+	EndIf
+	String[] words = GardenOfEden2.GetWordsInStringAsArray(s)
+	If !words || words.Length == 0
+		Return ""
+	EndIf
+	String out = words[0]
+	Int i = 1
+	While i < words.Length
+		out += " " + words[i]
+		i += 1
+	EndWhile
+	Return out
 EndFunction
 
 Function UseBuiltinTrustFallback()
@@ -940,6 +1784,169 @@ String Function PickPraiseLine()
 		Return "Yes... that was beautiful. Rest a moment."
 	EndIf
 	Return PraiseLines[Utility.RandomInt(0, PraiseLineCount - 1)]
+EndFunction
+
+; Whisper stage from hunger %: 0 calm / 1 restless / 2 hungry / 3 starving / 4 desperate.
+; Read-only off HungerLevel — speaking a line never advances the stage.
+Int Function GetNoticeStage()
+	; Debug override: MCM "Force notice stage" pins the stage to the dropdown value
+	; so each stage can be tested without grinding hunger. Off = derive from hunger.
+	If IsNoticeStageForced()
+		Int forced = MCM.GetModSettingInt(MOD_NAME, "iNoticeStage:Debug")
+		If forced < 0
+			Return 0
+		ElseIf forced > 4
+			Return 4
+		EndIf
+		Return forced
+	EndIf
+	Float level = HungerLevel
+	If level >= 90.0
+		Return 4
+	ElseIf level >= 70.0
+		Return 3
+	ElseIf level >= 50.0
+		Return 2
+	ElseIf level >= 25.0
+		Return 1
+	EndIf
+	Return 0
+EndFunction
+
+Bool Function IsNoticeStageForced()
+	If !MCM.IsInstalled()
+		Return False
+	EndIf
+	Return MCM.GetModSettingBool(MOD_NAME, "bForceNoticeStage:Debug")
+EndFunction
+
+String Function GetNoticeStageName(Int stage)
+	If stage == 4
+		Return "desperate"
+	ElseIf stage == 3
+		Return "starving"
+	ElseIf stage == 2
+		Return "hungry"
+	ElseIf stage == 1
+		Return "restless"
+	EndIf
+	Return "calm"
+EndFunction
+
+String[] Function GetNoticeBankForStage(Int stage)
+	If stage == 4
+		Return NoticeDesperateLines
+	ElseIf stage == 3
+		Return NoticeStarvingLines
+	ElseIf stage == 2
+		Return NoticeHungryLines
+	ElseIf stage == 1
+		Return NoticeRestlessLines
+	EndIf
+	Return NoticeCalmLines
+EndFunction
+
+Int Function GetNoticeCountForStage(Int stage)
+	If stage == 4
+		Return NoticeDesperateCount
+	ElseIf stage == 3
+		Return NoticeStarvingCount
+	ElseIf stage == 2
+		Return NoticeHungryCount
+	ElseIf stage == 1
+		Return NoticeRestlessCount
+	EndIf
+	Return NoticeCalmCount
+EndFunction
+
+; Files-only: returns "" when the current stage's file did not load. Callers must
+; treat "" as "skip this whisper" — there is no hardcoded fallback line.
+String Function PickNoticeLine(String npcName)
+	Int stage = GetNoticeStage()
+	String[] bank = GetNoticeBankForStage(stage)
+	Int count = GetNoticeCountForStage(stage)
+	If count <= 0 || !bank
+		; One retry in case the poll beat the initial load; then give up (skip).
+		LoadNoticeLines()
+		bank = GetNoticeBankForStage(stage)
+		count = GetNoticeCountForStage(stage)
+	EndIf
+	If count <= 0 || !bank
+		Return ""
+	EndIf
+
+	String useName = NoticeNameForLine(npcName)
+	Bool wantNameless = (useName == "")
+
+	String raw = bank[Utility.RandomInt(0, count - 1)]
+	; One bounded reroll loop covers two wants: no immediate repeat, and (for
+	; unnamed targets like generic settlers) prefer lines without {name} so we
+	; never toast an awkwardly stripped sentence.
+	Int tries = 0
+	While tries < 8 && count > 1 && (raw == LastNoticeLine || (wantNameless && GardenOfEden.StrFind(raw, "{name}") >= 0))
+		raw = bank[Utility.RandomInt(0, count - 1)]
+		tries += 1
+	EndWhile
+	If !raw
+		Return ""
+	EndIf
+	LastNoticeLine = raw
+
+	; ApplyNamePlaceholder strips {name} safely when there's no usable name.
+	Return ApplyNamePlaceholder(raw, useName)
+EndFunction
+
+; Workshop / leveled labels are useless in whispers — treat as unnamed.
+String Function NoticeNameForLine(String npcName)
+	If !npcName
+		Return ""
+	EndIf
+	; Papyrus string compare is case-insensitive
+	If npcName == "Settler" || npcName == "Raider" || npcName == "Gunner" || npcName == "Tramp"
+		Return ""
+	EndIf
+	If npcName == "Scavenger" || npcName == "Farmer" || npcName == "Wastelander" || npcName == "Survivor"
+		Return ""
+	EndIf
+	If GardenOfEden.StrFind(npcName, "Settler") >= 0
+		Return ""
+	EndIf
+	Return npcName
+EndFunction
+
+; GoE string ops only — FO4 has no StringUtil (see no-fake-native-stubs).
+String Function ApplyNamePlaceholder(String line, String npcName)
+	If !line
+		Return ""
+	EndIf
+	If !npcName
+		Return StripNamePlaceholder(line)
+	EndIf
+	If GardenOfEden.StrFind(line, "{name}") < 0
+		Return line
+	EndIf
+	Return GardenOfEden.ReplaceStr(line, "{name}", npcName)
+EndFunction
+
+; Remove {name} — do NOT substitute "them" (that became a one-word toast).
+String Function StripNamePlaceholder(String line)
+	If !line
+		Return ""
+	EndIf
+	If GardenOfEden.StrFind(line, "{name}") < 0
+		Return line
+	EndIf
+	String out = GardenOfEden.ReplaceStr(line, "{name}", "")
+	; Drop a leftover leading ". " after removing a leading {name}
+	If out && GardenOfEden.StrFind(out, ". ") == 0
+		out = GardenOfEden.SubStr(out, 2)
+	EndIf
+	out = TrimString(out)
+	If !out || GardenOfEden.StrLength(out) < 8
+		; Degenerate user line (e.g. just "{name}") — skip rather than fake one.
+		Return ""
+	EndIf
+	Return out
 EndFunction
 
 Function ToastPraiseLine(String line)
@@ -1108,6 +2115,8 @@ Function RunHungerTick()
 	LastHungerPollGameTime = now
 	SyncHungerAddictionSpell()
 	RefreshHungerPanel(False)
+	; Hunger timer is proven live — drive notice poll from here too
+	MaybeSpeakNoticeLine("hunger")
 EndFunction
 
 Function ApplyHungerDelta(Float amount, String reason)
@@ -1215,12 +2224,19 @@ Function RunKillScanTick()
 	ScanLivingToDeadTransitions()
 
 	KillScanTickCount += 1
+	; Notice driver on proven kill-scan timer (~every 3 ticks)
+	If BondStarted && (KillScanTickCount % 3) == 0
+		MaybeSpeakNoticeLine("killscan")
+	ElseIf !BondStarted && (KillScanTickCount % 6) == 0
+		; Still prove the timer fires before bond — dialog shows gate reason
+		MaybeSpeakNoticeLine("killscan-prebond")
+	EndIf
 	If KillScanTickCount == 1 || (KillScanTickCount % 3) == 0
 		String bladeBit = "blade=NO"
 		If IsBladeEquipped()
 			bladeBit = "blade=YES"
 		EndIf
-		ToastDebug("PW scan [" + DEBUG_BUILD + "] #" + KillScanTickCount + " near=" + KillWatchCount + " goeA=" + LastGoeAliveCount + " goeD=" + LastGoeDeadCount + " det=" + LastDetectCount + " " + bladeBit)
+		ToastDebug("PW scan [" + DEBUG_BUILD + "] #" + KillScanTickCount + " near=" + KillWatchCount + " goeA=" + LastGoeAliveCount + " goeD=" + LastGoeDeadCount + " det=" + LastDetectCount + " " + bladeBit + " notice=" + LastNoticeStatus)
 	EndIf
 EndFunction
 
@@ -2149,11 +3165,15 @@ Function OnMCMMenuOpen(String modName)
 	If modName != MOD_NAME
 		Return
 	EndIf
+	; RefreshMenu FIRST (it reloads page state from settings.ini), THEN reload
+	; notice files and push status — same order as Necromantic. Loading before
+	; RefreshMenu was getting wiped back to settings.ini "(not loaded)".
 	RefreshHungerPanel(False)
-	RefreshDebugStatus()
 	If MCM.IsInstalled()
 		MCM.RefreshMenu()
 	EndIf
+	LoadNoticeLines()
+	RefreshDebugStatus()
 EndFunction
 
 Function OnMCMSettingChange(String modName, String id)
@@ -2167,6 +3187,7 @@ Function OnMCMSettingChange(String modName, String id)
 		RefreshHungerPanel(True)
 	ElseIf id == "bVoiceToasts:Voice"
 		StartTrustVoice()
+		StartNoticeVoice()
 	EndIf
 EndFunction
 
@@ -2254,6 +3275,44 @@ Function DebugForceBond()
 	Debug.MessageBox("Pickman's Whisper\n\nBond forced. Hunger unlocked.")
 EndFunction
 
+; Regression helper — confirm GoE sees Pickman's drawn without needing a kill.
+Function DebugVerifyBladeDetect()
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	ResolveVanillaForms()
+	Weapon w = None
+	String baseName = "(none)"
+	If PlayerRef
+		w = PlayerRef.GetEquippedWeapon(0)
+		If w
+			baseName = w.GetName()
+		EndIf
+	EndIf
+	Int idx = FindEquippedPickmansBladeIndex()
+	Bool drawn = IsBladeEquipped()
+	Bool owns = PlayerOwnsPickmansBladeInstance() || OwnedPickmansBlade || HasTemplateBlade()
+	String goeName = "(not found)"
+	If idx >= 0
+		goeName = GardenOfEden.GetNthItemName(PlayerRef, idx)
+	EndIf
+	String verdict = "FAIL — not drawn"
+	If drawn
+		verdict = "PASS — Pickman's Blade DRAWN"
+	EndIf
+	String msg = "Pickman's Whisper [" + DEBUG_BUILD + "]\n\n"
+	msg += verdict + "\n\n"
+	msg += "GetEquippedWeapon: " + baseName + "\n"
+	msg += "GoE equipped name: " + goeName + "\n"
+	msg += "GoE slot index: " + idx + "\n"
+	msg += "Owns Pickman's instance: " + owns + "\n"
+	msg += "CombatKnife form: " + (CombatKnifeBase != None) + "\n"
+	msg += "OMOD bleed+stealth loaded: " + (OmodBleed != None && OmodStealthBlade != None) + "\n\n"
+	msg += "Gun with blade in inv must FAIL.\nBlade drawn must PASS."
+	RefreshDebugStatus()
+	Debug.MessageBox(msg)
+EndFunction
+
 Function DebugSatiateHunger()
 	If !IsHungerUnlocked()
 		Debug.MessageBox("Pickman's Whisper\n\nBond first.")
@@ -2268,7 +3327,20 @@ EndFunction
 
 Function DebugReloadLines()
 	LoadLineBanks()
-	Debug.MessageBox("Pickman's Whisper\n\nReloaded line banks.\nTrust: " + TrustLineCount + "\nHunger: " + HungerLineCount + "\nPraise: " + PraiseLineCount)
+	Debug.MessageBox("Pickman's Whisper — reloaded line banks\n\nTrust (builtin): " + TrustLineCount + "\nHunger (builtin): " + HungerLineCount + "\nPraise (builtin): " + PraiseLineCount + "\n\nNotice stages (files-only):\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
+EndFunction
+
+; MCM Debug button — reload all five notice files NOW and show the full
+; step-by-step load trace MessageBox (mirrors Necromantic ShowConfigLoadInfo).
+Function DebugTestNoticeFiles()
+	LoadNoticeLines()
+	String failed = NoticeLoadFailureList()
+	If failed != ""
+		Debug.Notification("Pickman's Whisper: NO/partial notice load — " + failed)
+	Else
+		Debug.Notification("Pickman's Whisper: notice files OK at " + NoticeConfigPath())
+	EndIf
+	ReportNoticeLoadStatus()
 EndFunction
 
 Function DebugTestPraiseLine()
@@ -2287,8 +3359,96 @@ Function DebugTestTrustLine()
 	EndIf
 EndFunction
 
+Function DebugTestNoticeLine()
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !BondStarted
+		Debug.MessageBox("Pickman's Whisper — Notice\n\nBond first (gallery or blade).")
+		Return
+	EndIf
+	If !IsVoiceEnabled()
+		Debug.MessageBox("Pickman's Whisper — Notice\n\nEnable toast voice on the Voice page.")
+		Return
+	EndIf
+	; Diagnostics: raw GoE counts before filters
+	Actor[] fem = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, 1, -1, 1, -1, -1, None, None, "", 0, 1, 1)
+	Actor[] anyA = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, -1, -1, -1, -1, -1, None, None, "", 0, 1, 0)
+	Int nFem = 0
+	Int nAny = 0
+	If fem
+		nFem = fem.Length
+	EndIf
+	If anyA
+		nAny = anyA.Length
+	EndIf
+	Actor target = PickNoticeTarget()
+	If !target
+		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nKillWatch: " + KillWatchCount + "\nRadius: " + (KILL_WATCH_RADIUS as Int) + "\nNeed adult female, not hostile, not essential.")
+		Return
+	EndIf
+	String npcName = GetActorDisplayName(target)
+	String line = PickNoticeLine(npcName)
+	String who = npcName
+	If who == ""
+		who = "id=" + target.GetFormID()
+	EndIf
+	If line == ""
+		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nNo whisper: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") file not loaded.\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
+		Return
+	EndIf
+	MarkNoticeCooldown(target)
+	ToastNoticeLine(line)
+	Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nGoE female: " + nFem + " any: " + nAny + "\n\n" + line)
+EndFunction
+
+; Unfiltered proximity probe — prove GoE/Detecting see anyone before notice filters.
+; Mirrors Necromantic witness distance idea (GetActorsDetecting) + kill-scan FindActors living.
+Function DebugScanNearbyNpcs()
+	DEBUG_BUILD = "C2-stable"
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef
+		Debug.MessageBox("C2-polldbg\n\nNo player ref.")
+		Return
+	EndIf
+	; Manual button = non-destructive PROBE. Clear cools, toast, then leave the
+	; passive path un-throttled: do not arm any notice cooldown here.
+	; (Old button re-stamped the per-NPC cooldown, which silenced the automatic
+	; poll for its full duration every time you tested.)
+	NoticeCoolCount = 0
+	LastNoticeToastRealTime = 0.0
+	Actor target = PickNoticeTarget()
+	String body = "Manual scan (button)\n\n" + LastNoticeDiag
+	If target
+		String nm = GetActorDisplayName(target)
+		String line = PickNoticeLine(nm)
+		If line == ""
+			; Files-only: stage file didn't load — surface it, don't fake a line.
+			LastNoticeStatus = "skip: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") not loaded"
+			WriteNoticeStatusToMcm()
+			WriteNearbyStatusToMcm()
+			body += "\n\nNO LINE — stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") file not loaded. See Debug rows."
+		Else
+			ToastNoticeLine(line)
+			LastNoticeToastRealTime = 0.0 ; probe must not arm the global cooldown
+			LastNoticeStatus = "ok: manual scan (probe)"
+			WriteNoticeStatusToMcm()
+			WriteNearbyStatusToMcm()
+			body += "\n\nTOASTED: " + line
+		EndIf
+	Else
+		WriteNearbyStatusToMcm()
+		body += "\n\nNo toast target"
+	EndIf
+	Debug.MessageBox("PW [" + DEBUG_BUILD + "]\n\n" + body)
+EndFunction
+
 Function RefreshDebugStatus()
-	; Side-effect-free read of status for MCM. Must NOT StartBond / nest CallFunction.
+	; Status snapshot for MCM. Must NOT StartBond / nest CallFunction.
+	; Reloads notice files so "Refresh status" actually re-reads the .txt banks
+	; (previously it only re-displayed stale in-memory "(not loaded)" defaults).
 	If RefreshDebugBusy
 		Return
 	EndIf
@@ -2304,6 +3464,9 @@ Function RefreshDebugStatus()
 		Return
 	EndIf
 	InvalidateDebugToastCache()
+
+	; Load BEFORE writing MCM rows so the five file statuses are live.
+	LoadNoticeLines()
 
 	Bool allOk = True
 	Int f4seRel = F4SE.GetVersionRelease()
@@ -2385,6 +3548,24 @@ Function RefreshDebugStatus()
 	String aliasStatus = EnsureCombatKillHooks()
 	MCM.SetModSettingString(MOD_NAME, "sWatch:Debug", "watch " + KillWatchCount + " | " + aliasStatus)
 
+	Int noticeStage = GetNoticeStage()
+	String stageSrc = "auto"
+	If IsNoticeStageForced()
+		stageSrc = "forced"
+	Else
+		; Reflect the live (hunger-derived) stage in the dropdown so it reads as a
+		; status display when not forcing. When forcing, leave the user's choice.
+		MCM.SetModSettingInt(MOD_NAME, "iNoticeStage:Debug", noticeStage)
+	EndIf
+	String stageInfo = "stage " + (noticeStage + 1) + "/5 " + GetNoticeStageName(noticeStage) + " (" + stageSrc + ", " + GetNoticeCountForStage(noticeStage) + " lines)"
+	If LastNoticeStatus == ""
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", "(none yet) | " + stageInfo)
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus + " | " + stageInfo)
+	EndIf
+	WriteNoticeLoadStatusToMcm()
+	WriteNearbyStatusToMcm()
+
 	EnsureHungerSpell()
 	If KnifeHungerSpell
 		MCM.SetModSettingString(MOD_NAME, "sHungerSpell:Debug", "OK")
@@ -2398,7 +3579,17 @@ Function RefreshDebugStatus()
 		MCM.SetModSettingString(MOD_NAME, "sOverall:Debug", "Issues - see rows")
 	EndIf
 
+	; RefreshMenu can re-read settings.ini and wipe SetModSettingString values
+	; (our shipped defaults were "(not loaded)"). Re-push the live load rows AFTER
+	; the menu refresh so the Debug page shows the real result.
 	MCM.RefreshMenu()
+	WriteNoticeLoadStatusToMcm()
+	WriteNearbyStatusToMcm()
+	If LastNoticeStatus == ""
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", "(none yet) | " + stageInfo)
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus + " | " + stageInfo)
+	EndIf
 	RefreshDebugBusy = False
 	ToastDebug("PW debug refreshed [" + DEBUG_BUILD + "]")
 	Debug.Trace("PickmansWhisper: RefreshDebugStatus done " + DEBUG_BUILD)

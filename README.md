@@ -7,7 +7,7 @@ Suite arc (surface → commitment): **Occult Pact** → **Pickman's Whisper** �
 ## Slice A (shipped)
 
 - Trigger when entering **Pickman Gallery** interior and/or obtaining / equipping **Pickman's Blade**
-- Toast-only voice (trust lines) from `Data/PickmansWhisper/config/`
+- Toast-only voice (builtin trust lines)
 - Knife hunger meter (0–100) with Pip-Boy withdrawal stand-in
 - MCM: How To Use, Hunger, Voice, Debug
 
@@ -15,7 +15,7 @@ Suite arc (surface → commitment): **Occult Pact** → **Pickman's Whisper** �
 
 - Kill a non-essential human with **Pickman's Blade** equipped → praise toast, hunger → 0, sated window
 - Essential / protected / children / non-humans ignored
-- `PraiseLines.txt` + MCM praise test
+- Builtin praise lines + MCM praise test
 
 Fixation scans, audio VO, corpse hold sync, bed hallucination, and perk gates are later slices (see [docs/ROADMAP.md](docs/ROADMAP.md)).
 
@@ -24,7 +24,7 @@ Fixation scans, audio VO, corpse hold sync, bed hallucination, and perk gates ar
 - Fallout 4 + [F4SE](https://f4se.silverlock.org/)
 - [Mod Configuration Menu](https://www.nexusmods.com/fallout4/mods/21497) (MCM)
 
-Optional (line banks reload from disk; otherwise builtin fallbacks):
+Optional (the five `NoticeLines_*.txt` hunger-stage whisper banks are read from disk and editable; without it, builtin notice lines are used):
 
 - Garden of Eden Papyrus Script Extender (GoE2 file APIs)
 

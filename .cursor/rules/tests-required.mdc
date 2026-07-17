@@ -1,0 +1,36 @@
+---
+description: All logic needs tests; run and pass tests before continuing after any change
+alwaysApply: true
+---
+
+# Tests required for every logic change
+
+## Rules
+
+1. **All logic needs a test.** New or changed behavior (filters, toasts, FormIDs, string banks, build steps) must have a regression test under `tools/` (or extend an existing one). Prefer pure Python contracts that mirror Papyrus rules when in-game unit tests are not available.
+2. **Each change: run tests and they must pass** before more feature work, deploy claims, or moving on. If tests fail, **fix the code or the tests first** — do not continue.
+3. **Do not weaken or delete tests** to make a change “pass.” Fix the implementation or update the test only when the contract intentionally changes.
+4. **Keep working paths stable.** Prefer small, surgical edits. Do not rewrite unrelated filters/timers/poll flow while changing toast copy or similar.
+
+## How to run (this repo)
+
+After any script/logic/config change that affects behavior:
+
+```powershell
+python tools/test_blade_detect_contract.py
+python tools/test_notice_lines.py
+```
+
+Or the full gate (preferred when touching the mod):
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-deploy-local.ps1
+```
+
+`build-deploy-local.ps1` already runs the contract tests and must stay that way.
+
+## When adding logic
+
+- Add/extend a `tools/test_*.py` contract **in the same change**.
+- Assert invariants that previously broke (e.g. no `+"them"` placeholder, Settler not in toast text, `ExplainNoticeReject` must not call `IsHostileToActor`).
+- State in the reply that tests were run and passed (or failed and what you fixed).

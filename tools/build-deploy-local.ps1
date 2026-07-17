@@ -6,15 +6,41 @@
 #
 # Optional env:
 #   PICKMANS_WHISPER_ROOT   - repo root
-#   PICKMANS_WHISPER_DEPLOY - MO2 mod folder (default: D:\mods\Fallout 4\mods\PickmansWhisper)
+#   PICKMANS_WHISPER_DEPLOY - MO2 mod folder (REQUIRED; set in .env or env)
 #   CAPRICA                - path to Caprica.exe
-#   FALLOUT4_ESM           - path to Fallout4.esm (for ESP MGEF clone)
+#   FALLOUT4_ESM           - path to Fallout4.esm (for ESP MGEF clone; set in .env)
+#
+# Machine-specific paths are read from a git-ignored .env at repo root.
+# Copy .env.example to .env and fill in your paths. Real env vars override .env.
 
 $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# Load machine-specific settings from a git-ignored .env at repo root
+# (KEY=VALUE lines). Real environment variables take precedence over .env.
+function Import-DotEnv([string]$Path) {
+  if (-not (Test-Path $Path)) { return }
+  foreach ($line in Get-Content $Path) {
+    $t = $line.Trim()
+    if ($t -eq "" -or $t.StartsWith("#")) { continue }
+    if ($t.StartsWith("export ")) { $t = $t.Substring(7).Trim() }
+    $eq = $t.IndexOf("=")
+    if ($eq -lt 1) { continue }
+    $k = $t.Substring(0, $eq).Trim()
+    $v = $t.Substring($eq + 1).Trim()
+    if ($v.Length -ge 2 -and $v[0] -eq $v[-1] -and ($v[0] -eq '"' -or $v[0] -eq "'")) {
+      $v = $v.Substring(1, $v.Length - 2)
+    }
+    if (-not [Environment]::GetEnvironmentVariable($k)) {
+      Set-Item -Path ("Env:" + $k) -Value $v
+    }
+  }
+}
+Import-DotEnv (Join-Path (Resolve-Path (Join-Path $ScriptDir "..")).Path ".env")
+
 $Root = if ($env:PICKMANS_WHISPER_ROOT) { $env:PICKMANS_WHISPER_ROOT } else { (Resolve-Path (Join-Path $ScriptDir "..")).Path }
-$Deploy = if ($env:PICKMANS_WHISPER_DEPLOY) { $env:PICKMANS_WHISPER_DEPLOY } else { "D:\mods\Fallout 4\mods\PickmansWhisper" }
+$Deploy = if ($env:PICKMANS_WHISPER_DEPLOY) { $env:PICKMANS_WHISPER_DEPLOY } else { throw "PICKMANS_WHISPER_DEPLOY is not set. Copy .env.example to .env and set it to your MO2 mods\PickmansWhisper folder (or set the env var)." }
 $Caprica = if ($env:CAPRICA) { $env:CAPRICA } else { Join-Path $Root "tools\Caprica\Caprica.exe" }
 $Stubs = Join-Path $Root "tools\stubs"
 $Src = Join-Path $Root "Data\Scripts\Source\User"
@@ -35,6 +61,24 @@ if (-not (Test-Path $Deploy)) {
   }
   Write-Host "==> Creating MO2 mod folder: $Deploy"
   New-Item -ItemType Directory -Force -Path $Deploy | Out-Null
+}
+
+Write-Host "==> Blade detect contract test"
+& python (Join-Path $Root "tools\test_blade_detect_contract.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_blade_detect_contract.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Notice line / detection contract test"
+& python (Join-Path $Root "tools\test_notice_lines.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_notice_lines.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Env loader / no-hardcoded-path test"
+& python (Join-Path $Root "tools\test_env_loader.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_env_loader.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"

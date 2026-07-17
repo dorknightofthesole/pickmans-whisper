@@ -1,0 +1,45 @@
+---
+description: Never fake F4SE/Papyrus native functions in stubs just to make compilation pass
+alwaysApply: true
+---
+
+# Never invent `Native` stubs to silence the compiler
+
+Papyrus compiles against source stubs in `tools/stubs/`. Declaring a function
+`Native` tells the compiler "the engine provides this at runtime." If the engine
+does **not** actually provide it, the script compiles green but **fails silently
+in-game**. This already burned a sibling project: a fake `Input.IsKeyPressed`
+stub (a Skyrim-only function that does **not** exist in Fallout 4 F4SE) made the
+build pass while the feature never worked at runtime.
+
+## Rules
+
+- **Do NOT add or edit a stub to declare a function/property that the target
+  engine (Fallout 4 + the installed F4SE) does not actually expose.** Stubs must
+  mirror real, verified API — never wishful API.
+- If the compiler errors that a function doesn't exist, that error is usually
+  **correct**. Fix the code to use a real API instead of stubbing the error away.
+- Before using an F4SE/Papyrus native you're unsure about, **verify it exists in
+  Fallout 4** (not just Skyrim/SKSE). Check the FO4 Creation Kit / F4SE docs.
+  `Input` in FO4 only has `GetMappedKey` / `GetMappedControl` — no
+  `IsKeyPressed`, `TapKey`, etc. (those are Skyrim SKSE).
+- Detect keys the FO4 way: `RegisterForKey(int)` + the `OnKeyDown(int)` event
+  (see `tools/stubs/ScriptObject.psc`). There is no key-polling native in FO4.
+
+## Example
+
+```papyrus
+; ❌ BAD — Skyrim-only; does not exist in FO4. Stubbing it just hides a real error.
+Bool down = Input.IsKeyPressed(80)
+
+; ✅ GOOD — real FO4 F4SE API
+RegisterForKey(80)
+Event OnKeyDown(Int keyCode)
+    If keyCode == 80
+        ; ...
+    EndIf
+EndEvent
+```
+
+A compile that passes is not proof the feature works. Prefer an honest compiler
+error over a green build that breaks in-game.

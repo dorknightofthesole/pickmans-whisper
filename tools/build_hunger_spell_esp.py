@@ -5,7 +5,11 @@
 #   GLOB / MGEF / SPEL Knife Hunger
 import os
 import struct
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 ESP_PATH = ROOT / "Data" / "PickmansWhisper.esp"
@@ -24,20 +28,15 @@ VANILLA_MGEF_CHA = 0x00102251
 
 
 def find_esm() -> Path:
+    load_dotenv()
     env = os.environ.get("FALLOUT4_ESM")
     if env:
         p = Path(env)
         if p.is_file():
             return p
-    candidates = [
-        Path(r"D:\SteamLibrary\steamapps\common\Fallout 4\Data\Fallout4.esm"),
-        Path(r"C:\Program Files (x86)\Steam\steamapps\common\Fallout 4\Data\Fallout4.esm"),
-    ]
-    for c in candidates:
-        if c.is_file():
-            return c
     raise SystemExit(
-        "Fallout4.esm not found - set FALLOUT4_ESM to the full path of Fallout4.esm"
+        "Fallout4.esm not found. Copy .env.example to .env and set FALLOUT4_ESM "
+        "to the full path of your Fallout4.esm (or set it as an environment variable)."
     )
 
 
