@@ -87,6 +87,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_look_fixation.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Recognition lines (C5 P2) contract test"
+& python (Join-Path $Root "tools\test_recognition_lines.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_recognition_lines.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

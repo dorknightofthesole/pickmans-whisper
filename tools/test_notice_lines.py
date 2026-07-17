@@ -32,6 +32,10 @@ GENERIC_NAMES = {
     "Farmer",
     "Wastelander",
     "Survivor",
+    "Resident",
+    "Citizen",
+    "Neighbor",
+    "Worker",
 }
 
 # Files-only design: this old hardcoded fallback must NOT exist in the script
@@ -62,29 +66,66 @@ def parse_lines(path: Path) -> list[str]:
     return out
 
 
+def is_usable_whisper_name(npc_name: str) -> bool:
+    """Mirror of IsUsableWhisperName — ASCII name glyphs + at least one letter."""
+    if not npc_name:
+        return False
+    s = npc_name.strip()
+    if len(s) < 2:
+        return False
+    # Papyrus StrFind(allowed, c) is case-insensitive for A–Z.
+    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789 -'.")
+    letters = set("abcdefghijklmnopqrstuvwxyz")
+    has_letter = False
+    for ch in s:
+        key = ch.lower() if ch.isalpha() else ch
+        if key not in allowed:
+            return False
+        if key in letters:
+            has_letter = True
+    return has_letter
+
+
 def notice_name_for_line(npc_name: str) -> str:
     """Mirror of NoticeNameForLine (Papyrus compare is case-insensitive)."""
     if not npc_name:
+        return ""
+    if not is_usable_whisper_name(npc_name):
         return ""
     lower = npc_name.casefold()
     for g in GENERIC_NAMES:
         if lower == g.casefold():
             return ""
-    if "settler" in lower:
+    if "settler" in lower or "resident" in lower:
         return ""
     return npc_name
 
 
+def strip_leading_name_separator(s: str) -> str:
+    """Mirror StripLeadingNameSeparator."""
+    if not s:
+        return ""
+    if s.startswith(". "):
+        return s[2:]
+    if s.startswith(" - "):
+        return s[3:]
+    if s.startswith(" — "):
+        return s[3:]
+    if s.startswith("— "):
+        return s[2:]
+    if s == ".":
+        return ""
+    return s
+
+
 def strip_name_placeholder(line: str) -> str:
-    """Mirror StripNamePlaceholder: remove {name}, never insert 'them'."""
+    """Mirror StripNamePlaceholder via ReplaceStr (GoE StrFind is not an index)."""
     if not line or "{name}" not in line:
         return line
-    p = line.index("{name}")
-    before = line[:p]
-    after = line[p + 6:]
-    if after.startswith(". "):
-        after = after[2:]
-    out = before + after
+    out = line
+    for pat in ("{name}. ", "{name} - ", "{name} — ", "{name}— ", "{name}.", "{name}"):
+        out = out.replace(pat, "")
+    out = strip_leading_name_separator(out.strip())
     if len(out) < 8:
         # Degenerate user line (e.g. just "{name}") -> skip, no fake fallback.
         return ""
@@ -144,11 +185,30 @@ def test_generic_never_in_toast() -> None:
     stages = load_all_stages()
     for name, lines in stages.items():
         for i in range(len(lines)):
-            for gname in ("Settler", "settler", "Raider", "Gunner"):
+            for gname in ("Settler", "settler", "Raider", "Gunner", "Resident", "Citizen"):
                 out = pick_notice_line(lines, gname, rng_index=i)
                 assert gname.casefold() not in out.casefold(), f"stage {name}: {out!r} contains {gname!r}"
                 assert out.casefold() != "them"
                 assert len(out) >= 8
+    assert notice_name_for_line("Resident") == ""
+    assert notice_name_for_line("Sanctuary Resident") == ""
+
+
+def test_unprintable_name_treated_as_nameless() -> None:
+    """Engine glyph junk (toast solid squares) must not enter {name}."""
+    junk = (
+        "\u25a0\u25a0",  # ■■ solid squares
+        "\ufffd\ufffd",  # replacement chars
+        "\x01\x02",
+        "A",  # too short
+        "42",  # digits only
+        "  ",
+    )
+    for bad in junk:
+        assert notice_name_for_line(bad) == "", f"expected nameless for {bad!r}"
+    # P3-style player labels + vanilla named NPCs must still pass
+    for good in ("Piper", "Anne-Marie", "O'Malley", "Dr. Amari", "Lilith"):
+        assert notice_name_for_line(good) == good, f"usable name rejected: {good!r}"
 
 
 def test_named_keeps_name() -> None:
@@ -194,12 +254,37 @@ def test_strip_never_inserts_them() -> None:
         assert "them" not in out.casefold() or "them" in s.casefold()
 
 
+def test_strip_removes_following_separators() -> None:
+    """Nameless strip must not leave '. ' / ' - ' / ' — ' that followed {name}."""
+    cases = [
+        ("Oh — {name}. Back again.", "Oh — Back again."),
+        ("{name}. Familiar face.", "Familiar face."),
+        ("{name} — you keep finding her.", "you keep finding her."),
+        ("{name} - still here somehow.", "still here somehow."),
+        ("Look — {name}.", ""),  # leftover too short after strip
+        ("That one. {name}. Do you see her too?", "That one. Do you see her too?"),
+    ]
+    for raw, expect in cases:
+        out = strip_name_placeholder(raw)
+        assert out == expect, f"strip {raw!r}: got {out!r}, want {expect!r}"
+        assert "{name}" not in out and not out.startswith("{"), f"leftover brace junk: {out!r}"
+    # Named path must keep separators around the real name
+    assert apply_name_placeholder("Oh — {name}. Back again.", "Piper") == (
+        "Oh — Piper. Back again."
+    )
+    # Regression: GoE StrFind is a COUNT — slicing with it produced "{amiliar face."
+    assert strip_name_placeholder("{name}. Familiar face.") == "Familiar face."
+    assert strip_name_placeholder("{name} — you keep finding her.") == "you keep finding her."
+
+
 def test_psc_contracts() -> None:
     text = PSC.read_text(encoding="utf-8", errors="replace")
     errors: list[str] = []
 
     for needle in (
         "Function NoticeNameForLine",
+        "Function IsUsableWhisperName",
+        "Function GetVictimOverrideName",
         "Function GetNoticeStage",
         "Function GetNoticeBankForStage",
         "Function GetNoticeCountForStage",
@@ -214,9 +299,30 @@ def test_psc_contracts() -> None:
         "LastNoticeLine",
         "LastStageLoadStatus",
         'npcName == "Settler"',
+        'npcName == "Resident"',
+        'StrContains(npcName, "Resident")',
     ):
         if needle not in text:
             errors.append(f"missing {needle!r} in quest script")
+
+    get_name = re.search(
+        r"String Function GetActorDisplayName\(Actor ak\)(.*?)EndFunction",
+        text,
+        re.S,
+    )
+    if not get_name or "GetVictimOverrideName" not in get_name.group(1):
+        errors.append("GetActorDisplayName must call GetVictimOverrideName (P3 name hook)")
+    usable = re.search(
+        r"Bool Function IsUsableWhisperName\(String npcName\)(.*?)EndFunction",
+        text,
+        re.S,
+    )
+    if not usable:
+        errors.append("IsUsableWhisperName missing body")
+    elif "StringUtil." in usable.group(1):
+        errors.append("IsUsableWhisperName must use GoE only (no StringUtil)")
+    elif "abcdefghijklmnopqrstuvwxyz" not in usable.group(1):
+        errors.append("IsUsableWhisperName must allowlist printable name glyphs")
 
     # The retired index-range nameless hack must be gone.
     if "PickNamelessNoticeLine" in text:
@@ -296,10 +402,34 @@ def test_psc_contracts() -> None:
         errors.append("ParseRawIntoBank not found")
     elif "GardenOfEden.SubStr(" not in prb.group(1):
         errors.append("ParseRawIntoBank must use GardenOfEden.SubStr for '#' comments")
-    for fn_name in ("ApplyNamePlaceholder", "StripNamePlaceholder", "PickNoticeLine"):
+    for fn_name in (
+        "ApplyNamePlaceholder",
+        "StripNamePlaceholder",
+        "StripLeadingNameSeparator",
+        "PickNoticeLine",
+    ):
         m = re.search(rf"(?:String )?Function {fn_name}\(.*?(?:EndFunction)", text, re.S)
         if m and "StringUtil." in m.group(0):
             errors.append(f"{fn_name} must not call StringUtil (use GoE StrFind/SubStr/ReplaceStr)")
+    strip = re.search(r"String Function StripNamePlaceholder\(String line\)(.*?)EndFunction", text, re.S)
+    if not strip:
+        errors.append("StripNamePlaceholder missing")
+    else:
+        body = strip.group(1)
+        for needle in ('"{name}. "', '"{name} - "', '"{name} — "', 'ReplaceStr'):
+            if needle not in body:
+                errors.append(f"StripNamePlaceholder must use ReplaceStr patterns incl. {needle}")
+        if "StrFind(" in body and "SubStr(" in body:
+            errors.append("StripNamePlaceholder must not SubStr using StrFind (GoE count≠index)")
+    if "Function StrContains(" not in text:
+        errors.append("StrContains helper missing (ReplaceStr-based contains)")
+    lead = re.search(
+        r"String Function StripLeadingNameSeparator\(String s\)(.*?)EndFunction", text, re.S
+    )
+    if not lead:
+        errors.append("StripLeadingNameSeparator missing")
+    elif "SubStr(s, 0," not in lead.group(1):
+        errors.append("StripLeadingNameSeparator must use SubStr prefix checks (not StrFind==0)")
 
     # Load-trace MessageBox is MCM "Test notice file load" only — not init/load.
     rns = re.search(r"Function ReportNoticeLoadStatus\(\)(.*?)EndFunction", text, re.S)
@@ -557,6 +687,29 @@ def test_notice_cadence() -> None:
     toast = re.search(r"Function ToastNoticeLine\(String line\)(.*?)EndFunction", text, re.S)
     if not toast or "LastNoticeToastGameTime" not in toast.group(1):
         errors.append("ToastNoticeLine must stamp LastNoticeToastGameTime")
+    if not toast or "ShowVoiceToast" not in toast.group(1):
+        errors.append("ToastNoticeLine must ShowVoiceToast (HUD lead-glyph clip pad)")
+    fmt = re.search(r"String Function FormatVoiceToast\(String line\)(.*?)EndFunction", text, re.S)
+    if not fmt:
+        errors.append("FormatVoiceToast missing — FO4 clips leading toast glyphs")
+    elif "Debug.Notification" in fmt.group(1):
+        errors.append("FormatVoiceToast must only pad, not Notification")
+    else:
+        pad_m = re.search(r'Return "([^"]*)" \+ line', fmt.group(1))
+        if not pad_m or not pad_m.group(1) or any(ord(c) != 0xA0 for c in pad_m.group(1)):
+            errors.append("FormatVoiceToast pad must be NBSP (U+00A0); ASCII spaces are LTRIM'd by FO4 HUD")
+        elif len(pad_m.group(1)) < 2:
+            errors.append("FormatVoiceToast needs >= 2 NBSP to cover typical 1–3 glyph clip")
+    show = re.search(r"Function ShowVoiceToast\(String line\)(.*?)EndFunction", text, re.S)
+    if not show or "FormatVoiceToast" not in show.group(1) or "Debug.Notification" not in show.group(1):
+        errors.append("ShowVoiceToast must Notification(FormatVoiceToast(line))")
+    # Voice paths must not bare-Notification the raw line (clip bug)
+    for fn_name in ("ToastVoice", "ToastHungerLine", "ToastPraiseLine", "SpeakRecognitionLine"):
+        m = re.search(rf"Function {fn_name}\(.*?\n(.*?)EndFunction", text, re.S)
+        if not m:
+            errors.append(f"missing {fn_name}")
+        elif "ShowVoiceToast" not in m.group(1):
+            errors.append(f"{fn_name} must ShowVoiceToast (not bare Debug.Notification for voice)")
 
     scan = re.search(r"Function RunKillScanTick\(\)(.*?)EndFunction", text, re.S)
     if not scan:
@@ -900,9 +1053,11 @@ def main() -> int:
     try:
         test_stage_files_parse()
         test_generic_never_in_toast()
+        test_unprintable_name_treated_as_nameless()
         test_named_keeps_name()
         test_no_immediate_repeat()
         test_strip_never_inserts_them()
+        test_strip_removes_following_separators()
         test_psc_contracts()
         test_notice_cadence()
         test_notice_approach_c4_parked()
@@ -916,6 +1071,7 @@ def main() -> int:
         return 1
     print("PASS notice line / detection contracts")
     print("  5 hunger stages parse; generic settlers -> nameless whisper (not 'them')")
+    print("  unprintable/glyph names -> nameless; P3 GetVictimOverrideName hook in GetActorDisplayName")
     print("  PickNoticeLine: stage-select + no-immediate-repeat; probe/toast invariants held")
     print("  cadence: killscan <10s; hunger ~1/game hour; fixation separate")
     print("  C4 parked: ambient killscan ToastNoticeLine only (C3 restore)")

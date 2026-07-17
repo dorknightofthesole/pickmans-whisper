@@ -7,6 +7,8 @@ Function ClampToGround(ObjectReference akReference) Native Global
 String Function GetHexFormID(Form akForm) Native Global
 
 ; String helpers (real GoE natives — FO4 has no StringUtil; see no-fake-native-stubs)
+; WARNING: StrFind is an OCCURRENCE COUNT (>0 == contains), NOT a character index.
+; Do not use it for SubStr slicing. Prefer ReplaceStr / SubStr prefix checks.
 Int Function StrFind(String sourceString, String findString, Int aiStartAt = 0, Bool abCaseSensitive = False) Native Global
 Int Function StrLength(String sourceString) Native Global
 String Function SubStr(String sourceString, Int aiStartAt = 0, Int aiLength = -1) Native Global

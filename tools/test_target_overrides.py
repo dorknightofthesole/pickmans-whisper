@@ -102,6 +102,11 @@ def test_psc(text: str) -> None:
         fail("LoadTargetOverrides must parse both keys")
     if "Debug.Notification" in load:
         fail("LoadTargetOverrides must not Notification — file is optional (Trace only)")
+    # GoE StrFind is occurrence count — must scan '=' with SubStr, not StrFind+SubStr slice
+    if re.search(r"StrFind\(line,\s*\"=\"\)", load) and "SubStr(line, 0, eq)" in load:
+        fail("LoadTargetOverrides must not SubStr using StrFind('=') — count≠index")
+    if 'SubStr(line, li, 1) == "="' not in load and "SubStr(line, li, 1) == '='" not in load:
+        fail("LoadTargetOverrides must scan for '=' via SubStr loop")
     if "optional" not in load.casefold() and "OPTIONAL" not in load:
         fail("LoadTargetOverrides should document that the file is optional")
     if "LoadLineBanks" in text:

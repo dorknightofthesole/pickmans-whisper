@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression contracts for C5 P1 look-fixation (additive POC).
+"""Regression contracts for C5 look-fixation (P1 table + P2 voice hooks).
 
 Locks:
   - TickLookFixation runs BEFORE MaybeSpeakNoticeLine on killscan (look-edge first)
@@ -8,8 +8,9 @@ Locks:
     Game.GetCurrentCrosshairRef — that is not a FO4 native and silenced killscan)
   - Killscan OnTimer re-arms StartKillScanLoop BEFORE RunKillScanTick
   - FormID shortlist cap FIXATION_MAX = 32 with lowest-count eviction
-  - Toast prefix "PW fixation:" and MCM sFixation:Debug
+  - MCM sFixation:Debug; count in LastFixationStatus (no "PW fixation:" debug toast)
   - Ambient MaybeSpeakNoticeLine is not rewritten to own fixation
+  - P2 voice detail: tools/test_recognition_lines.py
 
 Usage:
   python tools/test_look_fixation.py
@@ -154,13 +155,15 @@ def test_psc_contracts(text: str) -> None:
         fail("TickLookFixation must gate with IsFixationEligible (not IsNoticeCandidate)")
     if "IsNoticeCandidate" in tick:
         fail("TickLookFixation must not use IsNoticeCandidate (cooldown suppressed fixation)")
-    if 'Debug.Notification("PW fixation:' not in tick and "PW fixation:" not in tick:
-        fail('TickLookFixation toast must use "PW fixation:" prefix')
+    if "PW fixation:" in tick:
+        fail('TickLookFixation must not use retired "PW fixation:" debug toast (P2 voice)')
+    if "SpeakFixationStageWhisper" not in tick or "SpeakRecognitionLine" not in tick:
+        fail("TickLookFixation must route P2 voice (SpeakFixationStageWhisper / SpeakRecognitionLine)")
     if "MaybeSpeakNoticeLine" in tick:
         fail("TickLookFixation must not call MaybeSpeakNoticeLine (ambient stays separate)")
     if "FIXATION_TOAST_COOLDOWN" in tick:
-        fail("TickLookFixation must not use FIXATION_TOAST_COOLDOWN — every look-edge toasts")
-    ok("TickLookFixation aim + toast + isolated from ambient")
+        fail("TickLookFixation must not use FIXATION_TOAST_COOLDOWN")
+    ok("TickLookFixation aim + P2 voice + isolated from ambient")
 
     # Killscan: fixation BEFORE hunger (order lock)
     scan = extract_function(text, "RunKillScanTick")
@@ -220,7 +223,7 @@ def main() -> None:
     test_increment_and_evict()
     test_psc_contracts(text)
     test_mcm_files()
-    print("All look-fixation (C5 P1) contracts passed.")
+    print("All look-fixation (C5) contracts passed.")
 
 
 if __name__ == "__main__":

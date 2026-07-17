@@ -190,14 +190,19 @@ Int NOTICE_COOL_MAX = 16
 ; path until ambient killscan whispers are verified working again in-game.
 String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't fire
 
-; C5 P1 — look-fixation (additive). Aim-edge counts; does not alter ambient whispers.
+; C5 look-fixation (additive). Aim-edge counts; does not alter ambient whispers.
 ; Aim via GoE camera/activate — NOT Game.GetCurrentCrosshairRef (not a FO4 native).
+; Voice: 1st silent / 2nd hunger-stage line / 3rd+ RecognitionLines.txt
 Int FIXATION_MAX = 32
 Int[] FixationIds
 Int[] FixationCounts
 Int FixationSlotCount = 0
 Int LastLookFixationId = 0 ; FormID under aim last tick; 0 = none
 String Property LastFixationStatus = "" Auto ; MCM Debug — last look-fixation edge
+String[] RecognitionLines
+Int RecognitionLineCount = 0
+String LastRecognitionLine = "" ; no-immediate-repeat (raw template)
+String RecognitionLoadStatus = ""
 
 ; TargetOverrides.txt — opt-in filter gates (default off = current safe blocks).
 Bool AllowChildFemalesOverride = False
@@ -1287,13 +1292,37 @@ Function ToastNoticeLine(String line)
 	EndIf
 	LastNoticeToastRealTime = Utility.GetCurrentRealTime()
 	LastNoticeToastGameTime = Utility.GetCurrentGameTime()
-	Debug.Notification(line)
+	ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: notice | " + line)
 EndFunction
 
+; FO4 top-left notifications often clip 1–3 leading glyphs (HUD slide / stacked toasts /
+; FallUI). ASCII leading spaces are LTRIM'd by the UI, so pad with NBSP (U+00A0).
+; Trace stays unpadded. System/error toasts do not use this.
+String Function FormatVoiceToast(String line)
+	If !line
+		Return ""
+	EndIf
+	Return "  " + line
+EndFunction
+
+Function ShowVoiceToast(String line)
+	If !line
+		Return
+	EndIf
+	Debug.Notification(FormatVoiceToast(line))
+EndFunction
+
+; Whisper / fixation / notice label for an actor.
+; P3 Potential Victims: GetVictimOverrideName wins over engine FULL name so
+; player-assigned labels feed {name} without changing callers.
 String Function GetActorDisplayName(Actor ak)
 	If !ak
 		Return ""
+	EndIf
+	String overrideName = GetVictimOverrideName(ak)
+	If overrideName
+		Return overrideName
 	EndIf
 	ActorBase base = ak.GetLeveledActorBase()
 	If !base
@@ -1304,6 +1333,14 @@ String Function GetActorDisplayName(Actor ak)
 		Return ""
 	EndIf
 	Return n
+EndFunction
+
+; C5 P3 — FormID → player-given Potential Victim name. Empty until P3 ships.
+String Function GetVictimOverrideName(Actor ak)
+	If !ak
+		Return ""
+	EndIf
+	Return ""
 EndFunction
 
 Bool Function IsNoticeCandidate(Actor ak)
@@ -1400,7 +1437,7 @@ Actor Function GetLookAimActor()
 	Return pick as Actor
 EndFunction
 
-; Aim edge → bump seen count → toast "PW fixation: … seen xN".
+; Aim edge → bump seen count → MCM status; voice by count (P2).
 ; Runs before hunger whisper on killscan so look-edge is not lost to Notification drop / cooldown.
 Function TickLookFixation()
 	If !BondStarted
@@ -1436,15 +1473,24 @@ Function TickLookFixation()
 		Return
 	EndIf
 
-	String nm = GetActorDisplayName(ak)
-	If !nm
-		nm = "id=" + id
+	; Whisper-safe name (rejects □□ junk; P3 override via GetActorDisplayName).
+	String displayName = NoticeNameForLine(GetActorDisplayName(ak))
+	String label = displayName
+	If !label
+		label = "unnamed"
 	EndIf
-	LastFixationStatus = nm + " seen x" + count + " (" + FixationSlotCount + "/" + FIXATION_MAX + ")"
+	; Count always in MCM; voice by look count (P2): 1 silent / 2 stage / 3+ recognition.
+	LastFixationStatus = label + " seen x" + count + " (" + FixationSlotCount + "/" + FIXATION_MAX + ")"
 	WriteFixationStatusToMcm()
-	; No real-time toast cooldown — every look-edge (look away then back) may toast.
-	Debug.Notification("PW fixation: " + nm + " seen x" + count)
-	Debug.Trace("PickmansWhisper: fixation | " + LastFixationStatus)
+	Debug.Trace("PickmansWhisper: fixation edge | " + LastFixationStatus)
+	If count == 1
+		; First look — track only (silent).
+		Return
+	ElseIf count == 2
+		SpeakFixationStageWhisper(ak, displayName)
+	Else
+		SpeakRecognitionLine(displayName)
+	EndIf
 EndFunction
 
 ; Empty string = passes. Otherwise a short reject reason for MCM / MessageBox.
@@ -1723,7 +1769,7 @@ Function ToastVoice(String line)
 		Return
 	EndIf
 	LastTrustToastRealTime = Utility.GetCurrentRealTime()
-	Debug.Notification(line)
+	ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: voice | " + line)
 EndFunction
 
@@ -1739,7 +1785,7 @@ Function ToastHungerLine(String line)
 		Return
 	EndIf
 	LastHungerToastRealTime = now
-	Debug.Notification(line)
+	ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: hunger voice | " + line)
 EndFunction
 
@@ -1750,7 +1796,85 @@ Function LoadLineBanks()
 	LoadHungerLines()
 	LoadPraiseLines()
 	LoadNoticeLines()
+	LoadRecognitionLines()
 	LoadTargetOverrides()
+EndFunction
+
+; C5 P2 — single recognition bank (files-only). Later bands can use GetRecognitionBank(band).
+Function LoadRecognitionLines()
+	RecognitionLines = new String[64]
+	RecognitionLineCount = LoadStageBank("RecognitionLines.txt", RecognitionLines)
+	RecognitionLoadStatus = LastStageLoadStatus
+	If RecognitionLineCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR RecognitionLines.txt — " + RecognitionLoadStatus)
+	Else
+		Debug.Trace("PickmansWhisper: recognition lines ready (" + RecognitionLineCount + ")")
+	EndIf
+EndFunction
+
+; encounterBand reserved for later multi-file mapping; P2 always returns the single bank.
+String[] Function GetRecognitionBank(Int encounterBand)
+	Return RecognitionLines
+EndFunction
+
+Int Function GetRecognitionBankCount(Int encounterBand)
+	Return RecognitionLineCount
+EndFunction
+
+String Function PickRecognitionLine(String npcName)
+	String[] bank = GetRecognitionBank(0)
+	Int count = GetRecognitionBankCount(0)
+	If count <= 0 || !bank
+		LoadRecognitionLines()
+		bank = GetRecognitionBank(0)
+		count = GetRecognitionBankCount(0)
+	EndIf
+	If count <= 0 || !bank
+		Return ""
+	EndIf
+	String useName = NoticeNameForLine(npcName)
+	Bool wantNameless = (useName == "")
+	String raw = bank[Utility.RandomInt(0, count - 1)]
+	Int tries = 0
+	While tries < 8 && count > 1 && (raw == LastRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
+		raw = bank[Utility.RandomInt(0, count - 1)]
+		tries += 1
+	EndWhile
+	If !raw
+		Return ""
+	EndIf
+	LastRecognitionLine = raw
+	Return ApplyNamePlaceholder(raw, useName)
+EndFunction
+
+; 2nd look — speak current hunger-stage notice line (does not rewrite MaybeSpeakNoticeLine).
+Function SpeakFixationStageWhisper(Actor ak, String npcName)
+	String line = PickNoticeLine(npcName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		LastFixationStatus = "seen x2 — stage line skipped (bank empty)"
+		WriteFixationStatusToMcm()
+		Return
+	EndIf
+	; ToastNoticeLine stamps game-hour gate so ambient won't double-toast soon after.
+	ToastNoticeLine(line)
+	If ak
+		MarkNoticeCooldown(ak)
+		OnNoticeSpoken(ak, npcName, line)
+	EndIf
+EndFunction
+
+; 3rd+ look — recognition bank only (does not stamp hunger hour gate).
+Function SpeakRecognitionLine(String npcName)
+	String line = PickRecognitionLine(npcName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		LastFixationStatus = "recognition MISSING — " + RecognitionLoadStatus
+		WriteFixationStatusToMcm()
+		Debug.Notification("Pickman's Whisper: RecognitionLines.txt not loaded — see MCM / config")
+		Debug.Trace("PickmansWhisper: ERROR recognition speak failed — " + RecognitionLoadStatus)
+		Return
+	EndIf
+	ShowVoiceToast(line)
+	Debug.Trace("PickmansWhisper: recognition | " + line)
 EndFunction
 
 Function LoadTrustLines()
@@ -2124,7 +2248,7 @@ String Function PickNoticeLine(String npcName)
 	; unnamed targets like generic settlers) prefer lines without {name} so we
 	; never toast an awkwardly stripped sentence.
 	Int tries = 0
-	While tries < 8 && count > 1 && (raw == LastNoticeLine || (wantNameless && GardenOfEden.StrFind(raw, "{name}") >= 0))
+	While tries < 8 && count > 1 && (raw == LastNoticeLine || (wantNameless && StrContains(raw, "{name}")))
 		raw = bank[Utility.RandomInt(0, count - 1)]
 		tries += 1
 	EndWhile
@@ -2137,9 +2261,14 @@ String Function PickNoticeLine(String npcName)
 	Return ApplyNamePlaceholder(raw, useName)
 EndFunction
 
-; Workshop / leveled labels are useless in whispers — treat as unnamed.
+; Workshop / leveled labels / glyph junk are useless in whispers — treat as unnamed.
+; Real names (Piper) and P3 player-assigned labels (Anne-Marie, O'Malley) pass.
 String Function NoticeNameForLine(String npcName)
 	If !npcName
+		Return ""
+	EndIf
+	; Engine sometimes returns 1–2 unprintable glyphs (toast shows solid squares).
+	If !IsUsableWhisperName(npcName)
 		Return ""
 	EndIf
 	; Papyrus string compare is case-insensitive
@@ -2149,10 +2278,43 @@ String Function NoticeNameForLine(String npcName)
 	If npcName == "Scavenger" || npcName == "Farmer" || npcName == "Wastelander" || npcName == "Survivor"
 		Return ""
 	EndIf
-	If GardenOfEden.StrFind(npcName, "Settler") >= 0
+	; Workshop / SS2-style labels (e.g. "Resident") — never toast as a personal name.
+	If npcName == "Resident" || npcName == "Citizen" || npcName == "Neighbor" || npcName == "Worker"
+		Return ""
+	EndIf
+	If StrContains(npcName, "Settler") || StrContains(npcName, "Resident")
 		Return ""
 	EndIf
 	Return npcName
+EndFunction
+
+; True if every character is a common name glyph and at least one letter is present.
+; GoE-only (no StringUtil) — rejects □□ / control junk that FO4 still treats as non-empty.
+Bool Function IsUsableWhisperName(String npcName)
+	If !npcName
+		Return False
+	EndIf
+	String s = TrimString(npcName)
+	Int n = GardenOfEden.StrLength(s)
+	If n < 2
+		Return False
+	EndIf
+	; Letters + digits + common name punctuation (case-insensitive via ReplaceStr path).
+	String allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -'."
+	String letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	Bool hasLetter = False
+	Int i = 0
+	While i < n
+		String c = GardenOfEden.SubStr(s, i, 1)
+		If !c || !StrContains(allowed, c)
+			Return False
+		EndIf
+		If StrContains(letters, c)
+			hasLetter = True
+		EndIf
+		i += 1
+	EndWhile
+	Return hasLetter
 EndFunction
 
 ; GoE string ops only — FO4 has no StringUtil (see no-fake-native-stubs).
@@ -2163,31 +2325,69 @@ String Function ApplyNamePlaceholder(String line, String npcName)
 	If !npcName
 		Return StripNamePlaceholder(line)
 	EndIf
-	If GardenOfEden.StrFind(line, "{name}") < 0
+	If !StrContains(line, "{name}")
 		Return line
 	EndIf
 	Return GardenOfEden.ReplaceStr(line, "{name}", npcName)
 EndFunction
 
 ; Remove {name} — do NOT substitute "them" (that became a one-word toast).
+; Also drop separators that immediately followed the placeholder (". ", " - ", " — ").
+; IMPORTANT: GoE StrFind is an occurrence COUNT, not a char index — never slice with it.
+; ReplaceStr of "{name}"+separator first, then bare "{name}".
 String Function StripNamePlaceholder(String line)
 	If !line
 		Return ""
 	EndIf
-	If GardenOfEden.StrFind(line, "{name}") < 0
+	If !StrContains(line, "{name}")
 		Return line
 	EndIf
-	String out = GardenOfEden.ReplaceStr(line, "{name}", "")
-	; Drop a leftover leading ". " after removing a leading {name}
-	If out && GardenOfEden.StrFind(out, ". ") == 0
-		out = GardenOfEden.SubStr(out, 2)
-	EndIf
+	String out = line
+	; Longer forms first so ". " / " - " / " — " leave with the placeholder.
+	out = GardenOfEden.ReplaceStr(out, "{name}. ", "")
+	out = GardenOfEden.ReplaceStr(out, "{name} - ", "")
+	out = GardenOfEden.ReplaceStr(out, "{name} — ", "")
+	out = GardenOfEden.ReplaceStr(out, "{name}— ", "")
+	out = GardenOfEden.ReplaceStr(out, "{name}.", "")
+	out = GardenOfEden.ReplaceStr(out, "{name}", "")
 	out = TrimString(out)
+	out = StripLeadingNameSeparator(out)
 	If !out || GardenOfEden.StrLength(out) < 8
 		; Degenerate user line (e.g. just "{name}") — skip rather than fake one.
 		Return ""
 	EndIf
 	Return out
+EndFunction
+
+; True if needle occurs in hay — ReplaceStr based (GoE StrFind is not a safe index).
+Bool Function StrContains(String hay, String needle)
+	If !hay || !needle
+		Return False
+	EndIf
+	Return GardenOfEden.ReplaceStr(hay, needle, "") != hay
+EndFunction
+
+; Leading cleanup only — uses SubStr prefix checks, not StrFind==0.
+String Function StripLeadingNameSeparator(String s)
+	If !s
+		Return ""
+	EndIf
+	If GardenOfEden.StrLength(s) >= 2 && GardenOfEden.SubStr(s, 0, 2) == ". "
+		Return GardenOfEden.SubStr(s, 2)
+	EndIf
+	If GardenOfEden.StrLength(s) >= 3 && GardenOfEden.SubStr(s, 0, 3) == " - "
+		Return GardenOfEden.SubStr(s, 3)
+	EndIf
+	If GardenOfEden.StrLength(s) >= 3 && GardenOfEden.SubStr(s, 0, 3) == " — "
+		Return GardenOfEden.SubStr(s, 3)
+	EndIf
+	If GardenOfEden.StrLength(s) >= 2 && GardenOfEden.SubStr(s, 0, 2) == "— "
+		Return GardenOfEden.SubStr(s, 2)
+	EndIf
+	If s == "."
+		Return ""
+	EndIf
+	Return s
 EndFunction
 
 Function ToastPraiseLine(String line)
@@ -2200,7 +2400,7 @@ Function ToastPraiseLine(String line)
 	EndIf
 	LastPraiseToastRealTime = now
 	; Praise may fire mid-combat; allow even if menus briefly steal focus
-	Debug.Notification(line)
+	ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: praise | " + line)
 EndFunction
 
@@ -2815,7 +3015,16 @@ Function LoadTargetOverrides()
 		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
 			; comment
 		Else
-			Int eq = GardenOfEden.StrFind(line, "=")
+			; Scan for '=' — GoE StrFind is a count, not an index (cannot SubStr with it).
+			Int eq = -1
+			Int li = 0
+			Int ln = GardenOfEden.StrLength(line)
+			While li < ln && eq < 0
+				If GardenOfEden.SubStr(line, li, 1) == "="
+					eq = li
+				EndIf
+				li += 1
+			EndWhile
 			If eq > 0
 				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
 				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))

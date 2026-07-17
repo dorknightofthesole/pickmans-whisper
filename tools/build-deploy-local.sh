@@ -110,6 +110,7 @@ python "$ROOT/tools/test_notice_lines.py" || exit 1
 
 echo "==> Look-fixation (C5 P1) contract test"
 python "$ROOT/tools/test_look_fixation.py" || exit 1
+python "$ROOT/tools/test_recognition_lines.py" || exit 1
 
 echo "==> TargetOverrides filter contract test"
 python "$ROOT/tools/test_target_overrides.py" || exit 1

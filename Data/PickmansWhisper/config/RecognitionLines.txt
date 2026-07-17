@@ -1,0 +1,17 @@
+# Pickman's Whisper — recognition lines (C5 look-fixation, 3rd+ look).
+# Spoken when you look at someone you've already noticed twice.
+# {name} = real NPC name or P3 player-assigned label (auto-omitted for Settler /
+# glyph-junk / unusable names). Blank/# lines ignored.
+
+There she is again.
+Oh — {name}. Back again.
+You've seen her before. You remember.
+{name}. Familiar face.
+She keeps turning up, doesn't she?
+That one again. You know her now.
+{name} — you keep finding her.
+Again. Of course it's her.
+You've been watching {name}. She doesn't know.
+Same soft one. Still here.
+{name}. You'd know her anywhere now.
+She found her way back into your eyes.
