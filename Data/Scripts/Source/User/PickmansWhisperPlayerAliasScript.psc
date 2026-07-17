@@ -2,15 +2,25 @@ Scriptname PickmansWhisperPlayerAliasScript extends ReferenceAlias
 
 ; Optional backup: forward combat target into the main living-scan list.
 ; Primary kill detect is the main quest living→dead proximity poll (B14+).
+; OnPlayerLoadGame here is the reliable FO4 load hook — forward into main so
+; killscan/notice timers arm without opening MCM Debug.
 
 Int FID_MAIN_QUEST = 0x00000800
 
 Event OnAliasInit()
 	EnsurePlayerFill()
+	PickmansWhisperMainQuestScript main = GetMain()
+	If main
+		main.ArmRuntimeLoops()
+	EndIf
 EndEvent
 
 Event OnPlayerLoadGame()
 	EnsurePlayerFill()
+	PickmansWhisperMainQuestScript main = GetMain()
+	If main
+		main.HandlePlayerLoadFromAlias()
+	EndIf
 EndEvent
 
 Function EnsurePlayerFill()

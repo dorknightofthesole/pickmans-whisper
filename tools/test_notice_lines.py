@@ -301,14 +301,18 @@ def test_psc_contracts() -> None:
         if m and "StringUtil." in m.group(0):
             errors.append(f"{fn_name} must not call StringUtil (use GoE StrFind/SubStr/ReplaceStr)")
 
-    # Forced MessageBox load report (Necromantic ReportConfigLoadStatus pattern).
+    # Load-trace MessageBox is MCM "Test notice file load" only — not init/load.
     rns = re.search(r"Function ReportNoticeLoadStatus\(\)(.*?)EndFunction", text, re.S)
     if not rns:
-        errors.append("ReportNoticeLoadStatus missing (forced load MessageBox)")
+        errors.append("ReportNoticeLoadStatus missing (MCM button MessageBox)")
     elif "Debug.MessageBox(" not in rns.group(1) or "NoticeLoadDiag" not in rns.group(1):
         errors.append("ReportNoticeLoadStatus must MessageBox NoticeLoadDiag")
-    if "ReportNoticeLoadStatus()" not in text:
-        errors.append("init/load path must call ReportNoticeLoadStatus()")
+    oqi = re.search(r"Event OnQuestInit\(\)(.*?)EndEvent", text, re.S)
+    if oqi and "ReportNoticeLoadStatus()" in oqi.group(1):
+        errors.append("OnQuestInit must not ReportNoticeLoadStatus (no launch MessageBox)")
+    hgr = re.search(r"Function HandleGameResume\(String reason\)(.*?)EndFunction", text, re.S)
+    if hgr and "ReportNoticeLoadStatus()" in hgr.group(1):
+        errors.append("HandleGameResume must not ReportNoticeLoadStatus (no launch MessageBox)")
     # Reload on MCM open (Necromantic OnMCMMenuOpen pattern).
     mcm_open = re.search(r"Function OnMCMMenuOpen\(String modName\)(.*?)EndFunction", text, re.S)
     if not mcm_open:
@@ -401,23 +405,20 @@ def test_psc_contracts() -> None:
         errors.append("MaybeSpeakNoticeLine not found")
     else:
         body = speak.group(1)
-        if "ToastNoticeLine(line)" not in body:
-            errors.append("MaybeSpeakNoticeLine must call ToastNoticeLine")
-        ok_dialog = body.find("RESULT: TOAST")
-        toast_at = body.find("ToastNoticeLine(line)")
-        if toast_at < 0 or ok_dialog < 0 or toast_at > ok_dialog:
-            errors.append("ToastNoticeLine must run before the RESULT: TOAST dialog")
+        if "SpeakNoticeToTarget(" not in body and "ToastNoticeLine(line)" not in body:
+            errors.append("MaybeSpeakNoticeLine must deliver via SpeakNoticeToTarget or ToastNoticeLine")
         if re.search(r"If IsNoticePollDebugEnabled\(\)\s*\n\s*NoticeCoolCount\s*=\s*0", body):
             errors.append("MaybeSpeakNoticeLine must not clear cooldowns only when notice-poll debug is on")
-        # Files-only: empty line must skip (return) BEFORE toast/cooldown, not fake a line.
-        # Length check uses GoE StrLength (FO4 has no StringUtil).
+        # Ambient loop: toast only — MessageBox is MCM Scan button UX, not the poll.
+        if "ShowNoticePollDialog(" in body or "Debug.MessageBox(" in body:
+            errors.append("MaybeSpeakNoticeLine must not MessageBox (dialog is MCM Scan nearby only)")
         empty_guard = re.search(
             r"If !line \|\| GardenOfEden\.StrLength\(line\) < 1(.*?)EndIf", body, re.S
         )
         if not empty_guard:
             errors.append("MaybeSpeakNoticeLine must guard empty line via GoE StrLength (files-only skip)")
         elif "Return" not in empty_guard.group(1):
-            errors.append("MaybeSpeakNoticeLine empty-line guard must Return (skip), not fall through to toast")
+            errors.append("MaybeSpeakNoticeLine empty-line guard must Return (skip)")
 
     pick = re.search(r"Actor Function PickNoticeTarget\(\)(.*?)EndFunction", text, re.S)
     if not pick:
@@ -438,8 +439,12 @@ def test_psc_contracts() -> None:
     probe = re.search(r"Function DebugScanNearbyNpcs\(\)(.*?)EndFunction", text, re.S)
     if not probe:
         errors.append("DebugScanNearbyNpcs not found")
-    elif "MarkNoticeCooldown" in probe.group(1):
-        errors.append("DebugScanNearbyNpcs must not call MarkNoticeCooldown (probe must not starve auto poll)")
+    else:
+        pbody = probe.group(1)
+        if "MarkNoticeCooldown" in pbody:
+            errors.append("DebugScanNearbyNpcs must not call MarkNoticeCooldown (probe must not starve auto poll)")
+        if "Debug.MessageBox(" not in pbody:
+            errors.append("DebugScanNearbyNpcs must keep MessageBox (MCM Scan nearby button UX)")
 
     if errors:
         raise AssertionError("PSC contract failures:\n  - " + "\n  - ".join(errors))
@@ -491,6 +496,173 @@ def test_notice_cadence() -> None:
 
     if errors:
         raise AssertionError("notice cadence failures:\n  - " + "\n  - ".join(errors))
+
+
+def test_notice_approach_c4_parked() -> None:
+    """C4 is parked until ambient C3 whispers are verified again in-game.
+
+    Prior C4 wiring (0.5s timer / extra FindActors on killscan) silenced all
+    notices. This contract locks the restore: killscan ambient only, no approach
+    hot path, no 0.5s StartTimer.
+    """
+    text = PSC.read_text(encoding="utf-8", errors="replace")
+    errors: list[str] = []
+
+    if "NOTICE_APPROACH_SECONDS" in text:
+        errors.append("NOTICE_APPROACH_SECONDS must stay removed (0.5s poll silenced the quest)")
+    if "Function TickNoticeApproach()" in text:
+        errors.append("TickNoticeApproach must stay removed while C4 is parked")
+    if "Function SpeakNoticeToTarget(" in text:
+        errors.append("SpeakNoticeToTarget must stay removed while C4 is parked (use inline MaybeSpeakNoticeLine)")
+    if "StartTimer(NOTICE_APPROACH_SECONDS" in text or "StartTimer(0.5" in text:
+        errors.append("must not StartTimer a 0.5s approach poll")
+
+    run = re.search(r"Function RunKillScanTick\(\)(.*?)EndFunction", text, re.S)
+    if not run:
+        errors.append("RunKillScanTick missing")
+    else:
+        body = run.group(1)
+        if "MaybeSpeakNoticeLine(\"killscan\")" not in body:
+            errors.append("RunKillScanTick must call MaybeSpeakNoticeLine(\"killscan\")")
+        if "TickNoticeApproach" in body:
+            errors.append("RunKillScanTick must not call TickNoticeApproach while C4 is parked")
+
+    speak = re.search(r"Function MaybeSpeakNoticeLine\(String source\)(.*?)EndFunction", text, re.S)
+    if not speak or "ToastNoticeLine(line)" not in speak.group(1):
+        errors.append("MaybeSpeakNoticeLine must inline ToastNoticeLine (C3 proven path)")
+
+    ont = re.search(
+        r"ElseIf aiTimerID == TIMER_NOTICE_APPROACH\s*\n(.*?)ElseIf", text, re.S
+    )
+    if ont:
+        branch = ont.group(1)
+        if "StartTimer(" in branch or "TickNoticeApproach" in branch:
+            errors.append("OnTimer TIMER_NOTICE_APPROACH must only CancelTimer (legacy cleanup)")
+
+    if errors:
+        raise AssertionError("C4 parked / ambient restore failures:\n  - " + "\n  - ".join(errors))
+
+
+def test_runtime_loops_armed_without_mcm() -> None:
+    """Killscan/notice timers must arm on init/load — not only after MCM Debug."""
+    text = PSC.read_text(encoding="utf-8", errors="replace")
+    alias = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    errors: list[str] = []
+
+    if "Function ArmRuntimeLoops()" not in text:
+        errors.append("ArmRuntimeLoops missing")
+    else:
+        arm = re.search(r"Function ArmRuntimeLoops\(\)(.*?)EndFunction", text, re.S)
+        body = arm.group(1) if arm else ""
+        for needle in (
+            "StartBondPoll()",
+            "StartHungerPoll()",
+            "StartTrustVoice()",
+            "StartNoticeVoice()",
+            "StartKillScanLoop()",
+        ):
+            if needle not in body:
+                errors.append(f"ArmRuntimeLoops must call {needle}")
+
+    on_init = re.search(r"Event OnInit\(\)(.*?)EndEvent", text, re.S)
+    if not on_init or "ArmRuntimeLoops()" not in on_init.group(1):
+        errors.append("OnInit must ArmRuntimeLoops (save load reattaches; OnQuestInit may not re-fire)")
+
+    if "Function HandleGameResume(" not in text:
+        errors.append("HandleGameResume missing (shared load resume)")
+    else:
+        hgr = re.search(r"Function HandleGameResume\(String reason\)(.*?)EndFunction", text, re.S)
+        body = hgr.group(1) if hgr else ""
+        if "ArmRuntimeLoops()" not in body:
+            errors.append("HandleGameResume must ArmRuntimeLoops")
+        if "ReportNoticeLoadStatus()" in body:
+            errors.append("HandleGameResume must not popup ReportNoticeLoadStatus")
+        if "Debug.MessageBox(" in body:
+            errors.append("HandleGameResume must not Debug.MessageBox (no launch dialog)")
+
+    oqi = re.search(r"Event OnQuestInit\(\)(.*?)EndEvent", text, re.S)
+    if oqi:
+        body = oqi.group(1)
+        if "ArmRuntimeLoops()" not in body:
+            errors.append("OnQuestInit must ArmRuntimeLoops")
+        if "ReportNoticeLoadStatus()" in body:
+            errors.append("OnQuestInit must not popup ReportNoticeLoadStatus")
+        if "Debug.MessageBox(" in body:
+            errors.append("OnQuestInit must not Debug.MessageBox (no launch dialog)")
+
+    if "Event OnPlayerLoadGame()" not in alias:
+        errors.append("Player alias must have OnPlayerLoadGame")
+    if "HandlePlayerLoadFromAlias()" not in alias:
+        errors.append("Player alias OnPlayerLoadGame must forward HandlePlayerLoadFromAlias")
+    if "ArmRuntimeLoops()" not in alias:
+        errors.append("Player alias OnAliasInit must ArmRuntimeLoops")
+
+    # MCM open may re-arm, but must not be the sole path (Scan nearby / Refresh status).
+    if "Function DebugScanNearbyNpcs()" in text:
+        dbg = re.search(r"Function DebugScanNearbyNpcs\(\)(.*?)EndFunction", text, re.S)
+        if dbg and "ArmRuntimeLoops()" not in dbg.group(1):
+            errors.append("DebugScanNearbyNpcs should re-arm loops as a recovery aid")
+
+    if errors:
+        raise AssertionError("runtime loop arming failures:\n  - " + "\n  - ".join(errors))
+
+
+def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
+    """Auto paths (load + notice loop): no MessageBox. MCM Debug buttons keep theirs."""
+    text = PSC.read_text(encoding="utf-8", errors="replace")
+    errors: list[str] = []
+
+    speak = re.search(r"Function MaybeSpeakNoticeLine\(String source\)(.*?)EndFunction", text, re.S)
+    if not speak:
+        errors.append("MaybeSpeakNoticeLine missing")
+    else:
+        body = speak.group(1)
+        if "ToastNoticeLine(line)" not in body:
+            errors.append("MaybeSpeakNoticeLine must still ToastNoticeLine")
+        if "ShowNoticePollDialog(" in body:
+            errors.append("MaybeSpeakNoticeLine must not call ShowNoticePollDialog")
+        if "Debug.MessageBox(" in body:
+            errors.append("MaybeSpeakNoticeLine must not Debug.MessageBox")
+
+    run = re.search(r"Function RunKillScanTick\(\)(.*?)EndFunction", text, re.S)
+    if run and "Debug.MessageBox(" in run.group(1):
+        errors.append("RunKillScanTick must not MessageBox (heartbeat is ToastDebug only)")
+
+    arm_ann = re.search(r"Function AnnounceKillScanArmed\(\)(.*?)EndFunction", text, re.S)
+    if arm_ann and "Debug.MessageBox(" in arm_ann.group(1):
+        errors.append("AnnounceKillScanArmed must not MessageBox (fires on load/arm)")
+
+    for name, pattern in (
+        ("OnQuestInit", r"Event OnQuestInit\(\)(.*?)EndEvent"),
+        ("HandleGameResume", r"Function HandleGameResume\(String reason\)(.*?)EndFunction"),
+        ("OnInit", r"Event OnInit\(\)(.*?)EndEvent"),
+    ):
+        m = re.search(pattern, text, re.S)
+        if not m:
+            continue
+        if "Debug.MessageBox(" in m.group(1) or "ReportNoticeLoadStatus()" in m.group(1):
+            errors.append(f"{name} must not show MessageBox / ReportNoticeLoadStatus on launch")
+
+    probe = re.search(r"Function DebugScanNearbyNpcs\(\)(.*?)EndFunction", text, re.S)
+    if not probe:
+        errors.append("DebugScanNearbyNpcs missing")
+    elif "Debug.MessageBox(" not in probe.group(1):
+        errors.append("DebugScanNearbyNpcs must keep Debug.MessageBox for MCM button")
+
+    dtnf = re.search(r"Function DebugTestNoticeFiles\(\)(.*?)EndFunction", text, re.S)
+    if not dtnf:
+        errors.append("DebugTestNoticeFiles missing")
+    elif "ReportNoticeLoadStatus()" not in dtnf.group(1):
+        errors.append("DebugTestNoticeFiles must still call ReportNoticeLoadStatus (MCM load dialog)")
+
+    rns = re.search(r"Function ReportNoticeLoadStatus\(\)(.*?)EndFunction", text, re.S)
+    if not rns or "Debug.MessageBox(" not in rns.group(1):
+        errors.append("ReportNoticeLoadStatus must still MessageBox when MCM button calls it")
+
+    if errors:
+        raise AssertionError("ambient dialog UX failures:\n  - " + "\n  - ".join(errors))
 
 
 def test_mcm_exposes_load_rows() -> None:
@@ -582,6 +754,9 @@ def main() -> int:
         test_strip_never_inserts_them()
         test_psc_contracts()
         test_notice_cadence()
+        test_notice_approach_c4_parked()
+        test_runtime_loops_armed_without_mcm()
+        test_ambient_notice_no_dialog_mcm_scan_keeps_dialog()
         test_mcm_exposes_load_rows()
         test_notice_stage_control()
         test_no_dead_config_files()
@@ -592,6 +767,9 @@ def main() -> int:
     print("  5 hunger stages parse; generic settlers -> nameless whisper (not 'them')")
     print("  PickNoticeLine: stage-select + no-immediate-repeat; probe/toast invariants held")
     print("  cadence: lone female still whispers (toast<=6s poll, npc<=15s)")
+    print("  C4 parked: ambient killscan ToastNoticeLine only (C3 restore)")
+    print("  runtime loops: ArmRuntimeLoops on OnInit + alias/game load (not MCM-only)")
+    print("  ambient UX: no MessageBox in notice loop; MCM Scan nearby keeps dialog")
     print("  files-only notice banks: builtins retired, per-file MCM load status + error toast")
     print("  stage control: MCM dropdown + force toggle; GetNoticeStage honors override")
     print("  no dead config: every shipped .txt is read by the quest script")

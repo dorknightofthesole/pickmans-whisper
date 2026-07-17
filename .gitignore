@@ -8,3 +8,5 @@ dist/staging/
 # Machine-specific dev settings (paths to Fallout4.esm, MO2 mods folder, etc.)
 # Copy .env.example to .env and fill in local paths. Never commit .env.
 .env
+
+Data/PickmansWhisper/whispers/*.mp3

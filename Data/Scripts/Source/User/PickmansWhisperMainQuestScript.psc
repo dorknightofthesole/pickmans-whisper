@@ -106,14 +106,15 @@ Bool HungerSpellLoadWarned
 Float HUNGER_POLL_SECONDS = 12.0
 Float BOND_POLL_SECONDS = 4.0
 Float TRUST_VOICE_SECONDS = 180.0
-Float NOTICE_VOICE_SECONDS = 45.0 ; C2 nearby-female comments
-Float KILL_SCAN_SECONDS = 2.0 ; Necromantic-style StartTimer id 13
+Float NOTICE_VOICE_SECONDS = 45.0 ; C2 nearby-female comments (slow ambient backup)
+Float KILL_SCAN_SECONDS = 2.0 ; Necromantic-style StartTimer id 13 — also drives ambient notice
 
 Int TIMER_HUNGER = 1
 Int TIMER_BOND = 2
 Int TIMER_TRUST = 3
 Int TIMER_KILL = 4 ; legacy unused
-Int TIMER_NOTICE = 5 ; C2 notice voice
+Int TIMER_NOTICE = 5 ; C2 notice voice (slow ambient)
+Int TIMER_NOTICE_APPROACH = 6 ; retired — CancelTimer only (0.5s poll silenced the quest)
 Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
 
 ; Vanilla anchors (Fallout4.esm)
@@ -174,18 +175,24 @@ Float PRAISE_TOAST_COOLDOWN = 2.0
 Float NOTICE_TOAST_COOLDOWN = 6.0 ; global gap between any two notice toasts (real s); matches the ~6s poll so a fresh target can whisper almost every pass
 Float NOTICE_NPC_COOLDOWN = 12.0 ; real seconds before commenting on same NPC again; low enough that a lone nearby female still whispers regularly
 Float LastPraiseToastRealTime = 0.0
+Float LastGameResumeRealTime = 0.0 ; debounce HandleGameResume when alias + remote both fire
 Int[] NoticeCoolIds
 Float[] NoticeCoolTimes
 Int NoticeCoolCount = 0
 Int NOTICE_COOL_MAX = 16
+; C4 approach is parked — do not reintroduce FindActors/timers on the notice hot
+; path until ambient killscan whispers are verified working again in-game.
 String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't fire
 
 Event OnInit()
-	; Also fires once when the script attaches (pairs with OnQuestInit on fresh starts).
+	; Fires on attach AND on save load (OnQuestInit does NOT re-fire for mid-game saves).
+	; Timers must be armed here — do not wait for MCM Debug / Scan nearby.
 	PlayerRef = Game.GetPlayer()
 	If PlayerRef
 		RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
+		RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
 	EndIf
+	ArmRuntimeLoops()
 EndEvent
 
 Event OnQuestInit()
@@ -204,15 +211,12 @@ Event OnQuestInit()
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
+	; Arm timers on init/load — no MessageBox here (MCM Debug buttons only).
+	ArmRuntimeLoops()
+	EnsureCombatKillHooks()
 	LoadLineBanks()
-	ReportNoticeLoadStatus()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
-	StartBondPoll()
-	StartHungerPoll()
-	StartTrustVoice()
-	StartNoticeVoice()
-	EnsureCombatKillHooks()
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
 	Debug.Trace("PickmansWhisper: quest init " + DEBUG_BUILD)
@@ -220,7 +224,24 @@ Event OnQuestInit()
 	ToastBladeDetectStatus("load")
 EndEvent
 
+; Player-alias OnPlayerLoadGame is the reliable FO4 load hook; remote Actor event is backup.
+Function HandlePlayerLoadFromAlias()
+	HandleGameResume("alias-load")
+EndFunction
+
 Event Actor.OnPlayerLoadGame(Actor akSender)
+	HandleGameResume("remote-load")
+EndEvent
+
+; Shared resume: game load / alias load. Idempotent; safe if both fire.
+Function HandleGameResume(String reason)
+	Float now = Utility.GetCurrentRealTime()
+	If LastGameResumeRealTime > 0.0 && (now - LastGameResumeRealTime) < 2.0
+		ArmRuntimeLoops()
+		Return
+	EndIf
+	LastGameResumeRealTime = now
+
 	; Save games persist script vars — force build id from this PEX every load
 	DEBUG_BUILD = "C2-stable"
 	KILL_WATCH_RADIUS = 800.0
@@ -233,25 +254,35 @@ Event Actor.OnPlayerLoadGame(Actor akSender)
 	RegisterForRemoteEvent(PlayerRef, "OnItemAdded")
 	RegisterForRemoteEvent(PlayerRef, "OnItemRemoved")
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
+	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
+	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
+	; Arm FIRST — MCM Debug must never be required to start the notice/killscan loops.
+	; No MessageBox on load (ReportNoticeLoadStatus is MCM "Test notice file load" only).
+	ArmRuntimeLoops()
+	EnsureCombatKillHooks()
 	LoadLineBanks()
-	ReportNoticeLoadStatus()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
-	StartBondPoll()
-	StartHungerPoll()
-	StartTrustVoice()
-	StartNoticeVoice()
-	EnsureCombatKillHooks()
 	SyncHungerAddictionSpell()
 	LastNoticeToastRealTime = 0.0
 	LastNoticeDiagRealTime = 0.0
 	NoticeCoolCount = 0
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
-	Debug.Trace("PickmansWhisper: player load " + DEBUG_BUILD)
+	Debug.Trace("PickmansWhisper: game resume (" + reason + ") " + DEBUG_BUILD)
 	ToastDebug("Pickman's Whisper load [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
-EndEvent
+EndFunction
+
+; Bond / hunger / trust / notice / kill-scan — always-on loops. Call on init, load, bond.
+Function ArmRuntimeLoops()
+	StartBondPoll()
+	StartHungerPoll()
+	StartTrustVoice()
+	StartNoticeVoice()
+	CancelTimer(TIMER_NOTICE_APPROACH) ; kill any leftover C4 timer from older pex
+	StartKillScanLoop()
+EndFunction
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
 	Weapon asW = akBaseObject as Weapon
@@ -320,6 +351,9 @@ Event OnTimer(Int aiTimerID)
 	ElseIf aiTimerID == TIMER_NOTICE
 		MaybeSpeakNoticeLine("timer")
 		StartNoticeVoice()
+	ElseIf aiTimerID == TIMER_NOTICE_APPROACH
+		; Legacy id — cancel and ignore (C4 parked; 0.5s poll silenced the quest).
+		CancelTimer(TIMER_NOTICE_APPROACH)
 	ElseIf aiTimerID == TIMER_KILL || aiTimerID == TIMER_KILL_SCAN
 		RunKillScanTick()
 		StartKillScanLoop()
@@ -847,8 +881,7 @@ Function StartBond(String reason)
 		EndIf
 	ToastVoice(line)
 	EndIf
-	StartTrustVoice()
-	StartNoticeVoice()
+	ArmRuntimeLoops()
 	RefreshHungerPanel(False)
 	If !RefreshDebugBusy
 		RefreshDebugStatus()
@@ -1099,7 +1132,8 @@ String Function FormatNoticeActorChecklist(Actor ak)
 EndFunction
 
 Function MaybeSpeakNoticeLine(String source)
-	; Keep this path boring. Detection filters live in ExplainNoticeReject / PickNoticeTarget.
+	; Proven C3 path — keep boring. Detection lives in ExplainNoticeReject / PickNoticeTarget.
+	; Do not add FindActors / approach timers here until ambient toasts are verified again.
 	NoticePollCount += 1
 	LastNoticePollSource = source
 	LastNoticeBreakAt = ""
@@ -1124,7 +1158,7 @@ Function MaybeSpeakNoticeLine(String source)
 		Return
 	EndIf
 
-	; Toast cooldown — same whether debug dialogs are on or off (dialogs are observe-only).
+	; Toast cooldown — ambient path is toast/MCM status only (no MessageBox; that is MCM Scan button).
 	Float now = Utility.GetCurrentRealTime()
 	If LastNoticeToastRealTime > 0.0 && LastNoticeToastRealTime <= now
 		If (now - LastNoticeToastRealTime) < NOTICE_TOAST_COOLDOWN
@@ -1138,16 +1172,13 @@ Function MaybeSpeakNoticeLine(String source)
 	If !target
 		WriteNoticeStatusToMcm()
 		WriteNearbyStatusToMcm()
-		ShowNoticePollDialog("PW [C2-stable] #" + NoticePollCount + " via " + source + "\nBREAKS AT: " + LastNoticeBreakAt + "\n\n" + LastNoticeDiag)
 		Return
 	EndIf
 
 	String npcName = GetActorDisplayName(target)
 	String line = PickNoticeLine(npcName)
 	If !line || GardenOfEden.StrLength(line) < 1
-		; Files-only: the current stage's file did not load. Skip silently (the
-		; failure is surfaced by the load-time error toast + MCM Debug rows).
-		; Do NOT arm the cooldown, so the whisper fires the moment the file works.
+		; Files-only: skip without arming cooldown so a later load can speak.
 		LastNoticeStatus = "skip: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") not loaded"
 		WriteNoticeStatusToMcm()
 		WriteNearbyStatusToMcm()
@@ -1164,7 +1195,6 @@ Function MaybeSpeakNoticeLine(String source)
 	EndIf
 	WriteNoticeStatusToMcm()
 	WriteNearbyStatusToMcm()
-	ShowNoticePollDialog("PW [C2-stable] #" + NoticePollCount + " via " + source + "\nRESULT: TOAST\n" + line + "\n\n" + LastNoticeDiag)
 	OnNoticeSpoken(target, npcName, line)
 EndFunction
 
@@ -1532,7 +1562,7 @@ EndFunction
 ; result is recorded for the MCM Debug rows, and any failure raises a load-time
 ; error toast so a missing/unreadable file is never silently masked.
 ; Does NOT MessageBox itself — callers that want the Necromantic-style popup call
-; ReportNoticeLoadStatus() (init/load + Debug button). Lazy retries from PickNoticeLine
+; ReportNoticeLoadStatus() (MCM Debug button only). Lazy retries from PickNoticeLine
 ; must not spam dialogs.
 Function LoadNoticeLines()
 	; Pre-arm every row with a pessimistic sentinel and PUSH it to MCM *before* any
@@ -1582,9 +1612,7 @@ Function LoadNoticeLines()
 EndFunction
 
 ; One modal dialog with the full step-by-step load trace (screenshot-friendly).
-; Mirrors Necromantic ReportConfigLoadStatus. Call after LoadNoticeLines on
-; init/load and from the Debug "Test notice file load" button — not from every
-; lazy PickNoticeLine retry.
+; MCM Debug "Test notice file load" only — never call from OnQuestInit / load resume.
 Function ReportNoticeLoadStatus()
 	String msg = "PICKMANS WHISPER NOTICE LOAD || " + NoticeLoadDiag
 	Debug.Trace("PickmansWhisper notice load: " + msg)
@@ -2194,9 +2222,8 @@ Function AnnounceKillScanArmed()
 		Return
 	EndIf
 	KillScanArmAnnounced = True
-	If IsKillDebugToastsEnabled()
-		Debug.MessageBox("Pickman's Whisper [" + DEBUG_BUILD + "]\n\nKill scan armed.\nHeartbeat: PW scan #N near=…")
-	EndIf
+	; Toast only — never MessageBox on arm/load (modals are MCM Debug buttons only).
+	ToastDebug("PW kill scan armed [" + DEBUG_BUILD + "]")
 	Debug.Trace("PickmansWhisper: kill scan armed " + DEBUG_BUILD)
 EndFunction
 
@@ -2224,7 +2251,7 @@ Function RunKillScanTick()
 	ScanLivingToDeadTransitions()
 
 	KillScanTickCount += 1
-	; Notice driver on proven kill-scan timer (~every 3 ticks)
+	; Notice driver on proven kill-scan timer (~every 3 ticks). C4 approach is parked.
 	If BondStarted && (KillScanTickCount % 3) == 0
 		MaybeSpeakNoticeLine("killscan")
 	ElseIf !BondStarted && (KillScanTickCount % 6) == 0
@@ -3186,8 +3213,7 @@ Function OnMCMSettingChange(String modName, String id)
 		SyncHungerAddictionSpell()
 		RefreshHungerPanel(True)
 	ElseIf id == "bVoiceToasts:Voice"
-		StartTrustVoice()
-		StartNoticeVoice()
+		ArmRuntimeLoops()
 	EndIf
 EndFunction
 
@@ -3413,10 +3439,11 @@ Function DebugScanNearbyNpcs()
 		Debug.MessageBox("C2-polldbg\n\nNo player ref.")
 		Return
 	EndIf
-	; Manual button = non-destructive PROBE. Clear cools, toast, then leave the
-	; passive path un-throttled: do not arm any notice cooldown here.
-	; (Old button re-stamped the per-NPC cooldown, which silenced the automatic
-	; poll for its full duration every time you tested.)
+	; Manual button = non-destructive PROBE. Also re-arms loops (same as load) so a
+	; stuck timer is recoverable — but load/OnInit must arm without this button.
+	ArmRuntimeLoops()
+	; Clear cools, toast, then leave the passive path un-throttled: do not arm
+	; any notice cooldown here. (Old button re-stamped the per-NPC cooldown.)
 	NoticeCoolCount = 0
 	LastNoticeToastRealTime = 0.0
 	Actor target = PickNoticeTarget()

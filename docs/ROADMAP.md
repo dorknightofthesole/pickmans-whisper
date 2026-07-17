@@ -6,7 +6,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 |-------|-------------|--------|
 | **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM | **Shipped (0.1.0)** |
 | **B** | Kill-with-knife praise + satiation rules | **Done** |
-| **C** | NPC scan + nearby comments + hunger-staged whispers | **In progress** — C1+C2 done; C3 files-only, verifying reliability |
+| **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **In progress** — C1–C4 done; **C5** planned (look-fixation POC) |
 | **D** | Audio bank playback (research + implement) | Planned |
 | **E** | Corpse preserve sync with Necromantic | Planned |
 | **F** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
@@ -34,12 +34,15 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 
 - [x] **C1** — Periodic Garden of Eden living scan; default adult female non-essential (shared with B kill-watch / filters).
 - [x] **C2** — Soft toast comments on nearby **non-hostile** adult women (`NoticeLines.txt`, `{name}` when known). Success path calls `OnNoticeSpoken` (C3 hook). Poll debug dialogs optional (MCM Debug).
-- [ ] **C3** — Hunger-staged whispers: five editable stage files (`NoticeLines_<Stage>.txt`) chosen by `HungerLevel` band — admiration → infatuation → jealousy → anger → kill-urge — with no-immediate-repeat selection. Files-only (no builtin fallback); per-file load status + error toast in MCM Debug, plus a stage dropdown / force toggle for testing. **Unchecked until verified reliably in-game.** Remembered per-NPC fixations remain a later idea (hook: `OnNoticeSpoken`).
+- [x] **C3** — Hunger-staged whispers: five editable stage files (`NoticeLines_<Stage>.txt`) chosen by `HungerLevel` band — admiration → infatuation → jealousy → anger → kill-urge — with no-immediate-repeat selection. Files-only (no builtin fallback); GoE2 load + GoE string helpers; per-file MCM load status, load MessageBox, and stage dropdown / force toggle. **Verified in-game** (file load + notice toasts).
+- [x] **C4** — Approach / first-enter feel via ambient killscan path (dedicated 0.5s FindActors hammer rejected — silenced the quest). **Verified in-game** with always-on timer arming; auto MessageBoxes removed (MCM Scan nearby keeps its dialog).
+- [ ] **C5** — Look-fixation POC (**additive — no change to ambient C2/C3 whispers**). On killscan: if crosshair is on a valid notice target, edge-count that FormID (capped shortlist, e.g. 32; save-persisted arrays, no SQLite). Voice via the same notice delivery path: **1st look** = track only (silent); **2nd** = normal hunger-stage whisper; **3rd+** = recognition line (e.g. “Oh there she is again”). Ambient proximity polls keep working unchanged.
 
 ## Slice D — audio
 
-- Research: `Sound.Play` / SNDR / F4SE file helpers / GoE hooks.
-- Non-blocking one-shots; toast fallback always available.
+- Research: `Sound.Play` / SNDR (not play-by-path for loose `whispers/*.mp3`).
+- Non-blocking one-shots; toast / audio delivery modes; map files `*_Audio.txt`.
+- Beginner guide: create the first SNDR in xEdit — [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
 
 ## Slice E — corpse preserve
 
