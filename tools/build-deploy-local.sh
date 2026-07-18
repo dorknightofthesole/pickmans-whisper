@@ -113,6 +113,8 @@ python "$ROOT/tools/test_look_fixation.py" || exit 1
 python "$ROOT/tools/test_recognition_lines.py" || exit 1
 python "$ROOT/tools/test_potential_victims.py" || exit 1
 python "$ROOT/tools/test_sleep_recognition.py" || exit 1
+python "$ROOT/tools/test_audio_poc.py" || exit 1
+python "$ROOT/tools/test_audio_d1.py" || exit 1
 
 echo "==> TargetOverrides filter contract test"
 python "$ROOT/tools/test_target_overrides.py" || exit 1
@@ -145,6 +147,7 @@ mkdir -p \
   "$DEPLOY/MCM/Config/PickmansWhisper" \
   "$DEPLOY/MCM/Settings" \
   "$DEPLOY/PickmansWhisper/config" \
+  "$DEPLOY/Sound/PickmansWhisper" \
   "$DEPLOY/docs"
 
 cp -f "$PEX_OUT/PickmansWhisperMainQuestScript.pex" "$DEPLOY/Scripts/"
@@ -153,6 +156,11 @@ cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/Pi
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"
 cp -f "$ROOT/Data/PickmansWhisper/config/"*.txt "$DEPLOY/PickmansWhisper/config/" 2>/dev/null || true
+cp -f "$ROOT/Data/Sound/PickmansWhisper/"*.xwm "$DEPLOY/Sound/PickmansWhisper/" 2>/dev/null || true
+if [[ ! -f "$DEPLOY/Sound/PickmansWhisper/EndIt.xwm" ]]; then
+  echo "ERROR: Deploy missing Sound/PickmansWhisper/EndIt.xwm (D0-POC audio)" >&2
+  exit 1
+fi
 
 ESP_SRC=""
 if [[ -f "$ROOT/Data/PickmansWhisper.esp" ]]; then

@@ -105,6 +105,18 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_sleep_recognition.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Audio D0-POC (Debug EndIt) contract test"
+& python (Join-Path $Root "tools\test_audio_poc.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_audio_poc.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Audio D0.5/D1 (SNDR clones + delivery) contract test"
+& python (Join-Path $Root "tools\test_audio_d1.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_audio_d1.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
@@ -149,6 +161,7 @@ Write-Host "==> Deploying to $Deploy"
   "MCM\Config\PickmansWhisper",
   "MCM\Settings",
   "PickmansWhisper\config",
+  "Sound\PickmansWhisper",
   "docs"
 ) | ForEach-Object {
   New-Item -ItemType Directory -Force -Path (Join-Path $Deploy $_) | Out-Null
@@ -164,6 +177,13 @@ Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join
 
 Get-ChildItem (Join-Path $Root "Data\PickmansWhisper\config\*.txt") -ErrorAction SilentlyContinue | ForEach-Object {
   Copy-Item -Force $_.FullName (Join-Path $Deploy "PickmansWhisper\config\")
+}
+Get-ChildItem (Join-Path $Root "Data\Sound\PickmansWhisper\*.xwm") -ErrorAction SilentlyContinue | ForEach-Object {
+  Copy-Item -Force $_.FullName (Join-Path $Deploy "Sound\PickmansWhisper\")
+}
+$endItDeployed = Join-Path $Deploy "Sound\PickmansWhisper\EndIt.xwm"
+if (-not (Test-Path $endItDeployed)) {
+  throw "Deploy missing Sound\PickmansWhisper\EndIt.xwm (D0-POC audio). Source should be Data\Sound\PickmansWhisper\EndIt.xwm"
 }
 
 $Esp = Join-Path $Root "Data\PickmansWhisper.esp"

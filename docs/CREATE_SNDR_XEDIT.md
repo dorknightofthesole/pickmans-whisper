@@ -2,6 +2,8 @@
 
 This guide is for **Pickman's Whisper** Slice D. Goal: make **one** working Sound Descriptor that plays a converted whisper clip via Papyrus `Sound.Play`. Once that “golden” SNDR works in-game, we can clone it for the rest of the lines.
 
+**D0-POC status:** the esp build emits/preserves `PW_Whisper_EndIt` (`0x01000807`) and MCM Debug has **Play test whisper (EndIt)**. See [AUDIO.md](AUDIO.md).
+
 You do **not** need the Creation Kit for this path.
 
 ---

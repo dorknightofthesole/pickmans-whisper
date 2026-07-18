@@ -1,0 +1,2 @@
+# Pickman's Whisper — Calm stage audio map (D1 scaffold).
+# One .xwm filename per NoticeLines_Calm.txt row (same order). Empty until clips exist.

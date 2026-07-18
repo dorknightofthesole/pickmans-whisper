@@ -8,6 +8,7 @@
 		<folder source="Scripts" destination="Scripts" />
 		<folder source="MCM" destination="MCM" />
 		<folder source="PickmansWhisper" destination="PickmansWhisper" />
+		<folder source="Sound" destination="Sound" />
 		<folder source="docs" destination="docs" />
 		<file source="README.md" destination="README.md" />
 		<file source="meta.ini" destination="meta.ini" />

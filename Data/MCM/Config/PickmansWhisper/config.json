@@ -191,6 +191,28 @@
 					}
 				},
 				{
+					"text": "Delivery",
+					"type": "section"
+				},
+				{
+					"id": "iVoiceDelivery:Voice",
+					"text": "Voice delivery",
+					"type": "stepper",
+					"help": "How notices are delivered. Toast and Audio (default): HUD toast and matching whisper clip. Audio only: clip with no toast. Toast only: toast with no audio.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Toast and Audio",
+							"Audio only",
+							"Toast only"
+						]
+					}
+				},
+				{
+					"text": "Tests",
+					"type": "section"
+				},
+				{
 					"text": "Test next trust line",
 					"type": "button",
 					"action": {
@@ -202,7 +224,7 @@
 				{
 					"text": "Test notice (nearby woman)",
 					"type": "button",
-					"help": "Comments on the nearest non-hostile adult female in range (C2).",
+					"help": "Comments on the nearest non-hostile adult female in range (C2). Honors Voice delivery mode.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -221,7 +243,7 @@
 				{
 					"text": "Reload line banks",
 					"type": "button",
-					"help": "Re-reads the five NoticeLines_*.txt files from disk (no game restart) and reports each file's load status.",
+					"help": "Re-reads NoticeLines_*.txt and *_Audio.txt from disk (no game restart) and reports load status.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -229,7 +251,7 @@
 					}
 				},
 				{
-					"text": "Notice whispers are editable under Data/PickmansWhisper/config/ (NoticeLines_Calm/Restless/Hungry/Starving/Desperate.txt). Trust/hunger/praise are builtin. See the Debug page for per-file load status.",
+					"text": "Notice text: Data/PickmansWhisper/config/NoticeLines_*.txt. Audio maps: *_Audio.txt (.xwm filenames). Clips: Data/Sound/PickmansWhisper/. See Debug for load status.",
 					"type": "text",
 					"html": true
 				}
@@ -556,6 +578,16 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugForceBond"
+					}
+				},
+				{
+					"text": "Play test whisper (EndIt)",
+					"type": "button",
+					"help": "D0-POC: Sound.Play on PW_Whisper_EndIt (FormID xx000807 → Sound\\PickmansWhisper\\EndIt.xwm). Quit FO4 to desktop after deploy so MCM reloads this button.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugPlayTestWhisper"
 					}
 				}
 			]

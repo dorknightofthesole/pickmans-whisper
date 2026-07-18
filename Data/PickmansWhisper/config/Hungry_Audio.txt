@@ -1,0 +1,2 @@
+# Pickman's Whisper — Hungry stage audio map (D1 scaffold).
+# One .xwm filename per NoticeLines_Hungry.txt row (same order). Empty until clips exist.

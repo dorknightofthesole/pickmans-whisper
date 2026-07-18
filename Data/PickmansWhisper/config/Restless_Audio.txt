@@ -1,0 +1,2 @@
+# Pickman's Whisper — Restless stage audio map (D1 scaffold).
+# One .xwm filename per NoticeLines_Restless.txt row (same order). Empty until clips exist.

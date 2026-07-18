@@ -136,6 +136,9 @@ Int FID_HUNGER_GLOB = 0x00000802
 Int FID_HUNGER_MGEF_AGI = 0x00000803
 Int FID_HUNGER_MGEF_CHA = 0x00000804
 Int FID_PLAYER_COMBAT_QUEST = 0x00000805 ; alias OnPlayerLoadGame lives here
+; D0-POC / D0.5 whisper SNDRs — EndIt is BASE+0; clones follow Desperate_Audio.txt order.
+Int FID_WHISPER_ENDIT = 0x00000807
+Int FID_WHISPER_BASE = 0x00000807
 
 String MOD_NAME = "PickmansWhisper"
 Int LINE_FILE_MAX = 64
@@ -161,6 +164,29 @@ Int NoticeStarvingCount = 0
 String[] NoticeDesperateLines
 Int NoticeDesperateCount = 0
 String LastNoticeLine = "" ; C3 no-immediate-repeat guard (raw template, pre-name)
+Int LastNoticePickIndex = -1 ; bank index from last PickNoticeLine / audio-only roll
+Int LastNoticePickStage = -1
+; D1 — per-stage audio maps (*_Audio.txt). Filenames only (.xwm); FormIDs via WhisperSndrIds.txt.
+String[] AudioCalmLines
+Int AudioCalmCount = 0
+String[] AudioRestlessLines
+Int AudioRestlessCount = 0
+String[] AudioHungryLines
+Int AudioHungryCount = 0
+String[] AudioStarvingLines
+Int AudioStarvingCount = 0
+String[] AudioDesperateLines
+Int AudioDesperateCount = 0
+String AudioCalmStatus = ""
+String AudioRestlessStatus = ""
+String AudioHungryStatus = ""
+String AudioStarvingStatus = ""
+String AudioDesperateStatus = ""
+String LastAudioFile = "" ; no-immediate-repeat for audio-only rolls
+String[] WhisperSndrFiles
+Int[] WhisperSndrFids
+Int WhisperSndrCount = 0
+String WhisperSndrIdsStatus = ""
 ; Per-stage load status for MCM Debug rows (e.g. "8 lines", "MISSING FILE",
 ; "READ FAILED (GoE2?)", "EMPTY"). LastStageLoadStatus is set by LoadStageBank.
 String NoticeCalmStatus = ""
@@ -1289,10 +1315,30 @@ Function MaybeSpeakNoticeLine(String source)
 	EndIf
 
 	String npcName = GetActorDisplayName(target)
+	Int stage = GetNoticeStage()
+	Int mode = GetVoiceDeliveryMode() ; 0 toast+audio / 1 audio only / 2 toast only
+
+	; --- Audio only: roll audio bank, no toast text ---
+	If mode == 1
+		Int aIdx = PickNoticeAudioIndex(stage)
+		If aIdx < 0
+			LastNoticeStatus = "skip: audio-only stage " + (stage + 1) + " map empty/mismatch"
+			WriteNoticeStatusToMcm()
+			WriteNearbyStatusToMcm()
+			Return
+		EndIf
+		PlayNoticeAudio(stage, aIdx)
+		MarkNoticeCooldown(target)
+		LastNoticeStatus = "ok: audio-only idx=" + aIdx
+		WriteNoticeStatusToMcm()
+		WriteNearbyStatusToMcm()
+		Return
+	EndIf
+
 	String line = PickNoticeLine(npcName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		; Files-only: skip without arming cooldown so a later load can speak.
-		LastNoticeStatus = "skip: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") not loaded"
+		LastNoticeStatus = "skip: stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ") not loaded"
 		WriteNoticeStatusToMcm()
 		WriteNearbyStatusToMcm()
 		Return
@@ -1301,6 +1347,10 @@ Function MaybeSpeakNoticeLine(String source)
 	; Toast FIRST — do not put MCM / MessageBox before this (abort = silent voice).
 	ToastNoticeLine(line)
 	MarkNoticeCooldown(target)
+	; Toast + Audio: same index as PickNoticeLine (no second RandomInt).
+	If mode == 0
+		PlayNoticeAudio(stage, LastNoticePickIndex)
+	EndIf
 	If npcName
 		LastNoticeStatus = "ok: " + npcName
 	Else
@@ -2087,6 +2137,8 @@ Function LoadLineBanks()
 	LoadHungerLines()
 	LoadPraiseLines()
 	LoadNoticeLines()
+	LoadAudioBanks()
+	LoadWhisperSndrIds()
 	LoadRecognitionLines()
 	LoadSleepRecognitionLines()
 	LoadModConfig()
@@ -2362,6 +2414,275 @@ Function LoadNoticeLines()
 	EndIf
 
 	Debug.Trace("PickmansWhisper: notice stages calm=" + NoticeCalmCount + " restless=" + NoticeRestlessCount + " hungry=" + NoticeHungryCount + " starving=" + NoticeStarvingCount + " desperate=" + NoticeDesperateCount)
+EndFunction
+
+; D1 — load five *_Audio.txt maps (filenames only). Empty stages are valid (count 0)
+; until clips are authored; mismatch vs notice count fails loud at load.
+Function LoadAudioBanks()
+	AudioCalmLines = new String[64]
+	AudioCalmCount = LoadStageBank("Calm_Audio.txt", AudioCalmLines)
+	AudioCalmStatus = LastStageLoadStatus
+	AudioRestlessLines = new String[64]
+	AudioRestlessCount = LoadStageBank("Restless_Audio.txt", AudioRestlessLines)
+	AudioRestlessStatus = LastStageLoadStatus
+	AudioHungryLines = new String[64]
+	AudioHungryCount = LoadStageBank("Hungry_Audio.txt", AudioHungryLines)
+	AudioHungryStatus = LastStageLoadStatus
+	AudioStarvingLines = new String[64]
+	AudioStarvingCount = LoadStageBank("Starving_Audio.txt", AudioStarvingLines)
+	AudioStarvingStatus = LastStageLoadStatus
+	AudioDesperateLines = new String[64]
+	AudioDesperateCount = LoadStageBank("Desperate_Audio.txt", AudioDesperateLines)
+	AudioDesperateStatus = LastStageLoadStatus
+
+	ReportAudioNoticeCountMismatch(0, NoticeCalmCount, AudioCalmCount, "Calm")
+	ReportAudioNoticeCountMismatch(1, NoticeRestlessCount, AudioRestlessCount, "Restless")
+	ReportAudioNoticeCountMismatch(2, NoticeHungryCount, AudioHungryCount, "Hungry")
+	ReportAudioNoticeCountMismatch(3, NoticeStarvingCount, AudioStarvingCount, "Starving")
+	ReportAudioNoticeCountMismatch(4, NoticeDesperateCount, AudioDesperateCount, "Desperate")
+
+	Debug.Trace("PickmansWhisper: audio maps calm=" + AudioCalmCount + " restless=" + AudioRestlessCount + " hungry=" + AudioHungryCount + " starving=" + AudioStarvingCount + " desperate=" + AudioDesperateCount)
+EndFunction
+
+Function ReportAudioNoticeCountMismatch(Int stage, Int noticeCount, Int audioCount, String stageName)
+	; Empty audio map (0) while notices exist: OK for unfinished stages — PlayNoticeAudio fails loud if used.
+	; Non-zero mismatch: author error — surface at load.
+	If audioCount <= 0
+		Return
+	EndIf
+	If noticeCount == audioCount
+		Return
+	EndIf
+	String msg = "audio/notice count mismatch " + stageName + " notice=" + noticeCount + " audio=" + audioCount
+	Debug.Notification("Pickman's Whisper: " + msg)
+	Debug.Trace("PickmansWhisper: ERROR " + msg)
+EndFunction
+
+; Generated by esp build — maps EndIt.xwm=2055 (local FormID decimal).
+Function LoadWhisperSndrIds()
+	WhisperSndrFiles = new String[64]
+	WhisperSndrFids = new Int[64]
+	WhisperSndrCount = 0
+	WhisperSndrIdsStatus = "READ FAILED (GoE2 missing?)"
+	String fileName = "WhisperSndrIds.txt"
+	String path = NoticeConfigPath()
+	If !GardenOfEden2.DoesFileExist(fileName, path)
+		WhisperSndrIdsStatus = "MISSING FILE"
+		Debug.Notification("Pickman's Whisper: WhisperSndrIds.txt missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR WhisperSndrIds.txt missing at " + path)
+		Return
+	EndIf
+	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
+	If !raw || raw.Length == 0
+		WhisperSndrIdsStatus = "EMPTY/UNREADABLE"
+		Debug.Notification("Pickman's Whisper: WhisperSndrIds.txt empty — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR WhisperSndrIds.txt empty")
+		Return
+	EndIf
+	Int i = 0
+	While i < raw.Length && WhisperSndrCount < 64
+		String line = TrimString(raw[i])
+		i += 1
+		If line == ""
+			; skip
+		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
+			; comment
+		Else
+			Int eq = -1
+			Int li = 0
+			Int ln = GardenOfEden.StrLength(line)
+			While li < ln && eq < 0
+				If GardenOfEden.SubStr(line, li, 1) == "="
+					eq = li
+				EndIf
+				li += 1
+			EndWhile
+			If eq > 0
+				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
+				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				Int fid = ParsePositiveInt(val)
+				If key != "" && fid > 0
+					WhisperSndrFiles[WhisperSndrCount] = key
+					WhisperSndrFids[WhisperSndrCount] = fid
+					WhisperSndrCount += 1
+				EndIf
+			EndIf
+		EndIf
+	EndWhile
+	If WhisperSndrCount <= 0
+		WhisperSndrIdsStatus = "EMPTY (no usable rows)"
+		Debug.Notification("Pickman's Whisper: WhisperSndrIds.txt has no rows")
+		Debug.Trace("PickmansWhisper: ERROR WhisperSndrIds.txt parsed 0 rows")
+		Return
+	EndIf
+	WhisperSndrIdsStatus = WhisperSndrCount + " SNDRs"
+	Debug.Trace("PickmansWhisper: WhisperSndrIds loaded " + WhisperSndrCount)
+EndFunction
+
+Int Function ParsePositiveInt(String s)
+	If !s
+		Return -1
+	EndIf
+	Int n = 0
+	Int i = 0
+	Int len = GardenOfEden.StrLength(s)
+	If len <= 0
+		Return -1
+	EndIf
+	While i < len
+		String c = GardenOfEden.SubStr(s, i, 1)
+		Int d = -1
+		If c == "0"
+			d = 0
+		ElseIf c == "1"
+			d = 1
+		ElseIf c == "2"
+			d = 2
+		ElseIf c == "3"
+			d = 3
+		ElseIf c == "4"
+			d = 4
+		ElseIf c == "5"
+			d = 5
+		ElseIf c == "6"
+			d = 6
+		ElseIf c == "7"
+			d = 7
+		ElseIf c == "8"
+			d = 8
+		ElseIf c == "9"
+			d = 9
+		EndIf
+		If d < 0
+			Return -1
+		EndIf
+		n = n * 10 + d
+		i += 1
+	EndWhile
+	Return n
+EndFunction
+
+String[] Function GetAudioBankForStage(Int stage)
+	If stage == 4
+		Return AudioDesperateLines
+	ElseIf stage == 3
+		Return AudioStarvingLines
+	ElseIf stage == 2
+		Return AudioHungryLines
+	ElseIf stage == 1
+		Return AudioRestlessLines
+	EndIf
+	Return AudioCalmLines
+EndFunction
+
+Int Function GetAudioCountForStage(Int stage)
+	If stage == 4
+		Return AudioDesperateCount
+	ElseIf stage == 3
+		Return AudioStarvingCount
+	ElseIf stage == 2
+		Return AudioHungryCount
+	ElseIf stage == 1
+		Return AudioRestlessCount
+	EndIf
+	Return AudioCalmCount
+EndFunction
+
+Int Function FindWhisperSndrFid(String fileName)
+	If !fileName || WhisperSndrCount <= 0
+		Return 0
+	EndIf
+	Int i = 0
+	While i < WhisperSndrCount
+		If WhisperSndrFiles[i] == fileName
+			Return WhisperSndrFids[i]
+		EndIf
+		i += 1
+	EndWhile
+	Return 0
+EndFunction
+
+; Audio-only roll — returns index or -1. No toast. Fail-loud via Notification if empty.
+Int Function PickNoticeAudioIndex(Int stage)
+	String[] bank = GetAudioBankForStage(stage)
+	Int count = GetAudioCountForStage(stage)
+	If count <= 0 || !bank
+		Debug.Notification("Pickman's Whisper: audio-only — stage " + GetNoticeStageName(stage) + " map empty")
+		Debug.Trace("PickmansWhisper: ERROR PickNoticeAudioIndex empty stage=" + stage)
+		Return -1
+	EndIf
+	Int idx = Utility.RandomInt(0, count - 1)
+	String fileName = bank[idx]
+	Int tries = 0
+	While tries < 8 && count > 1 && fileName == LastAudioFile
+		idx = Utility.RandomInt(0, count - 1)
+		fileName = bank[idx]
+		tries += 1
+	EndWhile
+	LastAudioFile = fileName
+	LastNoticePickIndex = idx
+	LastNoticePickStage = stage
+	Return idx
+EndFunction
+
+; Play SNDR for *_Audio.txt[index]. Fail loud on missing map/xwm/SNDR — never substitute.
+Function PlayNoticeAudio(Int stage, Int index)
+	If index < 0
+		Debug.Notification("Pickman's Whisper: audio play skipped — bad index")
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio bad index stage=" + stage)
+		Return
+	EndIf
+	String[] bank = GetAudioBankForStage(stage)
+	Int count = GetAudioCountForStage(stage)
+	If count <= 0 || !bank
+		Debug.Notification("Pickman's Whisper: no audio map for " + GetNoticeStageName(stage))
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio empty map stage=" + stage)
+		Return
+	EndIf
+	If index >= count
+		Debug.Notification("Pickman's Whisper: audio index " + index + " out of range (" + count + ") " + GetNoticeStageName(stage))
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio OOB stage=" + stage + " idx=" + index + " count=" + count)
+		Return
+	EndIf
+	String fileName = bank[index]
+	If !fileName || GardenOfEden.StrLength(fileName) < 1
+		Debug.Notification("Pickman's Whisper: empty audio filename at " + GetNoticeStageName(stage) + "[" + index + "]")
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio empty filename")
+		Return
+	EndIf
+	Bool xwmOk = GardenOfEden2.DoesFileExist(fileName, ".\\Data\\Sound\\PickmansWhisper\\")
+	If !xwmOk
+		Debug.Notification("Pickman's Whisper: missing xwm " + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio xwm missing " + fileName)
+		Return
+	EndIf
+	Int fid = FindWhisperSndrFid(fileName)
+	If fid <= 0
+		Debug.Notification("Pickman's Whisper: no SNDR id for " + fileName + " — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio no FormID for " + fileName)
+		Return
+	EndIf
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef
+		Debug.Notification("Pickman's Whisper: audio play — no player")
+		Return
+	EndIf
+	Sound snd = Game.GetFormFromFile(fid, "PickmansWhisper.esp") as Sound
+	If !snd
+		Debug.Notification("Pickman's Whisper: SNDR missing for " + fileName + " (fid=" + fid + ")")
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio GetFormFromFile failed fid=" + fid + " file=" + fileName)
+		Return
+	EndIf
+	Int inst = snd.Play(PlayerRef)
+	If inst == 0
+		Debug.Notification("Pickman's Whisper: Play failed for " + fileName + " (instance 0)")
+		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio Play=0 file=" + fileName)
+		Return
+	EndIf
+	LastAudioFile = fileName
+	Debug.Trace("PickmansWhisper: PlayNoticeAudio " + fileName + " inst=" + inst)
 EndFunction
 
 ; One modal dialog with the full step-by-step load trace (screenshot-friendly).
@@ -2642,6 +2963,7 @@ EndFunction
 
 ; Files-only: returns "" when the current stage's file did not load. Callers must
 ; treat "" as "skip this whisper" — there is no hardcoded fallback line.
+; Sets LastNoticePickIndex / LastNoticePickStage for D1 same-index audio.
 String Function PickNoticeLine(String npcName)
 	Int stage = GetNoticeStage()
 	String[] bank = GetNoticeBankForStage(stage)
@@ -2653,25 +2975,33 @@ String Function PickNoticeLine(String npcName)
 		count = GetNoticeCountForStage(stage)
 	EndIf
 	If count <= 0 || !bank
+		LastNoticePickIndex = -1
+		LastNoticePickStage = stage
 		Return ""
 	EndIf
 
 	String useName = NoticeNameForLine(npcName)
 	Bool wantNameless = (useName == "")
 
-	String raw = bank[Utility.RandomInt(0, count - 1)]
+	Int idx = Utility.RandomInt(0, count - 1)
+	String raw = bank[idx]
 	; One bounded reroll loop covers two wants: no immediate repeat, and (for
 	; unnamed targets like generic settlers) prefer lines without {name} so we
 	; never toast an awkwardly stripped sentence.
 	Int tries = 0
 	While tries < 8 && count > 1 && (raw == LastNoticeLine || (wantNameless && StrContains(raw, "{name}")))
-		raw = bank[Utility.RandomInt(0, count - 1)]
+		idx = Utility.RandomInt(0, count - 1)
+		raw = bank[idx]
 		tries += 1
 	EndWhile
 	If !raw
+		LastNoticePickIndex = -1
+		LastNoticePickStage = stage
 		Return ""
 	EndIf
 	LastNoticeLine = raw
+	LastNoticePickIndex = idx
+	LastNoticePickStage = stage
 
 	; ApplyNamePlaceholder strips {name} safely when there's no usable name.
 	Return ApplyNamePlaceholder(raw, useName)
@@ -2875,6 +3205,21 @@ Bool Function IsVoiceEnabled()
 		Return MCM.GetModSettingBool(MOD_NAME, "bVoiceToasts:Voice")
 	EndIf
 	Return True
+EndFunction
+
+; 0 = Toast + Audio (default), 1 = Audio only, 2 = Toast only.
+Int Function GetVoiceDeliveryMode()
+	If MCM.IsInstalled()
+		Int v = MCM.GetModSettingInt(MOD_NAME, "iVoiceDelivery:Voice")
+		If v < 0
+			Return 0
+		EndIf
+		If v > 2
+			Return 2
+		EndIf
+		Return v
+	EndIf
+	Return 0
 EndFunction
 
 Float Function GetHungerTimeGainPerHour()
@@ -4232,6 +4577,55 @@ Function DebugForceBond()
 	Debug.MessageBox("Pickman's Whisper\n\nBond forced. Hunger unlocked.")
 EndFunction
 
+; D0-POC — play golden EndIt SNDR (no notice/audio-map wiring yet).
+; MessageBox reports form resolve, loose xwm presence, and Play instance id (0 = failed).
+Function DebugPlayTestWhisper()
+	String nl = "\n"
+	String msg = "Pickman's Whisper — Play test whisper [" + DEBUG_BUILD + "]" + nl + nl
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef
+		msg += "FAIL: PlayerRef missing"
+		Debug.Trace("PickmansWhisper: ERROR DebugPlayTestWhisper — PlayerRef missing")
+		Debug.Notification("Pickman's Whisper: Play test whisper — no player")
+		Debug.MessageBox(msg)
+		Return
+	EndIf
+	msg += "FID 0x00000807 / PW_Whisper_EndIt" + nl
+	msg += "SNDR path: Sound\\PickmansWhisper\\EndIt.xwm" + nl
+	; GoE path is FO4-root relative (same pattern as NoticeConfigPath).
+	Bool xwmOk = GardenOfEden2.DoesFileExist("EndIt.xwm", ".\\Data\\Sound\\PickmansWhisper\\")
+	msg += "loose xwm exists=" + xwmOk + nl
+	If !xwmOk
+		msg += "HINT: deploy Data\\Sound\\PickmansWhisper\\EndIt.xwm into MO2 mod" + nl
+	EndIf
+	Form f = Game.GetFormFromFile(FID_WHISPER_ENDIT, "PickmansWhisper.esp")
+	msg += "GetFormFromFile ok=" + (f != None) + nl
+	Sound snd = f as Sound
+	msg += "cast Sound ok=" + (snd != None) + nl
+	If !snd
+		msg += nl + "FAIL: SNDR missing — update/rebuild ESP"
+		Debug.Trace("PickmansWhisper: ERROR DebugPlayTestWhisper — GetFormFromFile 0x00000807 failed")
+		Debug.Notification("Pickman's Whisper: PW_Whisper_EndIt SNDR missing (0x807)")
+		Debug.MessageBox(msg)
+		Return
+	EndIf
+	; Play returns instance id; 0 means the engine refused / failed to start.
+	Int inst = snd.Play(PlayerRef)
+	msg += "Sound.Play instanceId=" + inst + nl
+	If inst == 0
+		msg += nl + "FAIL: Play returned 0 (silent). Check xwm path, category mute, or 3D."
+		Debug.Trace("PickmansWhisper: ERROR DebugPlayTestWhisper Play instance=0 xwmExists=" + xwmOk)
+		Debug.Notification("Pickman's Whisper: EndIt Play failed (instance 0)")
+	Else
+		msg += nl + "OK: Play started (listen for clip)."
+		Debug.Trace("PickmansWhisper: DebugPlayTestWhisper Play instance=" + inst + " xwmExists=" + xwmOk)
+		Debug.Notification("Pickman's Whisper: EndIt Play instance=" + inst)
+	EndIf
+	Debug.MessageBox(msg)
+EndFunction
+
 ; Regression helper — confirm GoE sees Pickman's drawn without needing a kill.
 Function DebugVerifyBladeDetect()
 	If !PlayerRef
@@ -4345,18 +4739,34 @@ Function DebugTestNoticeLine()
 		Return
 	EndIf
 	String npcName = GetActorDisplayName(target)
-	String line = PickNoticeLine(npcName)
 	String who = npcName
 	If who == ""
 		who = "id=" + target.GetFormID()
 	EndIf
+	Int stage = GetNoticeStage()
+	Int mode = GetVoiceDeliveryMode()
+	If mode == 1
+		Int aIdx = PickNoticeAudioIndex(stage)
+		If aIdx < 0
+			Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nAudio-only: no map for stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ").")
+			Return
+		EndIf
+		PlayNoticeAudio(stage, aIdx)
+		MarkNoticeCooldown(target)
+		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nMode: Audio only\nIndex: " + aIdx)
+		Return
+	EndIf
+	String line = PickNoticeLine(npcName)
 	If line == ""
-		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nNo whisper: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") file not loaded.\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
+		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nNo whisper: stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ") file not loaded.\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
 		Return
 	EndIf
 	MarkNoticeCooldown(target)
 	ToastNoticeLine(line)
-	Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nGoE female: " + nFem + " any: " + nAny + "\n\n" + line)
+	If mode == 0
+		PlayNoticeAudio(stage, LastNoticePickIndex)
+	EndIf
+	Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nGoE female: " + nFem + " any: " + nAny + "\nMode: " + mode + " idx: " + LastNoticePickIndex + "\n\n" + line)
 EndFunction
 
 ; Unfiltered proximity probe — prove GoE/Detecting see anyone before notice filters.

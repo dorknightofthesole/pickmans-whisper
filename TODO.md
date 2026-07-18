@@ -17,9 +17,14 @@
   - [x] **P3+P4** Potential Victims (merged): MCM Victims + FormID↔name + SetDisplayName; optional VictimsHold alias
   - [x] **P5** Sleep recognition (`SleepRecognitionLines.txt` when 3rd+ look + sleeping)
 
+## Slice D
+
+- [x] **D0-POC** MCM Debug Play test whisper (EndIt) (`tools/test_audio_poc.py`)
+- [x] **D0.5** Clone SNDRs for Desperate_Audio.txt stems + WhisperSndrIds.txt
+- [x] **D1** Delivery mode + notice-hook audio maps (`tools/test_audio_d1.py`) — verify in-game
+
 ## Later
 
-- [ ] Audio bank research / playback (D)
 - [ ] **E** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
 - [ ] Corpse hold sync with Necromantic (F)
 - [ ] Bed corpse hallucination (G) — see docs/BED_CORPSE_HALLUCINATION.md

@@ -7,7 +7,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM | **Shipped (0.1.0)** |
 | **B** | Kill-with-knife praise + satiation rules | **Done** |
 | **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **Done** — C1–C5 verified in-game |
-| **D** | Audio bank playback (research + implement) | Planned |
+| **D** | Audio bank playback (research + implement) | **In progress** — D0–D1 Desperate audio; verify delivery modes in-game |
 | **E** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
 | **F** | Corpse preserve sync with Necromantic | Planned |
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
@@ -45,9 +45,11 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 
 ## Slice D — audio
 
-- Research: `Sound.Play` / SNDR (not play-by-path for loose `whispers/*.mp3`).
-- Non-blocking one-shots; toast / audio delivery modes; map files `*_Audio.txt`.
-- Beginner guide: create the first SNDR in xEdit — [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
+- [x] **D0-POC** — MCM Debug **Play test whisper (EndIt)** → `Sound.Play` on `PW_Whisper_EndIt` (`0x807`).
+- [x] **D0.5** — Esp build clones SNDR for every `Desperate_Audio.txt` `.xwm` stem (`PW_Whisper_<Stem>`, `WhisperSndrIds.txt`).
+- [x] **D1** — Load `*_Audio.txt`, MCM `iVoiceDelivery` (Toast+Audio / Audio / Toast), same-index `PlayNoticeAudio` on notice path (`tools/test_audio_d1.py`). **Verify in-game** (force Desperate stage).
+- Map keys are **`.xwm`** under `Data/Sound/PickmansWhisper/`. Blank Calm/Restless/Hungry/Starving maps until clips exist.
+- Docs: [AUDIO.md](AUDIO.md), [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
 
 ## Slice E — slow hunger + peak wait rewards
 

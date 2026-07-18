@@ -85,6 +85,11 @@ def stage() -> None:
 
     copy_tree_contents(ROOT / "Data" / "MCM", STAGING / "MCM")
     copy_tree_contents(ROOT / "Data" / "PickmansWhisper", STAGING / "PickmansWhisper")
+    copy_tree_contents(ROOT / "Data" / "Sound", STAGING / "Sound")
+    require_file(
+        STAGING / "Sound" / "PickmansWhisper" / "EndIt.xwm",
+        "Sound/PickmansWhisper/EndIt.xwm",
+    )
 
     docs = ROOT / "docs"
     if docs.is_dir():
@@ -106,6 +111,7 @@ def stage() -> None:
         "Scripts",
         "MCM",
         "PickmansWhisper",
+        "Sound",
         "docs",
         "README.md",
         "meta.ini",
