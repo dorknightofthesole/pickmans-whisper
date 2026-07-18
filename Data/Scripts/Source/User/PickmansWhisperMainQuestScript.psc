@@ -265,6 +265,10 @@ Int VictimSlotCount = 0
 RefCollectionAlias Property VictimsHold Auto ; optional hold; AddRef when present
 String Property LastVictimStatus = "" Auto ; MCM Victims — last apply / aimed status
 String Property LastVictimsSummary = "" Auto ; MCM Victims — short list
+; Camera target is usually None while MCM is open — cache last world aim for Victims page.
+Actor LastVictimsAimActor = None
+Int LastVictimsAimId = 0
+String LastVictimsAimLine = "" ; pushed to sVictimAimed (survives RefreshMenu re-push)
 
 ; TargetOverrides.txt — opt-in filter gates (default off = current safe blocks).
 Bool AllowChildFemalesOverride = False
@@ -1708,43 +1712,105 @@ Function WriteVictimsSummaryToMcm()
 	EndIf
 EndFunction
 
-Function RefreshVictimsPanel(Bool refreshMenu = True)
+Function WriteVictimsAimedToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If !LastVictimsAimLine
+		MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", "(look at an adult woman, then open MCM)")
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", LastVictimsAimLine)
+	EndIf
+EndFunction
+
+; Remember world aim — GetCameraTargetReference is usually None while Pause/MCM is open.
+Function NoteVictimsAimActor(Actor ak)
+	If !ak || ak == PlayerRef
+		Return
+	EndIf
+	If ak.IsDisabled()
+		Return
+	EndIf
+	LastVictimsAimActor = ak
+	LastVictimsAimId = ak.GetFormID()
+EndFunction
+
+; Live camera target if any; else last cached world aim (still loaded).
+Actor Function ResolveVictimsAimActor()
+	Actor live = GetLookAimActor()
+	If live && live != PlayerRef
+		NoteVictimsAimActor(live)
+		Return live
+	EndIf
+	If LastVictimsAimActor && LastVictimsAimId != 0
+		If LastVictimsAimActor.GetFormID() == LastVictimsAimId && !LastVictimsAimActor.IsDisabled()
+			Return LastVictimsAimActor
+		EndIf
+	EndIf
+	Return None
+EndFunction
+
+Function PushVictimsPanelStrings()
 	If !PlayerRef
 		PlayerRef = Game.GetPlayer()
 	EndIf
-	Actor aimed = GetLookAimActor()
-	String aimLine = "(look at an adult woman, then open MCM)"
-	If aimed && aimed != PlayerRef
+	Actor aimed = ResolveVictimsAimActor()
+	LastVictimsAimLine = "(look at an adult woman in-world, then Refresh)"
+	If aimed
 		String nm = GetActorDisplayName(aimed)
 		If !nm
 			nm = "unnamed"
 		EndIf
-		aimLine = nm + "  id=0x" + GardenOfEden.GetHexFormID(aimed)
+		String src = "aim"
+		Actor live = GetLookAimActor()
+		If !live || live != aimed
+			src = "last look"
+		EndIf
+		LastVictimsAimLine = nm + "  id=0x" + GardenOfEden.GetHexFormID(aimed) + " (" + src + ")"
 		EnsureVictimDisplayName(aimed)
 	EndIf
-	If MCM.IsInstalled()
-		MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", aimLine)
-	EndIf
+	WriteVictimsAimedToMcm()
 	WriteVictimsSummaryToMcm()
 	WriteVictimsStatusToMcm()
+EndFunction
+
+Function RefreshVictimsPanel(Bool refreshMenu = True)
+	; Same order as RefreshDebugStatus: RefreshMenu reloads settings.ini and wipes
+	; SetModSettingString — push live rows AFTER the menu refresh.
+	PushVictimsPanelStrings()
 	If refreshMenu && MCM.IsInstalled()
 		MCM.RefreshMenu()
+		WriteVictimsAimedToMcm()
+		WriteVictimsSummaryToMcm()
+		WriteVictimsStatusToMcm()
 	EndIf
 EndFunction
 
-; MCM Victims — apply sVictimName to the currently aimed NPC.
+; MCM CallFunction entry (no args) — button "Refresh aimed / list".
+Function MCMRefreshVictimsPanel()
+	RefreshVictimsPanel(True)
+	If LastVictimsAimLine && GardenOfEden.ReplaceStr(LastVictimsAimLine, "(look at", "") == LastVictimsAimLine
+		Debug.Notification("Pickman's Whisper: aimed " + LastVictimsAimLine)
+	Else
+		Debug.Notification("Pickman's Whisper: no aim — look at her in-world, then Refresh")
+	EndIf
+EndFunction
+
+; MCM Victims — apply sVictimName to live aim or last cached look.
 Function MCMNameAimedVictim()
 	If !PlayerRef
 		PlayerRef = Game.GetPlayer()
 	EndIf
-	Actor aimed = GetLookAimActor()
+	Actor aimed = ResolveVictimsAimActor()
 	If !aimed || aimed == PlayerRef
-		LastVictimStatus = "no aim target — look at her first"
-		WriteVictimsStatusToMcm()
-		Debug.Notification("Pickman's Whisper: look at someone, then Name aimed")
+		LastVictimStatus = "no aim target — look at her in-world, then Name aimed"
+		PushVictimsPanelStrings()
 		If MCM.IsInstalled()
 			MCM.RefreshMenu()
+			WriteVictimsAimedToMcm()
+			WriteVictimsStatusToMcm()
 		EndIf
+		Debug.Notification("Pickman's Whisper: look at someone in-world, then Name aimed")
 		Return
 	EndIf
 	String name = ""
@@ -1916,6 +1982,9 @@ Function TickLookFixation()
 		LastLookFixationId = 0
 		Return
 	EndIf
+
+	; Cache for MCM Victims (camera target dies when Pause menu opens).
+	NoteVictimsAimActor(ak)
 
 	Int id = ak.GetFormID()
 	If id == 0

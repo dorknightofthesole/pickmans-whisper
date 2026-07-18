@@ -8,7 +8,9 @@ Locks:
   - GetActorDisplayName prefers override, then GetDisplayName, then base name
   - EnsureVictimDisplayName re-applies when display drifts
   - Optional VictimsHold RefCollectionAlias AddRef when present
-  - MCM Victims page + MCMNameAimedVictim
+  - MCM Victims page + MCMNameAimedVictim / MCMRefreshVictimsPanel
+  - RefreshVictimsPanel re-pushes strings AFTER RefreshMenu (settings.ini wipe)
+  - ResolveVictimsAimActor uses live aim or last look cache (MCM kills camera target)
   - No StrFind->SubStr index slicing in victim helpers
   - SetDisplayName stub is real F4SE (present); no fake natives
 
@@ -142,9 +144,31 @@ def test_psc(text: str) -> None:
     if "MCMNameAimedVictim" not in text:
         fail("MCMNameAimedVictim missing")
     mcm_fn = extract_function(text, "MCMNameAimedVictim")
-    if "GetLookAimActor" not in mcm_fn or "sVictimName:Victims" not in mcm_fn:
-        fail("MCMNameAimedVictim must aim + read sVictimName:Victims")
+    if "ResolveVictimsAimActor" not in mcm_fn or "sVictimName:Victims" not in mcm_fn:
+        fail("MCMNameAimedVictim must ResolveVictimsAimActor + read sVictimName:Victims")
     ok("MCMNameAimedVictim wired")
+
+    for name in (
+        "NoteVictimsAimActor",
+        "ResolveVictimsAimActor",
+        "PushVictimsPanelStrings",
+        "MCMRefreshVictimsPanel",
+        "WriteVictimsAimedToMcm",
+    ):
+        extract_function(text, name)
+    refresh = extract_function(text, "RefreshVictimsPanel")
+    if "PushVictimsPanelStrings" not in refresh:
+        fail("RefreshVictimsPanel must PushVictimsPanelStrings")
+    if "MCM.RefreshMenu()" not in refresh:
+        fail("RefreshVictimsPanel may RefreshMenu")
+    # After RefreshMenu, must re-push (settings.ini wipe) — WriteVictimsAimedToMcm after RefreshMenu
+    after = refresh.split("MCM.RefreshMenu()", 1)
+    if len(after) < 2 or "WriteVictimsAimedToMcm" not in after[1]:
+        fail("RefreshVictimsPanel must re-push aimed strings AFTER RefreshMenu")
+    tick = extract_function(text, "TickLookFixation")
+    if "NoteVictimsAimActor" not in tick:
+        fail("TickLookFixation must NoteVictimsAimActor for MCM cache")
+    ok("Victims MCM aim cache + RefreshMenu re-push")
 
 
 def test_mcm() -> None:
@@ -156,9 +180,12 @@ def test_mcm() -> None:
         '"id": "sVictimAimed:Victims"',
         '"id": "sVictimsSummary:Victims"',
         '"function": "MCMNameAimedVictim"',
+        '"function": "MCMRefreshVictimsPanel"',
     ):
         if needle not in cfg:
             fail(f"Victims MCM missing {needle}")
+    if '"function": "RefreshVictimsPanel"' in cfg:
+        fail("MCM button must call MCMRefreshVictimsPanel (not RefreshVictimsPanel with Bool)")
     ok("MCM Victims page")
     ini = MCM_SETTINGS.read_text(encoding="utf-8")
     if "[Victims]" not in ini or "sVictimName=" not in ini:

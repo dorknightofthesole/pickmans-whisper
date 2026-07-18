@@ -269,7 +269,7 @@
 					"id": "sVictimAimed:Victims",
 					"text": "Aimed now",
 					"type": "textinput",
-					"help": "Updates when you open this page. Look at her in the world first.",
+					"help": "Look at her in the world (blade drawn for fixation helps), then open MCM or hit Refresh. Uses last look while the menu is open.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
@@ -286,7 +286,7 @@
 				{
 					"text": "Name aimed NPC",
 					"type": "button",
-					"help": "SetDisplayName on the aimed actor + save FormID↔name for whispers.",
+					"help": "SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -296,10 +296,11 @@
 				{
 					"text": "Refresh aimed / list",
 					"type": "button",
+					"help": "Re-read last look aim + named list. Look in-world first — camera target is empty while MCM is open.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "RefreshVictimsPanel"
+						"function": "MCMRefreshVictimsPanel"
 					}
 				},
 				{
