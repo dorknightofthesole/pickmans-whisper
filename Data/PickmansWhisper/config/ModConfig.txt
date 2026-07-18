@@ -1,0 +1,8 @@
+# Pickman's Whisper — mod config (key=value).
+# Edit and reload via MCM Voice > Reload line banks (or reopen MCM / reload save).
+# Blank and # lines ignored. Values are everything after the first '='.
+#
+# renamePromptFemaleNPC — toast after 3+ recognition looks while she is still unnamed.
+# Future keys can add prompts for other target types (e.g. renamePromptFemaleRobot).
+
+renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]

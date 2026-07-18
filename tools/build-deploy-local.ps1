@@ -93,6 +93,18 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_recognition_lines.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Potential Victims (C5 P3+P4) contract test"
+& python (Join-Path $Root "tools\test_potential_victims.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_potential_victims.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Sleep recognition (C5 P5) contract test"
+& python (Join-Path $Root "tools\test_sleep_recognition.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_sleep_recognition.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

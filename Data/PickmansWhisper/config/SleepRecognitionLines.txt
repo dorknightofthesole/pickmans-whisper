@@ -1,0 +1,20 @@
+# Pickman's Whisper — sleep recognition (C5 P5).
+# Used on 3rd+ look when the aimed NPC is sleeping (GetSleepState >= 3).
+# {name} = real NPC name or player-assigned label (auto-omitted for Settler /
+# glyph-junk / unusable names). Blank/# lines ignored.
+
+Look at her. Soft. Unaware.
+She's under. You could stay.
+Breathing so even. So open.
+{name} sleeps like she trusts the dark.
+You could watch her for hours. Maybe you will.
+What is she dreaming? Is it you?
+{name}. Still. Yours to look at.
+Her eyelids flutter — does she see you in there?
+I could sit here until morning. She wouldn't know.
+{name} dreams soft things. Or of me.
+So peaceful. So easy to take in.
+She won't wake. Not for a long while.
+{name} — asleep, and still pulling your eyes.
+Hours. You could give her hours of quiet watching.
+Somewhere in that sleep, maybe she's reaching for you.

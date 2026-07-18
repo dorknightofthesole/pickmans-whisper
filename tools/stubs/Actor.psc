@@ -31,6 +31,8 @@ Function Disable(Bool abFadeOut = False) Native
 Function Enable(Bool abFadeIn = False) Native
 Bool Function IsDisabled() Native
 Bool Function Is3DLoaded() Native
+; FO4 native — 0 not sleeping, 2 wants sleep, 3 sleeping, 4 wants wake.
+Int Function GetSleepState() Native
 Event OnPlayerLoadGame()
 EndEvent
 Weapon Function GetEquippedWeapon(Int aiEquipIndex = 0) Native

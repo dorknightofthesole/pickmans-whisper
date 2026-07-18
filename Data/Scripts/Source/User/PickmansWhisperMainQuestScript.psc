@@ -118,6 +118,9 @@ Int TIMER_NOTICE = 5 ; C2 notice voice (slow ambient)
 Int TIMER_NOTICE_APPROACH = 6 ; retired — CancelTimer only (0.5s poll silenced the quest)
 Int TIMER_BOOT_ARM = 7 ; post-load delayed ArmRuntimeLoops (OnInit often skips on mid-game saves)
 Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
+Int TIMER_RENAME_PROMPT = 14 ; delayed renamePromptFemaleNPC (avoid clobbering recognition toast)
+Float RENAME_PROMPT_DELAY = 2.5
+String PendingRenamePrompt = "" ; queued ModConfig line for TIMER_RENAME_PROMPT
 Float BOOT_ARM_SECONDS = 2.0
 
 ; Vanilla anchors (Fallout4.esm)
@@ -196,6 +199,7 @@ String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't
 Int FIXATION_MAX = 32
 Int[] FixationIds
 Int[] FixationCounts
+Int[] RecognitionToastCounts ; parallel — how many RecognitionLines toasts for this FormID
 Int FixationSlotCount = 0
 Int LastLookFixationId = 0 ; FormID under aim last tick; 0 = none
 String Property LastFixationStatus = "" Auto ; MCM Debug — last look-fixation edge
@@ -203,6 +207,26 @@ String[] RecognitionLines
 Int RecognitionLineCount = 0
 String LastRecognitionLine = "" ; no-immediate-repeat (raw template)
 String RecognitionLoadStatus = ""
+; C5 P5 — sleep recognition bank (3rd+ look while GetSleepState >= 3).
+String[] SleepRecognitionLines
+Int SleepRecognitionLineCount = 0
+String LastSleepRecognitionLine = "" ; no-immediate-repeat (raw template)
+String SleepRecognitionLoadStatus = ""
+; After this many recognition toasts on one NPC (still unnamed), nudge toward MCM Victims.
+Int RECOGNITION_NAME_PROMPT_AT = 3
+; Loaded from ModConfig.txt (renamePromptFemaleNPC) — files-only, no baked mirror.
+String RenamePromptFemaleNPC = ""
+String ModConfigLoadStatus = ""
+
+; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
+; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
+Int VICTIM_MAX = 32
+Int[] VictimIds
+String[] VictimNames
+Int VictimSlotCount = 0
+RefCollectionAlias Property VictimsHold Auto ; optional hold; AddRef when present
+String Property LastVictimStatus = "" Auto ; MCM Victims — last apply / aimed status
+String Property LastVictimsSummary = "" Auto ; MCM Victims — short list
 
 ; TargetOverrides.txt — opt-in filter gates (default off = current safe blocks).
 Bool AllowChildFemalesOverride = False
@@ -311,6 +335,8 @@ Function HandleGameResume(String reason)
 	NoticeCoolCount = 0
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
+	; Potential Victims summary only — SetDisplayName re-applies lazily when she is seen.
+	WriteVictimsSummaryToMcm()
 	Debug.Trace("PickmansWhisper: game resume (" + reason + ") " + DEBUG_BUILD)
 	ToastDebug("Pickman's Whisper load [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
@@ -427,6 +453,13 @@ Event OnTimer(Int aiTimerID)
 		; quest must not go silent the way a mid-tick crash killed ambient before.
 		StartKillScanLoop()
 		RunKillScanTick()
+	ElseIf aiTimerID == TIMER_RENAME_PROMPT
+		; Fired after recognition toast so FO4 HUD does not replace the line bank toast.
+		If PendingRenamePrompt
+			ShowVoiceToast(PendingRenamePrompt)
+			Debug.Trace("PickmansWhisper: name-her prompt (delayed) | " + PendingRenamePrompt)
+			PendingRenamePrompt = ""
+		EndIf
 	EndIf
 EndEvent
 
@@ -1314,15 +1347,20 @@ Function ShowVoiceToast(String line)
 EndFunction
 
 ; Whisper / fixation / notice label for an actor.
-; P3 Potential Victims: GetVictimOverrideName wins over engine FULL name so
-; player-assigned labels feed {name} without changing callers.
+; P3+P4 Potential Victims: override + SetDisplayName so {name} matches aim/HUD.
 String Function GetActorDisplayName(Actor ak)
 	If !ak
 		Return ""
 	EndIf
 	String overrideName = GetVictimOverrideName(ak)
 	If overrideName
+		; Lazy re-apply after load (ExtraTextDisplayData can drop; FormID table persists).
+		EnsureVictimDisplayName(ak)
 		Return overrideName
+	EndIf
+	String disp = ak.GetDisplayName()
+	If disp
+		Return disp
 	EndIf
 	ActorBase base = ak.GetLeveledActorBase()
 	If !base
@@ -1335,12 +1373,219 @@ String Function GetActorDisplayName(Actor ak)
 	Return n
 EndFunction
 
-; C5 P3 — FormID → player-given Potential Victim name. Empty until P3 ships.
+; --- C5 P3+P4 Potential Victims ------------------------------------------------
+
+Function EnsureVictimLists()
+	If !VictimIds || VictimIds.Length == 0
+		VictimIds = new Int[32]
+		VictimNames = new String[32]
+		VictimSlotCount = 0
+	EndIf
+EndFunction
+
+Int Function FindVictimSlot(Int formId)
+	EnsureVictimLists()
+	If formId == 0
+		Return -1
+	EndIf
+	Int i = 0
+	While i < VictimSlotCount
+		If VictimIds[i] == formId
+			Return i
+		EndIf
+		i += 1
+	EndWhile
+	Return -1
+EndFunction
+
+String Function GetVictimNameByFormId(Int formId)
+	Int slot = FindVictimSlot(formId)
+	If slot < 0
+		Return ""
+	EndIf
+	Return VictimNames[slot]
+EndFunction
+
+; FormID → player-given Potential Victim name (save-persisted).
 String Function GetVictimOverrideName(Actor ak)
 	If !ak
 		Return ""
 	EndIf
-	Return ""
+	Return GetVictimNameByFormId(ak.GetFormID())
+EndFunction
+
+; Store FormID+name. Returns False if table full and formId is new.
+Bool Function UpsertVictim(Int formId, String name)
+	EnsureVictimLists()
+	If formId == 0 || !name
+		Return False
+	EndIf
+	Int slot = FindVictimSlot(formId)
+	If slot >= 0
+		VictimNames[slot] = name
+		Return True
+	EndIf
+	If VictimSlotCount >= VICTIM_MAX
+		Return False
+	EndIf
+	VictimIds[VictimSlotCount] = formId
+	VictimNames[VictimSlotCount] = name
+	VictimSlotCount += 1
+	Return True
+EndFunction
+
+Function HoldVictimRef(Actor ak)
+	If !ak || !VictimsHold
+		Return
+	EndIf
+	If VictimsHold.Find(ak) < 0
+		VictimsHold.AddRef(ak)
+	EndIf
+EndFunction
+
+; Re-apply F4SE world name when stored override differs from current display.
+Function EnsureVictimDisplayName(Actor ak)
+	If !ak
+		Return
+	EndIf
+	String n = GetVictimOverrideName(ak)
+	If !n
+		Return
+	EndIf
+	String cur = ak.GetDisplayName()
+	If cur == n
+		Return
+	EndIf
+	ak.SetDisplayName(n, True)
+EndFunction
+
+; Apply player-chosen name to a living actor (MCM / debug).
+Bool Function ApplyVictimName(Actor ak, String name)
+	If !ak || !name
+		LastVictimStatus = "apply failed — no actor or name"
+		WriteVictimsStatusToMcm()
+		Return False
+	EndIf
+	String useName = TrimString(name)
+	If !IsUsableWhisperName(useName)
+		LastVictimStatus = "apply failed — name not usable (generic/junk?)"
+		WriteVictimsStatusToMcm()
+		Debug.Notification("Pickman's Whisper: name rejected — use a real name (not Settler/Resident)")
+		Return False
+	EndIf
+	; Block workshop generics even if they pass glyph checks
+	If NoticeNameForLine(useName) == ""
+		LastVictimStatus = "apply failed — generic label blocked"
+		WriteVictimsStatusToMcm()
+		Debug.Notification("Pickman's Whisper: generic labels can't be victim names")
+		Return False
+	EndIf
+	Int id = ak.GetFormID()
+	If !UpsertVictim(id, useName)
+		LastVictimStatus = "apply failed — victim table full (32)"
+		WriteVictimsStatusToMcm()
+		Debug.Notification("Pickman's Whisper: victim list full (32)")
+		Return False
+	EndIf
+	Bool ok = ak.SetDisplayName(useName, True)
+	HoldVictimRef(ak)
+	If ok
+		LastVictimStatus = useName + " ok id=0x" + GardenOfEden.GetHexFormID(ak)
+	Else
+		LastVictimStatus = useName + " stored; SetDisplayName returned false id=0x" + GardenOfEden.GetHexFormID(ak)
+	EndIf
+	WriteVictimsSummaryToMcm()
+	WriteVictimsStatusToMcm()
+	Debug.Trace("PickmansWhisper: victim named | " + LastVictimStatus)
+	Return True
+EndFunction
+
+Function WriteVictimsStatusToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If !LastVictimStatus
+		MCM.SetModSettingString(MOD_NAME, "sVictimStatus:Victims", "(none yet)")
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sVictimStatus:Victims", LastVictimStatus)
+	EndIf
+EndFunction
+
+Function WriteVictimsSummaryToMcm()
+	EnsureVictimLists()
+	String s = ""
+	Int i = 0
+	Int shown = 0
+	While i < VictimSlotCount && shown < 8
+		If VictimNames[i]
+			If s != ""
+				s += "; "
+			EndIf
+			s += VictimNames[i]
+			shown += 1
+		EndIf
+		i += 1
+	EndWhile
+	If VictimSlotCount > 8
+		s += " (+" + (VictimSlotCount - 8) + " more)"
+	EndIf
+	If s == ""
+		s = "(no named victims yet)"
+	EndIf
+	LastVictimsSummary = s
+	If MCM.IsInstalled()
+		MCM.SetModSettingString(MOD_NAME, "sVictimsSummary:Victims", s)
+	EndIf
+EndFunction
+
+Function RefreshVictimsPanel(Bool refreshMenu = True)
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	Actor aimed = GetLookAimActor()
+	String aimLine = "(look at an adult woman, then open MCM)"
+	If aimed && aimed != PlayerRef
+		String nm = GetActorDisplayName(aimed)
+		If !nm
+			nm = "unnamed"
+		EndIf
+		aimLine = nm + "  id=0x" + GardenOfEden.GetHexFormID(aimed)
+		EnsureVictimDisplayName(aimed)
+	EndIf
+	If MCM.IsInstalled()
+		MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", aimLine)
+	EndIf
+	WriteVictimsSummaryToMcm()
+	WriteVictimsStatusToMcm()
+	If refreshMenu && MCM.IsInstalled()
+		MCM.RefreshMenu()
+	EndIf
+EndFunction
+
+; MCM Victims — apply sVictimName to the currently aimed NPC.
+Function MCMNameAimedVictim()
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	Actor aimed = GetLookAimActor()
+	If !aimed || aimed == PlayerRef
+		LastVictimStatus = "no aim target — look at her first"
+		WriteVictimsStatusToMcm()
+		Debug.Notification("Pickman's Whisper: look at someone, then Name aimed")
+		If MCM.IsInstalled()
+			MCM.RefreshMenu()
+		EndIf
+		Return
+	EndIf
+	String name = ""
+	If MCM.IsInstalled()
+		name = MCM.GetModSettingString(MOD_NAME, "sVictimName:Victims")
+	EndIf
+	If ApplyVictimName(aimed, name)
+		String shown = TrimString(name)
+		Debug.Notification("Pickman's Whisper: she is " + shown + " now")
+	EndIf
+	RefreshVictimsPanel(True)
 EndFunction
 
 Bool Function IsNoticeCandidate(Actor ak)
@@ -1361,7 +1606,11 @@ Function EnsureFixationLists()
 	If !FixationIds || FixationIds.Length == 0
 		FixationIds = new Int[32]
 		FixationCounts = new Int[32]
+		RecognitionToastCounts = new Int[32]
 		FixationSlotCount = 0
+	ElseIf !RecognitionToastCounts || RecognitionToastCounts.Length == 0
+		; Mid-save upgrade from pre-prompt builds
+		RecognitionToastCounts = new Int[32]
 	EndIf
 EndFunction
 
@@ -1396,10 +1645,12 @@ Function EvictLowestFixation()
 	While j < FixationSlotCount - 1
 		FixationIds[j] = FixationIds[j + 1]
 		FixationCounts[j] = FixationCounts[j + 1]
+		RecognitionToastCounts[j] = RecognitionToastCounts[j + 1]
 		j += 1
 	EndWhile
 	FixationIds[FixationSlotCount - 1] = 0
 	FixationCounts[FixationSlotCount - 1] = 0
+	RecognitionToastCounts[FixationSlotCount - 1] = 0
 	FixationSlotCount -= 1
 EndFunction
 
@@ -1422,8 +1673,48 @@ Int Function IncrementFixation(Int formId)
 	EndIf
 	FixationIds[FixationSlotCount] = formId
 	FixationCounts[FixationSlotCount] = 1
+	RecognitionToastCounts[FixationSlotCount] = 0
 	FixationSlotCount += 1
 	Return 1
+EndFunction
+
+; Bump how many RecognitionLines toasts this FormID has heard. 0 if unknown slot.
+Int Function IncrementRecognitionToast(Int formId)
+	EnsureFixationLists()
+	Int i = 0
+	While i < FixationSlotCount
+		If FixationIds[i] == formId
+			RecognitionToastCounts[i] = RecognitionToastCounts[i] + 1
+			Return RecognitionToastCounts[i]
+		EndIf
+		i += 1
+	EndWhile
+	Return 0
+EndFunction
+
+; After N recognition toasts, if still unnamed, queue MCM Victims nudge (delayed).
+; Never ShowVoiceToast here — a second Notification in the same tick replaces the
+; RecognitionLines toast in the FO4 HUD.
+; Prompt text: ModConfig.txt → renamePromptFemaleNPC (files-only).
+Function MaybePromptNameHer(Actor ak, Int recognitionToasts)
+	If !ak || recognitionToasts < RECOGNITION_NAME_PROMPT_AT
+		Return
+	EndIf
+	If GetVictimOverrideName(ak)
+		Return
+	EndIf
+	If !RenamePromptFemaleNPC
+		LoadModConfig()
+	EndIf
+	If !RenamePromptFemaleNPC
+		; Trace only — Notification here would also clobber the recognition toast.
+		Debug.Trace("PickmansWhisper: ERROR rename prompt — " + ModConfigLoadStatus)
+		Return
+	EndIf
+	PendingRenamePrompt = RenamePromptFemaleNPC
+	CancelTimer(TIMER_RENAME_PROMPT)
+	StartTimer(RENAME_PROMPT_DELAY, TIMER_RENAME_PROMPT)
+	Debug.Trace("PickmansWhisper: name-her prompt queued | id=0x" + GardenOfEden.GetHexFormID(ak))
 EndFunction
 
 ; Aim actor for fixation — real GoE APIs only (never Game.GetCurrentCrosshairRef).
@@ -1489,7 +1780,7 @@ Function TickLookFixation()
 	ElseIf count == 2
 		SpeakFixationStageWhisper(ak, displayName)
 	Else
-		SpeakRecognitionLine(displayName)
+		SpeakRecognitionLine(ak, displayName)
 	EndIf
 EndFunction
 
@@ -1797,10 +2088,68 @@ Function LoadLineBanks()
 	LoadPraiseLines()
 	LoadNoticeLines()
 	LoadRecognitionLines()
+	LoadSleepRecognitionLines()
+	LoadModConfig()
 	LoadTargetOverrides()
 EndFunction
 
-; C5 P2 — single recognition bank (files-only). Later bands can use GetRecognitionBank(band).
+; ModConfig.txt — key=value prompts / toggles. Required for renamePromptFemaleNPC.
+; Files-only: missing key or file fails loud when the prompt would speak (no baked mirror).
+Function LoadModConfig()
+	RenamePromptFemaleNPC = ""
+	String fileName = "ModConfig.txt"
+	String path = NoticeConfigPath()
+	ModConfigLoadStatus = "READ FAILED (GoE2 missing?)"
+	; Trace-only on load — Notification steals/clobbers voice toasts.
+	If !GardenOfEden2.DoesFileExist(fileName, path)
+		ModConfigLoadStatus = "MISSING FILE (" + path + fileName + ")"
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+		Return
+	EndIf
+	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
+	If !raw || raw.Length == 0
+		ModConfigLoadStatus = "EMPTY/UNREADABLE"
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+		Return
+	EndIf
+	Int i = 0
+	While i < raw.Length
+		String line = TrimString(raw[i])
+		i += 1
+		If line == ""
+			; skip
+		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
+			; comment
+		Else
+			Int eq = -1
+			Int li = 0
+			Int ln = GardenOfEden.StrLength(line)
+			While li < ln && eq < 0
+				If GardenOfEden.SubStr(line, li, 1) == "="
+					eq = li
+				EndIf
+				li += 1
+			EndWhile
+			If eq > 0
+				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
+				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				If key == "renamePromptFemaleNPC"
+					RenamePromptFemaleNPC = val
+				EndIf
+			EndIf
+		EndIf
+	EndWhile
+	If RenamePromptFemaleNPC
+		ModConfigLoadStatus = "renamePromptFemaleNPC ok"
+		Debug.Trace("PickmansWhisper: ModConfig ready | " + ModConfigLoadStatus)
+	Else
+		ModConfigLoadStatus = "renamePromptFemaleNPC missing"
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+	EndIf
+EndFunction
+
+
+; C5 P2 — awake recognition bank (files-only). Later bands can use GetRecognitionBank(band).
 Function LoadRecognitionLines()
 	RecognitionLines = new String[64]
 	RecognitionLineCount = LoadStageBank("RecognitionLines.txt", RecognitionLines)
@@ -1810,6 +2159,27 @@ Function LoadRecognitionLines()
 	Else
 		Debug.Trace("PickmansWhisper: recognition lines ready (" + RecognitionLineCount + ")")
 	EndIf
+EndFunction
+
+; C5 P5 — sleep recognition bank (files-only).
+Function LoadSleepRecognitionLines()
+	SleepRecognitionLines = new String[64]
+	SleepRecognitionLineCount = LoadStageBank("SleepRecognitionLines.txt", SleepRecognitionLines)
+	SleepRecognitionLoadStatus = LastStageLoadStatus
+	If SleepRecognitionLineCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR SleepRecognitionLines.txt — " + SleepRecognitionLoadStatus)
+	Else
+		Debug.Trace("PickmansWhisper: sleep recognition lines ready (" + SleepRecognitionLineCount + ")")
+	EndIf
+EndFunction
+
+; FO4 GetSleepState: 3 = sleeping, 4 = sleeping wants wake. Treat both as asleep.
+Bool Function IsActorSleeping(Actor ak)
+	If !ak
+		Return False
+	EndIf
+	Int st = ak.GetSleepState()
+	Return st >= 3
 EndFunction
 
 ; encounterBand reserved for later multi-file mapping; P2 always returns the single bank.
@@ -1847,6 +2217,28 @@ String Function PickRecognitionLine(String npcName)
 	Return ApplyNamePlaceholder(raw, useName)
 EndFunction
 
+String Function PickSleepRecognitionLine(String npcName)
+	If SleepRecognitionLineCount <= 0 || !SleepRecognitionLines
+		LoadSleepRecognitionLines()
+	EndIf
+	If SleepRecognitionLineCount <= 0 || !SleepRecognitionLines
+		Return ""
+	EndIf
+	String useName = NoticeNameForLine(npcName)
+	Bool wantNameless = (useName == "")
+	String raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
+	Int tries = 0
+	While tries < 8 && SleepRecognitionLineCount > 1 && (raw == LastSleepRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
+		raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
+		tries += 1
+	EndWhile
+	If !raw
+		Return ""
+	EndIf
+	LastSleepRecognitionLine = raw
+	Return ApplyNamePlaceholder(raw, useName)
+EndFunction
+
 ; 2nd look — speak current hunger-stage notice line (does not rewrite MaybeSpeakNoticeLine).
 Function SpeakFixationStageWhisper(Actor ak, String npcName)
 	String line = PickNoticeLine(npcName)
@@ -1863,18 +2255,42 @@ Function SpeakFixationStageWhisper(Actor ak, String npcName)
 	EndIf
 EndFunction
 
-; 3rd+ look — recognition bank only (does not stamp hunger hour gate).
-Function SpeakRecognitionLine(String npcName)
-	String line = PickRecognitionLine(npcName)
+; 3rd+ look — awake RecognitionLines / sleep SleepRecognitionLines (no hunger hour stamp).
+; After RECOGNITION_NAME_PROMPT_AT successful toasts on this NPC (still unnamed),
+; queue ModConfig renamePromptFemaleNPC until named.
+Function SpeakRecognitionLine(Actor ak, String npcName)
+	Bool asleep = IsActorSleeping(ak)
+	String line = ""
+	If asleep
+		line = PickSleepRecognitionLine(npcName)
+	Else
+		line = PickRecognitionLine(npcName)
+	EndIf
 	If !line || GardenOfEden.StrLength(line) < 1
-		LastFixationStatus = "recognition MISSING — " + RecognitionLoadStatus
-		WriteFixationStatusToMcm()
-		Debug.Notification("Pickman's Whisper: RecognitionLines.txt not loaded — see MCM / config")
-		Debug.Trace("PickmansWhisper: ERROR recognition speak failed — " + RecognitionLoadStatus)
+		If asleep
+			LastFixationStatus = "sleep recognition MISSING — " + SleepRecognitionLoadStatus
+			WriteFixationStatusToMcm()
+			Debug.Notification("Pickman's Whisper: SleepRecognitionLines.txt not loaded — see MCM / config")
+			Debug.Trace("PickmansWhisper: ERROR sleep recognition speak failed — " + SleepRecognitionLoadStatus)
+		Else
+			LastFixationStatus = "recognition MISSING — " + RecognitionLoadStatus
+			WriteFixationStatusToMcm()
+			Debug.Notification("Pickman's Whisper: RecognitionLines.txt not loaded — see MCM / config")
+			Debug.Trace("PickmansWhisper: ERROR recognition speak failed — " + RecognitionLoadStatus)
+		EndIf
 		Return
 	EndIf
 	ShowVoiceToast(line)
-	Debug.Trace("PickmansWhisper: recognition | " + line)
+	If asleep
+		Debug.Trace("PickmansWhisper: sleep recognition | " + line)
+	Else
+		Debug.Trace("PickmansWhisper: recognition | " + line)
+	EndIf
+	If !ak
+		Return
+	EndIf
+	Int n = IncrementRecognitionToast(ak.GetFormID())
+	MaybePromptNameHer(ak, n)
 EndFunction
 
 Function LoadTrustLines()
@@ -3715,6 +4131,7 @@ Function OnMCMMenuOpen(String modName)
 	EndIf
 	LoadNoticeLines()
 	RefreshDebugStatus()
+	RefreshVictimsPanel(False)
 EndFunction
 
 Function OnMCMSettingChange(String modName, String id)

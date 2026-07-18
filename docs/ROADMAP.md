@@ -6,7 +6,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 |-------|-------------|--------|
 | **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM | **Shipped (0.1.0)** |
 | **B** | Kill-with-knife praise + satiation rules | **Done** |
-| **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **In progress** — C1–C4 done; **C5** P1–P2 done, P3–P4 planned |
+| **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **Done** — C1–C5 verified in-game |
 | **D** | Audio bank playback (research + implement) | Planned |
 | **E** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
 | **F** | Corpse preserve sync with Necromantic | Planned |
@@ -37,11 +37,11 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - [x] **C2** — Soft toast comments on nearby **non-hostile** adult women (`NoticeLines.txt`, `{name}` when known). Success path calls `OnNoticeSpoken` (C3 hook). Poll debug dialogs optional (MCM Debug).
 - [x] **C3** — Hunger-staged whispers: five editable stage files (`NoticeLines_<Stage>.txt`) chosen by `HungerLevel` band — admiration → infatuation → jealousy → anger → kill-urge — with no-immediate-repeat selection. Files-only (no builtin fallback); GoE2 load + GoE string helpers; per-file MCM load status, load MessageBox, and stage dropdown / force toggle. **Verified in-game** (file load + notice toasts).
 - [x] **C4** — Approach / first-enter feel via ambient killscan path (dedicated 0.5s FindActors hammer rejected — silenced the quest). **Verified in-game** with always-on timer arming; auto MessageBoxes removed (MCM Scan nearby keeps its dialog).
-- [ ] **C5** — Look-fixation POC (**additive — no change to ambient C2/C3 whispers**). Cap 32 FormIDs, save-persisted arrays.
+- [x] **C5** — Look-fixation POC (**additive — no change to ambient C2/C3 whispers**). Cap 32 FormIDs, save-persisted arrays. **Verified in-game** (incl. sleep recognition).
   - [x] **P1** — Aim edge (GoE camera/activate — not fake `GetCurrentCrosshairRef`) → count + MCM Look fixation. Ambient killscan whispers unchanged; killscan re-arms before tick body (`tools/test_look_fixation.py`).
   - [x] **P2** — Voice by count: 1st silent / 2nd hunger-stage notice line / 3rd+ `RecognitionLines.txt` (`tools/test_recognition_lines.py`).
-  - [ ] **P3** — MCM Potential Victims name ↔ FormID.
-  - [ ] **P4** — `RefCollectionAlias` + verified `SetDisplayName`.
+  - [x] **P3+P4** — Potential Victims (merged): MCM Victims page ↔ FormID table + F4SE `SetDisplayName` (world name) so `{name}` matches aim label; cap 32; lazy re-apply when seen; optional `VictimsHold` RefCollectionAlias (`tools/test_potential_victims.py`).
+  - [x] **P5** — Sleep recognition: `SleepRecognitionLines.txt` when 3rd+ look and `GetSleepState() >= 3` (`tools/test_sleep_recognition.py`).
 
 ## Slice D — audio
 

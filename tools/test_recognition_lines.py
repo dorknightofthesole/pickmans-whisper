@@ -23,6 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 CONFIG = ROOT / "Data" / "PickmansWhisper" / "config"
 RECOG_FILE = CONFIG / "RecognitionLines.txt"
+MOD_CONFIG = CONFIG / "ModConfig.txt"
+RENAME_PROMPT_DEFAULT = (
+    "What's her name I wonder? ...I should name her. [see MCM menu]"
+)
 
 MIN_LINES = 6
 MIN_NAMELESS = 3
@@ -130,9 +134,46 @@ def test_psc(text: str) -> None:
         fail("SpeakRecognitionLine must not stamp LastNoticeToastGameTime")
     if "ShowVoiceToast" not in recog:
         fail("SpeakRecognitionLine must ShowVoiceToast (HUD lead-glyph pad)")
-    if "Debug.Notification(" in recog and "ShowVoiceToast" not in recog:
-        fail("SpeakRecognitionLine must not bare-Notification the line")
+    if "IncrementRecognitionToast" not in recog:
+        fail("SpeakRecognitionLine must IncrementRecognitionToast (name-her counter)")
+    if "MaybePromptNameHer" not in recog:
+        fail("SpeakRecognitionLine must MaybePromptNameHer after recognition toast")
     ok("3rd+ recognition toast without hunger hour stamp")
+
+    if 'RECOGNITION_NAME_PROMPT_AT = 3' not in text and "RECOGNITION_NAME_PROMPT_AT=3" not in text:
+        fail("RECOGNITION_NAME_PROMPT_AT must be 3")
+    prompt = extract_function(text, "MaybePromptNameHer")
+    if "RenamePromptFemaleNPC" not in prompt:
+        fail("MaybePromptNameHer must use RenamePromptFemaleNPC (from ModConfig.txt)")
+    if "GetVictimOverrideName" not in prompt:
+        fail("MaybePromptNameHer must skip when already named")
+    if "ShowVoiceToast" in prompt:
+        fail("MaybePromptNameHer must NOT ShowVoiceToast (clobbers recognition); queue timer instead")
+    if "StartTimer" not in prompt or "TIMER_RENAME_PROMPT" not in prompt:
+        fail("MaybePromptNameHer must StartTimer(TIMER_RENAME_PROMPT) to delay the nudge")
+    if "PendingRenamePrompt" not in prompt:
+        fail("MaybePromptNameHer must set PendingRenamePrompt")
+    if "recognitionToasts < RECOGNITION_NAME_PROMPT_AT" not in prompt and "recognitionToasts<RECOGNITION_NAME_PROMPT_AT" not in prompt:
+        fail("MaybePromptNameHer must fire every toast from count >= 3 (not == 3 only)")
+    if RENAME_PROMPT_DEFAULT in text:
+        fail("PSC must not hard-code renamePromptFemaleNPC text (ModConfig.txt is source of truth)")
+    m = re.search(r"Event OnTimer\(Int aiTimerID\)(.*?)EndEvent", text, re.S)
+    if not m:
+        fail("OnTimer missing")
+    on_timer = m.group(1)
+    if "TIMER_RENAME_PROMPT" not in on_timer or "ShowVoiceToast(PendingRenamePrompt)" not in on_timer:
+        fail("OnTimer must handle TIMER_RENAME_PROMPT and ShowVoiceToast(PendingRenamePrompt)")
+    load_banks = extract_function(text, "LoadLineBanks")
+    if "LoadModConfig()" not in load_banks:
+        fail("LoadLineBanks must call LoadModConfig()")
+    load_mod = extract_function(text, "LoadModConfig")
+    if "ModConfig.txt" not in load_mod:
+        fail("LoadModConfig must read ModConfig.txt")
+    if "renamePromptFemaleNPC" not in load_mod:
+        fail("LoadModConfig must parse renamePromptFemaleNPC")
+    if "Debug.Notification" in load_mod:
+        fail("LoadModConfig must not Notification (clobbers voice toasts); Trace only")
+    ok("name-her prompt delayed via timer; ModConfig files-only")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "SpeakRecognitionLine" in notice or "SpeakFixationStageWhisper" in notice:
@@ -140,11 +181,31 @@ def test_psc(text: str) -> None:
     ok("MaybeSpeakNoticeLine untouched by P2 voice")
 
 
+def test_mod_config_file() -> None:
+    if not MOD_CONFIG.is_file():
+        fail(f"missing {MOD_CONFIG}")
+    body = MOD_CONFIG.read_text(encoding="utf-8", errors="replace")
+    found = ""
+    for raw in body.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("renamePromptFemaleNPC="):
+            found = line.split("=", 1)[1].strip()
+            break
+    if not found:
+        fail("ModConfig.txt missing renamePromptFemaleNPC=")
+    if found != RENAME_PROMPT_DEFAULT:
+        fail(f"renamePromptFemaleNPC expected default prompt, got {found!r}")
+    ok("ModConfig.txt renamePromptFemaleNPC present")
+
+
 def main() -> None:
     if not PSC.is_file():
         fail(f"missing {PSC}")
     text = PSC.read_text(encoding="utf-8", errors="replace")
     test_file()
+    test_mod_config_file()
     test_psc(text)
     print("All recognition-lines (C5 P2) contracts passed.")
 

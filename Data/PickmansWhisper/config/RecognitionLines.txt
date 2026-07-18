@@ -1,6 +1,8 @@
 # Pickman's Whisper — recognition lines (C5 look-fixation, 3rd+ look).
 # Spoken when you look at someone you've already noticed twice.
-# {name} = real NPC name or P3 player-assigned label (auto-omitted for Settler /
+# After 3 recognition toasts on the same unnamed NPC, ModConfig.txt
+# renamePromptFemaleNPC nudges MCM > Victims until she is named.
+# {name} = real NPC name or player-assigned label (auto-omitted for Settler /
 # glyph-junk / unusable names). Blank/# lines ignored.
 
 There she is again.

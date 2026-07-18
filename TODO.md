@@ -11,11 +11,11 @@
 - [x] **C2** Nearby non-hostile female notice toasts + `OnNoticeSpoken` hook
 - [x] **C3** Hunger-staged file whispers (`NoticeLines_*.txt` by hunger band; files-only)
 - [x] **C4** Approach / ambient restore + always-on killscan arming (verified in-game)
-- [ ] **C5** Look-fixation POC (ambient unchanged)
+- [x] **C5** Look-fixation POC (ambient unchanged) — verified in-game
   - [x] **P1** Aim edge (GoE) → FormID count (cap 32) + MCM `sFixation:Debug` (fixed: no fake crosshair native)
   - [x] **P2** Voice by count: 1 silent / 2 stage whisper / 3+ `RecognitionLines.txt`
-  - [ ] **P3** MCM Potential Victims name ↔ FormID
-  - [ ] **P4** RefCollectionAlias + verified SetDisplayName
+  - [x] **P3+P4** Potential Victims (merged): MCM Victims + FormID↔name + SetDisplayName; optional VictimsHold alias
+  - [x] **P5** Sleep recognition (`SleepRecognitionLines.txt` when 3rd+ look + sleeping)
 
 ## Later
 

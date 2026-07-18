@@ -236,6 +236,74 @@
 			]
 		},
 		{
+			"pageDisplayName": "Victims",
+			"content": [
+				{
+					"text": "Look at someone, type a name, then <b>Name aimed NPC</b>. That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "sVictimAimed:Victims",
+					"text": "Aimed now",
+					"type": "textinput",
+					"help": "Updates when you open this page. Look at her in the world first.",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sVictimName:Victims",
+					"text": "New name",
+					"type": "textinput",
+					"help": "Real name only (e.g. Marie). Not Settler/Resident.",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Name aimed NPC",
+					"type": "button",
+					"help": "SetDisplayName on the aimed actor + save FormID↔name for whispers.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMNameAimedVictim"
+					}
+				},
+				{
+					"text": "Refresh aimed / list",
+					"type": "button",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "RefreshVictimsPanel"
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"id": "sVictimStatus:Victims",
+					"text": "Last apply",
+					"type": "textinput",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sVictimsSummary:Victims",
+					"text": "Named victims",
+					"type": "textinput",
+					"help": "Up to 8 labels from the saved FormID table (cap 32).",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				}
+			]
+		},
+		{
 			"pageDisplayName": "Debug",
 			"content": [
 				{
