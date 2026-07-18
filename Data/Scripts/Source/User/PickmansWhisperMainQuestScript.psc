@@ -245,16 +245,15 @@ String RenamePromptFemaleNPC = ""
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
 String NamedIntimacyToast = ""
+String NamedIntimacyEndToast = ""
 String NamedIntimacyAudio = ""
 String ModConfigLoadStatus = ""
 
-; Slice E2 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
+; Slice E2/E3 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
 Int FID_NECROMANTIC_MAIN = 0x00000800
 NecromanticMainQuestScript NecroQuestRef
 Bool NecroEventsRegistered = False
 Bool NecroSceneActive = False
-Float LastIntimacyToastRealTime = 0.0
-Float INTIMACY_TOAST_COOLDOWN = 45.0
 
 ; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
@@ -424,29 +423,38 @@ Event NecromanticMainQuestScript.OnNecroSceneStart(NecromanticMainQuestScript ak
 		Return
 	EndIf
 	NecroSceneActive = True
-	MaybeSpeakNamedIntimacyVoice(corpse)
+	MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyToast, NamedIntimacyAudio)
 EndEvent
 
 Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSender, Var[] akArgs)
-	NecroSceneActive = False
+	Actor corpse = None
+	If akArgs && akArgs.Length > 1
+		corpse = akArgs[1] as Actor
+	EndIf
 	Bool completed = False
 	If akArgs && akArgs.Length > 10
 		completed = akArgs[10] as Bool
 	EndIf
+	; E3 — end toast before clearing latch (same named-victim filter as start).
+	If corpse
+		MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyEndToast, "")
+	EndIf
+	NecroSceneActive = False
 	Debug.Trace("PickmansWhisper: OnNecroSceneEnd completed=" + completed)
 EndEvent
 
-; Named Potential Victim + namedIntimacyToast → ModConfig voice (throttled).
-Function MaybeSpeakNamedIntimacyVoice(Actor partner)
+; Named Potential Victim + caller-supplied ModConfig toast → knife voice.
+; Start/End pass different toast templates (and optional .xwm) from ModConfig.
+Function MaybeSpeakNamedIntimacyVoice(Actor partner, String toastTemplate, String audioFile)
 	If !partner
+		Return
+	EndIf
+	If !toastTemplate
+		Debug.Trace("PickmansWhisper: intimacy toast template empty — skip")
 		Return
 	EndIf
 	String overrideName = GetVictimOverrideName(partner)
 	If !overrideName
-		Return
-	EndIf
-	If !NamedIntimacyToast
-		Debug.Trace("PickmansWhisper: namedIntimacyToast missing — intimacy skip")
 		Return
 	EndIf
 	If !IsVoiceEnabled()
@@ -455,7 +463,7 @@ Function MaybeSpeakNamedIntimacyVoice(Actor partner)
 	If !IsVoiceWeaponReady()
 		Return
 	EndIf
-	String line = ApplyNamePlaceholder(NamedIntimacyToast, overrideName)
+	String line = ApplyNamePlaceholder(toastTemplate, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return
 	EndIf
@@ -464,11 +472,11 @@ Function MaybeSpeakNamedIntimacyVoice(Actor partner)
 		ShowVoiceToast(line)
 	EndIf
 	If mode != 2
-		If NamedIntimacyAudio
-			PlayWhisperXwmByFile(NamedIntimacyAudio)
+		If audioFile
+			PlayWhisperXwmByFile(audioFile)
 		ElseIf mode == 1
 			ShowVoiceToast(line)
-			Debug.Trace("PickmansWhisper: namedIntimacyAudio missing — toast fallback for audio-only mode")
+			Debug.Trace("PickmansWhisper: intimacy audio empty — toast fallback for audio-only mode")
 		EndIf
 	EndIf
 	Debug.Trace("PickmansWhisper: named intimacy voice | " + line)
@@ -2352,6 +2360,7 @@ Function LoadModConfig()
 	NamedKillToast = ""
 	NamedKillAudio = ""
 	NamedIntimacyToast = ""
+	NamedIntimacyEndToast = ""
 	NamedIntimacyAudio = ""
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
@@ -2397,6 +2406,8 @@ Function LoadModConfig()
 					NamedKillAudio = val
 				ElseIf key == "namedIntimacyToast"
 					NamedIntimacyToast = val
+				ElseIf key == "namedIntimacyEndToast"
+					NamedIntimacyEndToast = val
 				ElseIf key == "namedIntimacyAudio"
 					NamedIntimacyAudio = val
 				EndIf
@@ -2412,6 +2423,9 @@ Function LoadModConfig()
 	EndIf
 	If NamedIntimacyToast
 		status += "namedIntimacy "
+	EndIf
+	If NamedIntimacyEndToast
+		status += "namedIntimacyEnd "
 	EndIf
 	If status != ""
 		ModConfigLoadStatus = TrimString(status) + "ok"

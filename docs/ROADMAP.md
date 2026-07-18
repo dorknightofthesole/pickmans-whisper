@@ -59,6 +59,7 @@ Special lines when the player has a personal stake (Potential Victims name) and 
 
 - [x] **E1** — Named-victim kill voice: on a valid blade kill, if the victim has a player-assigned Potential Victim name (`GetVictimOverrideName`), speak a dedicated toast + audio from `ModConfig.txt` (text + optional SNDR stem keys) instead of the generic praise line. Later: optional randomized banks. *(toast shipped; uncomment `namedKillAudio` when `.xwm` exists)*
 - [x] **E2** — Soft Necromantic intimacy hook: `GetFormFromFile(0x800)` + `RegisterForCustomEvent` `OnNecroSceneStart` / `OnNecroSceneEnd`; named Potential Victim corpse in `akArgs[1]` → ModConfig intimacy toast + optional audio. Fail loud if audio key set but xwm/SNDR missing.
+- [x] **E3** — `OnNecroSceneEnd` named-victim toast via `namedIntimacyEndToast` (shared `MaybeSpeakNamedIntimacyVoice` with toast template param; mirrors start).
 - Honor direction rules: not sexual here; soft complementarity only; blade-drawn voice gate still applies.
 
 ## Slice F — slow hunger + peak wait rewards
@@ -109,6 +110,12 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - **J1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
 - Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
 - Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
+
+## Slice K — infamy
+
+- Whispers about a new serial killer in the commonwealth
+- References to past murders, could include the name of the victim that differs from the name the player gave them, but the player would realize it is "Cindy"
+- Whispers could increase after a murder
 
 ## Risks
 

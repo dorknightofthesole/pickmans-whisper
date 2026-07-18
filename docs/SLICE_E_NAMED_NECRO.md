@@ -5,7 +5,8 @@
 ## Status
 
 - **E1**: `MaybeSpeakNamedKillVoice` on `ProcessKnifeKill` when `GetVictimOverrideName` + `namedKillToast`. Audio key commented until `.xwm` exists.
-- **E2**: soft `RegisterNecromanticSceneEvents` on init/load; handlers for `OnNecroSceneStart` / `OnNecroSceneEnd`. Corpse/partner = `akArgs[1] as Actor` (Necromantic payload).
+- **E2**: soft `RegisterNecromanticSceneEvents` on init/load; `OnNecroSceneStart` → `namedIntimacyToast`. Corpse = `akArgs[1] as Actor`.
+- **E3**: `OnNecroSceneEnd` → `namedIntimacyEndToast` via same `MaybeSpeakNamedIntimacyVoice(partner, toast, audio)`.
 
 ## E1 — Named-victim kill voice
 

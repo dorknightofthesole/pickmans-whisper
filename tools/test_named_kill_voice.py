@@ -2,10 +2,11 @@
 """Contracts for Slice E — named kill voice + soft Necromantic intimacy events.
 
 Locks:
-  - ModConfig namedKillToast / namedIntimacyToast keys ship; audio keys optional (#)
+  - ModConfig namedKillToast / namedIntimacyToast / namedIntimacyEndToast ship; audio optional (#)
   - ProcessKnifeKill branches via MaybeSpeakNamedKillVoice before generic praise
   - Kill blade helpers still IsBladeEquipped / IsBladeKillWeaponReady (satiation untouched)
   - Soft Necromantic: GetFormFromFile(0x800) + RegisterForCustomEvent Start/End
+  - MaybeSpeakNamedIntimacyVoice(partner, toastTemplate, audioFile) — Start/End pass config
   - Minimal stub only — no Necromantic.esp master in esp builder
   - PlayWhisperXwmByFile fails loud; voice paths gate IsVoiceWeaponReady
 
@@ -71,6 +72,10 @@ def test_modconfig() -> None:
         fail("namedKillToast should support {name}")
     if "namedIntimacyToast" not in keys or not keys["namedIntimacyToast"]:
         fail("ModConfig must ship namedIntimacyToast")
+    if "namedIntimacyEndToast" not in keys or not keys["namedIntimacyEndToast"]:
+        fail("ModConfig must ship namedIntimacyEndToast (E3)")
+    if "{name}" not in keys["namedIntimacyEndToast"]:
+        fail("namedIntimacyEndToast should support {name}")
     # Audio keys must stay commented until xwm exists (no silent missing SNDR at build).
     if "namedKillAudio" in keys:
         fail("namedKillAudio must stay commented until NamedKill.xwm ships")
@@ -137,16 +142,26 @@ def test_necro_soft(text: str) -> None:
     intimacy = extract_function(text, "MaybeSpeakNamedIntimacyVoice")
     if "GetVictimOverrideName" not in intimacy:
         fail("intimacy voice must filter named Potential Victims")
-    if "NamedIntimacyToast" not in intimacy:
-        fail("intimacy voice must use NamedIntimacyToast")
+    if "toastTemplate" not in intimacy:
+        fail("MaybeSpeakNamedIntimacyVoice must take toastTemplate param")
     if "IsVoiceWeaponReady" not in intimacy:
         fail("intimacy voice must gate IsVoiceWeaponReady")
+    if "MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyToast, NamedIntimacyAudio)" not in text:
+        fail("OnNecroSceneStart must pass NamedIntimacyToast")
+    if "MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyEndToast, \"\")" not in text and (
+        "MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyEndToast, \"\")" not in text.replace("'", '"')
+    ):
+        # Papyrus uses "" for empty string
+        if "NamedIntimacyEndToast" not in text or "OnNecroSceneEnd" not in text:
+            fail("OnNecroSceneEnd must call MaybeSpeakNamedIntimacyVoice with NamedIntimacyEndToast")
+        if "MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyEndToast" not in text:
+            fail("OnNecroSceneEnd must pass NamedIntimacyEndToast")
     builder = BUILDER.read_text(encoding="utf-8")
     if "Necromantic.esp" in builder:
         fail("esp builder must not master/reference Necromantic.esp")
     if "parse_modconfig_audio_files" not in builder:
         fail("builder should clone optional ModConfig audio stems")
-    ok("E2 soft Necromantic CustomEvent contract + stub")
+    ok("E2/E3 soft Necromantic CustomEvent contract + stub")
 
 
 def test_load_modconfig(text: str) -> None:
@@ -155,6 +170,7 @@ def test_load_modconfig(text: str) -> None:
         "namedKillToast",
         "namedKillAudio",
         "namedIntimacyToast",
+        "namedIntimacyEndToast",
         "namedIntimacyAudio",
     ):
         if f'key == "{key}"' not in load:
