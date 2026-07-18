@@ -33,6 +33,11 @@ Bool Function IsDisabled() Native
 Bool Function Is3DLoaded() Native
 ; FO4 native — 0 not sleeping, 2 wants sleep, 3 sleeping, 4 wants wake.
 Int Function GetSleepState() Native
+
+; FO4 native — body part strings match CK Body Part Data (e.g. "Head1", "LeftArm1").
+; For corpses use abForceDismember=True; keep abForceExplode=False so pieces remain visible.
+Function Dismember(String asBodyPart, Bool abForceExplode = False, Bool abForceDismember = False, Bool abForceBloodyMess = False) Native
+Bool Function IsDismembered(String asBodyPart) Native
 Event OnPlayerLoadGame()
 EndEvent
 Weapon Function GetEquippedWeapon(Int aiEquipIndex = 0) Native

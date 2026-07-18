@@ -129,6 +129,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_named_kill_voice.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Corpse sever (Slice F) contract test"
+& python (Join-Path $Root "tools\test_corpse_sever.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_corpse_sever.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

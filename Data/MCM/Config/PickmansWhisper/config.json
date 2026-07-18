@@ -56,6 +56,15 @@
 					"html": true
 				},
 				{
+					"text": "Corpse sever",
+					"type": "section"
+				},
+				{
+					"text": "With <b>Pickman's Blade</b> drawn, aim at a dead adult woman and press <b>/</b>. Choose a limb — same combat gore (piece stays visible). Skipped during Necromantic scenes.",
+					"type": "text",
+					"html": true
+				},
+				{
 					"text": "Suite",
 					"type": "section"
 				},
@@ -589,6 +598,16 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugPlayTestWhisper"
+					}
+				},
+				{
+					"text": "Test sever aimed head",
+					"type": "button",
+					"help": "Slice F: sever Head1 on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. No limb menu.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugTestSeverAimedHead"
 					}
 				}
 			]

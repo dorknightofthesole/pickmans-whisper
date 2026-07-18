@@ -28,6 +28,7 @@ FID_GLOB = 0x01000802
 FID_MGEF_AGI = 0x01000803
 FID_MGEF_CHA = 0x01000804
 FID_PLAYER_QUEST = 0x01000805
+FID_SEVER_MSG = 0x01000806  # PW_SeverLimbMenu (Slice F)
 FID_WHISPER_BASE = 0x01000807
 # Whisper SNDRs use 0x807+; leave headroom past 12 Desperate stems.
 NEXT_OID = 0x00000820
@@ -333,6 +334,29 @@ def parse_modconfig_audio_files() -> list[str]:
     return out
 
 
+def build_sever_limb_menu_payload() -> bytes:
+    """MESG message-box with limb buttons. DNAM bit0 = Message Box."""
+    buttons = (
+        "Head",
+        "Left Arm",
+        "Right Arm",
+        "Left Leg",
+        "Right Leg",
+        "Cancel",
+    )
+    parts = [
+        field(b"EDID", zstr("PW_SeverLimbMenu")),
+        field(b"DESC", zstr("Sever which part?")),
+        field(b"FULL", zstr("Pickman's Whisper")),
+        field(b"INAM", u32(0)),
+        field(b"DNAM", u32(0x00000001)),  # Message Box
+        field(b"TNAM", u32(0)),
+    ]
+    for label in buttons:
+        parts.append(field(b"ITXT", zstr(label)))
+    return b"".join(parts)
+
+
 def collect_sndr_records() -> list[bytes]:
     """Emit SNDRs for Desperate_Audio.txt then optional ModConfig named audio stems."""
     files = parse_audio_map(DESPERATE_AUDIO)
@@ -391,17 +415,19 @@ def main() -> None:
             VANILLA_MGEF_CHA, "PickmansWhisperReduceCharisma", "Knife Hunger (Charisma)"
         ),
     )
+    msg_rec = record(b"MESG", FID_SEVER_MSG, build_sever_limb_menu_payload())
     sndr_recs = collect_sndr_records()
     sndr_blob = b"".join(sndr_recs)
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF + N SNDR
-    num_records = 6 + len(sndr_recs)
+    # 2x QUST + SPEL + GLOB + 2x MGEF + MESG + N SNDR
+    num_records = 7 + len(sndr_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
         + group(b"GLOB", glob_rec)
         + group(b"MGEF", mgef_agi + mgef_cha)
         + group(b"SPEL", spel_rec)
+        + group(b"MESG", msg_rec)
         + group(b"QUST", main_q + player_q)
         + group(b"SNDR", sndr_blob)
     )
@@ -410,6 +436,7 @@ def main() -> None:
     print(f"  GLOB 0x{FID_GLOB:08X} PickmansWhisperHungerActive")
     print(f"  MGEF 0x{FID_MGEF_AGI:08X} / 0x{FID_MGEF_CHA:08X} ValueMod AGI/CHA")
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
+    print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
     print(f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain")
     print(f"  QUST 0x{FID_PLAYER_QUEST:08X} PickmansWhisperPlayerCombat + PlayerAlias")
     print(f"  SNDR count={len(sndr_recs)} (Desperate_Audio.txt clones)")

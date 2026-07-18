@@ -30,13 +30,18 @@
 - [x] **E3** `OnNecroSceneEnd` intimacy toast (shared speaker with toast param)
 - [x] **E4** Random intimacy from `Intimacy_Start_Named.txt` / `Intimacy_Stop_Named.txt`
 
+## Slice F
+
+- [x] **F** Blade corpse sever (`/` + MSG limb menu + `Actor.Dismember`) — see docs/SLICE_F_CORPSE_SEVER.md (verify in-game)
+
 ## Later
 
-- [ ] **F** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
-- [ ] Corpse hold sync with Necromantic (G)
-- [ ] Bed corpse hallucination (H) — see docs/BED_CORPSE_HALLUCINATION.md
-- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (I)
-- [ ] Witnesses / killer rumors (J)
+- [ ] **G** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
+- [ ] Corpse hold sync with Necromantic (H)
+- [ ] Bed corpse hallucination (I) — see docs/BED_CORPSE_HALLUCINATION.md
+- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (J)
+- [ ] Witnesses / killer rumors (K)
+- [ ] Infamy whispers (L)
 
 ## LoversLab release / visibility
 

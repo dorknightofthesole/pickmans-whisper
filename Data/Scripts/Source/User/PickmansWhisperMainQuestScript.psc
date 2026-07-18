@@ -136,9 +136,14 @@ Int FID_HUNGER_GLOB = 0x00000802
 Int FID_HUNGER_MGEF_AGI = 0x00000803
 Int FID_HUNGER_MGEF_CHA = 0x00000804
 Int FID_PLAYER_COMBAT_QUEST = 0x00000805 ; alias OnPlayerLoadGame lives here
+Int FID_SEVER_MSG = 0x00000806 ; PW_SeverLimbMenu — Slice F limb picker
 ; D0-POC / D0.5 whisper SNDRs — EndIt is BASE+0; clones follow Desperate_Audio.txt order.
 Int FID_WHISPER_ENDIT = 0x00000807
 Int FID_WHISPER_BASE = 0x00000807
+; DX scancode for US keyboard "/?" key. Non-US layouts may need a later MCM remap.
+Int KEY_SEVER_SLASH = 53
+Message SeverLimbMenu
+Bool SeverKeyRegistered = False
 
 String MOD_NAME = "PickmansWhisper"
 Int LINE_FILE_MAX = 64
@@ -320,6 +325,7 @@ Event OnQuestInit()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
+	RegisterSeverKey()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	RefreshDebugStatus()
@@ -351,6 +357,7 @@ Function HandleGameResume(String reason)
 		EnsurePlayerCombatQuest()
 		ArmRuntimeLoops()
 		ScheduleBootArm()
+		RegisterSeverKey()
 		Return
 	EndIf
 	LastGameResumeRealTime = now
@@ -378,6 +385,7 @@ Function HandleGameResume(String reason)
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
+	RegisterSeverKey()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	SyncHungerAddictionSpell()
@@ -392,6 +400,149 @@ Function HandleGameResume(String reason)
 	Debug.Trace("PickmansWhisper: game resume (" + reason + ") " + DEBUG_BUILD)
 	ToastDebug("Pickman's Whisper load [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
+EndFunction
+
+; Slice F — RegisterForKey for corpse sever ("/" = DX 53 on US keyboards).
+Function RegisterSeverKey()
+	If SeverKeyRegistered
+		UnregisterForKey(KEY_SEVER_SLASH)
+	EndIf
+	RegisterForKey(KEY_SEVER_SLASH)
+	SeverKeyRegistered = True
+	EnsureSeverLimbMenu()
+	Debug.Trace("PickmansWhisper: registered sever key " + KEY_SEVER_SLASH)
+EndFunction
+
+Function EnsureSeverLimbMenu()
+	If SeverLimbMenu
+		Return
+	EndIf
+	SeverLimbMenu = Game.GetFormFromFile(FID_SEVER_MSG, "PickmansWhisper.esp") as Message
+	If !SeverLimbMenu
+		Debug.Trace("PickmansWhisper: ERROR PW_SeverLimbMenu 0x806 missing — rebuild ESP")
+	EndIf
+EndFunction
+
+Event OnKeyDown(Int keyCode)
+	If keyCode != KEY_SEVER_SLASH
+		Return
+	EndIf
+	TrySeverAimedCorpse()
+EndEvent
+
+; Aim corpse + blade + Message limb menu → Dismember (combat sever gore).
+Function TrySeverAimedCorpse()
+	If Utility.IsInMenuMode()
+		Return
+	EndIf
+	If NecroSceneActive
+		Return
+	EndIf
+	If !IsBladeEquipped()
+		Return
+	EndIf
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	Actor aimed = GetLookAimActor()
+	If !aimed || aimed == PlayerRef
+		Debug.Notification("Pickman's Whisper: aim at a corpse to sever")
+		Return
+	EndIf
+	If !IsSeverCorpseEligible(aimed)
+		Debug.Notification("Pickman's Whisper: not a valid corpse to sever")
+		Return
+	EndIf
+	EnsureSeverLimbMenu()
+	If !SeverLimbMenu
+		Debug.Notification("Pickman's Whisper: sever menu missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR TrySeverAimedCorpse no MSG 0x806")
+		Return
+	EndIf
+	Int btn = SeverLimbMenu.Show()
+	; 0 Head / 1 LArm / 2 RArm / 3 LLeg / 4 RLeg / 5 Cancel
+	If btn < 0 || btn >= 5
+		Return
+	EndIf
+	String part = SeverButtonToPart(btn)
+	If !part
+		Return
+	EndIf
+	SeverCorpseLimb(aimed, part)
+EndFunction
+
+String Function SeverButtonToPart(Int btn)
+	If btn == 0
+		Return "Head1"
+	ElseIf btn == 1
+		Return "LeftArm1"
+	ElseIf btn == 2
+		Return "RightArm1"
+	ElseIf btn == 3
+		Return "LeftLeg1"
+	ElseIf btn == 4
+		Return "RightLeg1"
+	EndIf
+	Return ""
+EndFunction
+
+Bool Function IsSeverCorpseEligible(Actor ak)
+	If !ak || ak == PlayerRef
+		Return False
+	EndIf
+	If !ak.IsDead()
+		Return False
+	EndIf
+	If !ak.Is3DLoaded() || ak.IsDisabled()
+		Return False
+	EndIf
+	If !IsHumanNpc(ak)
+		Return False
+	EndIf
+	If !IsAdultFemale(ak)
+		Return False
+	EndIf
+	Return True
+EndFunction
+
+Function SeverCorpseLimb(Actor ak, String partName)
+	If !ak || !partName
+		Return
+	EndIf
+	If !ak.Is3DLoaded()
+		Debug.Notification("Pickman's Whisper: corpse 3D not loaded — try again")
+		Return
+	EndIf
+	If ak.IsDismembered(partName)
+		Debug.Notification("Pickman's Whisper: already severed")
+		Return
+	EndIf
+	; Combat sever: force dismember + bloody mess; do NOT explode (keep piece visible).
+	ak.Dismember(partName, False, True, True)
+	Debug.Notification("Pickman's Whisper: severed " + partName)
+	Debug.Trace("PickmansWhisper: severed " + partName + " id=0x" + GardenOfEden.GetHexFormID(ak))
+EndFunction
+
+; MCM Debug — sever aimed corpse head with no limb menu (spike / verify gore).
+Function DebugTestSeverAimedHead()
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !IsBladeEquipped()
+		Debug.MessageBox("Pickman's Whisper\n\nDraw Pickman's Blade first.")
+		Return
+	EndIf
+	Actor aimed = GetLookAimActor()
+	If !aimed || !IsSeverCorpseEligible(aimed)
+		; Fall back to last victims aim cache (MCM often kills camera target).
+		aimed = ResolveVictimsAimActor()
+	EndIf
+	If !aimed || !IsSeverCorpseEligible(aimed)
+		Debug.MessageBox("Pickman's Whisper\n\nAim at a dead adult female (or look then open MCM), then retry.")
+		Return
+	EndIf
+	SeverCorpseLimb(aimed, "Head1")
+	Debug.MessageBox("Pickman's Whisper\n\nSever head requested on aimed corpse.")
 EndFunction
 
 ; Soft E2 — register Necromantic scene CustomEvents when plugin present.

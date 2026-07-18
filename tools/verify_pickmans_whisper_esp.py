@@ -6,6 +6,7 @@ import sys
 SPEL_FID = 0x01000801
 QUEST_FID = 0x01000800
 PLAYER_COMBAT_FID = 0x01000805
+SEVER_MSG_FID = 0x01000806
 ESP_MIN_BYTES = 400
 
 
@@ -65,7 +66,13 @@ def main() -> int:
     if b"PickmansWhisperPlayerCombat\x00" not in data:
         print("FAIL PlayerCombat EDID missing")
         return 8
-    print(f"OK size={len(data)} SPEL+Main+PlayerCombat+PlayerAlias present")
+    if not find_record(data, b"MESG", SEVER_MSG_FID):
+        print(f"FAIL MESG 0x{SEVER_MSG_FID:08X} PW_SeverLimbMenu missing")
+        return 9
+    if b"PW_SeverLimbMenu\x00" not in data:
+        print("FAIL PW_SeverLimbMenu EDID missing")
+        return 10
+    print(f"OK size={len(data)} SPEL+Main+PlayerCombat+PlayerAlias+SeverMSG present")
     return 0
 
 
