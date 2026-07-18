@@ -7,29 +7,30 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM | **Shipped (0.1.0)** |
 | **B** | Kill-with-knife praise + satiation rules | **Done** |
 | **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **Done** — C1–C5 verified in-game |
-| **D** | Audio bank playback (research + implement) | **In progress** — D0–D1 Desperate audio; verify delivery modes in-game |
-| **E** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
-| **F** | Corpse preserve sync with Necromantic | Planned |
-| **G** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
-| **H** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
-| **I** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
+| **D** | Audio bank playback (research + implement) | **Done** — D0–D1 Desperate audio; delivery modes verified |
+| **E** | Named-victim kill voice + soft Necromantic intimacy hooks | Planned |
+| **F** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
+| **G** | Corpse preserve sync with Necromantic | Planned |
+| **H** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
+| **I** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
+| **J** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
 
 ## Slice A — trigger, toast, hunger, MCM
 
-- Bond on `PickmanGallery01` enter and/or blade acquire/equip.
-- Trust line bank + hunger band toasts.
-- Hunger 0–100 with AGI/CHA withdrawal stand-in (Necromantic craving pattern).
-- MCM: How To Use, Hunger, Voice, Debug.
-- Satiation UI copy present; full clear on knife kill reserved for B.
+- [x] Bond on `PickmanGallery01` enter and/or blade acquire/equip.
+- [x] Trust line bank + hunger band toasts.
+- [x] Hunger 0–100 with AGI/CHA withdrawal stand-in (Necromantic craving pattern).
+- [x] MCM: How To Use, Hunger, Voice, Debug.
+- [x] Satiation UI copy present; full clear on knife kill reserved for B.
 
 ## Slice B — knife kills + satiation
 
 **Status: Done** (verified: blade sates on non-hostile adult females; gun with blade in inventory does not). Regression: [TEST.md](../TEST.md) + `tools/test_blade_detect_contract.py` + MCM **Verify blade detect**.
 
-- Detect kills while weapon is Pickman's Blade (primary: nearby living→dead GoE scan; soft backups: `OnDeath` / hit-tag / combat target).
-- **Blade identity (B27):** GoE equipped-slot name / OMOD pair (`Knife` `0x913CA` + bleed `0x1E7C20` + stealth `0x187A10`). Do **not** trust `GetEquippedWeapon` name alone (reports Combat Knife) or LVLI `0x22595F` as the drawn WEAP.
-- Valid target: adult **female** non-**essential** human, seen **non-hostile** while alive (Protected settlers **do** count after you aggro them); skips men, hostiles-from-first-sight (raiders), children, teammates, ghoul/SM/synth/robot.
-- Only kills with **Pickman's Blade** drawn count; gun with blade only in inventory must **not** sate.
+- [x] Detect kills while weapon is Pickman's Blade (primary: nearby living→dead GoE scan; soft backups: `OnDeath` / hit-tag / combat target).
+- [x] **Blade identity (B27):** GoE equipped-slot name / OMOD pair (`Knife` `0x913CA` + bleed `0x1E7C20` + stealth `0x187A10`). Do **not** trust `GetEquippedWeapon` name alone (reports Combat Knife) or LVLI `0x22595F` as the drawn WEAP.
+- [x] Valid target: adult **female** non-**essential** human, seen **non-hostile** while alive (Protected settlers **do** count after you aggro them); skips men, hostiles-from-first-sight (raiders), children, teammates, ghoul/SM/synth/robot.
+- [x] Only kills with **Pickman's Blade** drawn count; gun with blade only in inventory must **not** sate.
 
 ## Slice C — NPC scan + comments + fixation
 
@@ -47,11 +48,22 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 
 - [x] **D0-POC** — MCM Debug **Play test whisper (EndIt)** → `Sound.Play` on `PW_Whisper_EndIt` (`0x807`).
 - [x] **D0.5** — Esp build clones SNDR for every `Desperate_Audio.txt` `.xwm` stem (`PW_Whisper_<Stem>`, `WhisperSndrIds.txt`).
-- [x] **D1** — Load `*_Audio.txt`, MCM `iVoiceDelivery` (Toast+Audio / Audio / Toast), same-index `PlayNoticeAudio` on notice path (`tools/test_audio_d1.py`). **Verify in-game** (force Desperate stage).
+- [x] **D1** — Load `*_Audio.txt`, MCM `iVoiceDelivery` (Toast+Audio / Audio / Toast), same-index `PlayNoticeAudio` on notice path (`tools/test_audio_d1.py`). **Verified in-game.**
 - Map keys are **`.xwm`** under `Data/Sound/PickmansWhisper/`. Blank Calm/Restless/Hungry/Starving maps until clips exist.
 - Docs: [AUDIO.md](AUDIO.md), [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
+- Voice features require drawn Pickman's Blade (`IsVoiceWeaponReady` → `IsBladeEquipped`).
 
-## Slice E — slow hunger + peak wait rewards
+## Slice E — named kill voice + soft Necromantic intimacy
+
+Special lines when the player has a personal stake (Potential Victims name) and soft suite hooks with Necromantic. **No** `Necromantic.esp` master; no AAF/sex code in this mod.
+
+- [x] **E1** — Named-victim kill voice: on a valid blade kill, if the victim has a player-assigned Potential Victim name (`GetVictimOverrideName`), speak a dedicated toast + audio from `ModConfig.txt` (text + optional SNDR stem keys) instead of the generic praise line. Later: optional randomized banks. *(toast shipped; uncomment `namedKillAudio` when `.xwm` exists)*
+- [x] **E2** — Soft Necromantic intimacy hook: `GetFormFromFile(0x800)` + `RegisterForCustomEvent` `OnNecroSceneStart` / `OnNecroSceneEnd`; named Potential Victim corpse in `akArgs[1]` → ModConfig intimacy toast + optional audio. Fail loud if audio key set but xwm/SNDR missing.
+- Honor direction rules: not sexual here; soft complementarity only; blade-drawn voice gate still applies.
+
+## Slice F — slow hunger + peak wait rewards
+
+(Was Slice E.)
 
 Stretch the hunger climb so each stage lasts **days** of game time (not a quick meter fill). Reward patience when the player waits until hunger is peaking before killing.
 
@@ -60,17 +72,17 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Do **not** break C3 stage file mapping or the verified killscan arming path while tuning rise rate.
 - Soft-stack with Necromantic craving feel; no ESP master dependency.
 
-## Slice F — corpse preserve
+## Slice G — corpse preserve
 
-(Was Slice E.)
+(Was Slice F.)
 
 - `HeldCorpses[]` + soft claim token on knife-kill victims.
 - Compatible with Necromantic holds; no ESP master dependency.
-- Ephemeral bed-hallucination corpses (Slice G) are **not** long-term hold targets.
+- Ephemeral bed-hallucination corpses (Slice H) are **not** long-term hold targets.
 
-## Slice G — bed corpse hallucination
+## Slice H — bed corpse hallucination
 
-(Was Slice F.) Design notes: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md).
+(Was Slice G.) Design notes: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md).
 
 - On sleep start: spawn disabled vanilla female Actor at bed, silent `Kill()`, place on/beside bed.
 - On wake: player finds the corpse; no visible place→ragdoll if timed during sleep fade.
@@ -78,23 +90,23 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Despawn on look-away (preferred) so look-back finds an empty bed.
 - Bond / hunger / cooldown gates; MCM toggle + debug; no custom corpse mesh.
 
-## Slice H — perk / stretch
+## Slice I — perk / stretch
 
-(Was Slice G.)
+(Was Slice H.)
 
 - Soft-gate or enhance via Lady Killer / Black Widow.
 - Optional Cannibal; stretch butcher-shop cell.
 - Occult Pact bridges documented only until that mod exists.
 
-## Slice I — witnesses
+## Slice J — witnesses
 
-(Was Slice H.) NPCs who witness a knife kill (or catch the player mid-crime) react instead of ignoring it.
+(Was Slice I.) NPCs who witness a knife kill (or catch the player mid-crime) react instead of ignoring it.
 
 - **Reaction on witness:** either
   - **Flee** — run in fear / scream / call for help, or
   - **Fight** — turn hostile and attack the player.
 - Reuse existing GoE proximity / LOS scanning (kill-watch + `GetActorsDetecting`) to find who actually saw it; gate by distance/line-of-sight so unseen kills stay quiet.
-- **I1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
+- **J1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
 - Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
 - Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
 
@@ -103,6 +115,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Audio without dialogue may need F4SE / custom sound forms.
 - Essential NPC filters must never break main quests.
 - Tone is extreme — keep lines in editable config files.
-- Hunger pacing (E): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
-- Bed hallucination: sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
-- Witnesses (I): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
+- Named-kill / Necromantic hooks (E): soft stub + CustomEvents; no `Necromantic.esp` master.
+- Hunger pacing (F): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
+- Bed hallucination: sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice H doc).
+- Witnesses (J): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.

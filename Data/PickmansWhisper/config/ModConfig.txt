@@ -3,6 +3,14 @@
 # Blank and # lines ignored. Values are everything after the first '='.
 #
 # renamePromptFemaleNPC — toast after 3+ recognition looks while she is still unnamed.
-# Future keys can add prompts for other target types (e.g. renamePromptFemaleRobot).
+# namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
+#   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
+#   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
+# namedIntimacyToast / namedIntimacyAudio — Slice E2: Necromantic OnNecroSceneStart with
+#   a named Potential Victim partner (args[0]). Soft: no Necromantic → never speaks.
 
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
+namedKillToast={name} is yours forever now.
+namedIntimacyToast={name} is with you... but she belongs to the blade.
+# namedKillAudio=NamedKill.xwm
+# namedIntimacyAudio=NamedIntimacy.xwm

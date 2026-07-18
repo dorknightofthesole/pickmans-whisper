@@ -115,6 +115,7 @@ python "$ROOT/tools/test_potential_victims.py" || exit 1
 python "$ROOT/tools/test_sleep_recognition.py" || exit 1
 python "$ROOT/tools/test_audio_poc.py" || exit 1
 python "$ROOT/tools/test_audio_d1.py" || exit 1
+python "$ROOT/tools/test_voice_blade_gate.py" || exit 1
 
 echo "==> TargetOverrides filter contract test"
 python "$ROOT/tools/test_target_overrides.py" || exit 1

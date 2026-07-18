@@ -18,8 +18,8 @@ Bool Function IsStopping() Native
 Function StartTimer(Float afInterval, Int aiTimerID = 0) Native
 Function CancelTimer(Int aiTimerID = 0) Native
 Alias Function GetAlias(Int aiAliasID) Native
-Function RegisterForCustomEvent(Form akSender, String asEventName) Native
-Function UnregisterForCustomEvent(Form akSender, String asEventName) Native
+; RegisterForCustomEvent / UnregisterForCustomEvent live on ScriptObject only —
+; do not redeclare here (wrong Form + String signature shadows the real natives).
 Function RegisterForRemoteEvent(Form akForm, String asEventName) Native
 Function UnregisterForRemoteEvent(Form akForm, String asEventName) Native
 Function RegisterForExternalEvent(String asEventName, String asCallback) Native

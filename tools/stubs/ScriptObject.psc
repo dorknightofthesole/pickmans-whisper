@@ -6,8 +6,10 @@ Function RegisterForControl(String control) Native
 Function UnregisterForControl(String control) Native
 Function RegisterForRemoteEvent(Form akForm, String asEventName) Native
 Function UnregisterForRemoteEvent(Form akForm, String asEventName) Native
-Function RegisterForCustomEvent(ScriptObject akSender, String asEventName) Native
-Function UnregisterForCustomEvent(ScriptObject akSender, String asEventName) Native
+; Real FO4 — second arg is CustomEventName (compiler type for a declared CustomEvent).
+Function RegisterForCustomEvent(ScriptObject akSender, CustomEventName asEventName) Native
+Function UnregisterForCustomEvent(ScriptObject akSender, CustomEventName asEventName) Native
+Function SendCustomEvent(CustomEventName asEvent, Var[] akArgs = None) Native
 Function RegisterForExternalEvent(String asEventName, String asCallbackName) Native
 Function UnregisterForExternalEvent(String asEventName) Native
 

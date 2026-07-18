@@ -117,6 +117,18 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_audio_d1.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Voice blade gate contract test"
+& python (Join-Path $Root "tools\test_voice_blade_gate.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_voice_blade_gate.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Named kill / Necromantic E contract test"
+& python (Join-Path $Root "tools\test_named_kill_voice.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_named_kill_voice.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

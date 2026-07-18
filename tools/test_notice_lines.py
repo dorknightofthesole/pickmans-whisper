@@ -599,6 +599,8 @@ def test_psc_contracts() -> None:
         errors.append("MaybeSpeakNoticeLine not found")
     else:
         body = speak.group(1)
+        if "IsVoiceWeaponReady" not in body:
+            errors.append("MaybeSpeakNoticeLine must require drawn Pickman's Blade (IsVoiceWeaponReady)")
         if "SpeakNoticeToTarget(" not in body and "ToastNoticeLine(line)" not in body:
             errors.append("MaybeSpeakNoticeLine must deliver via SpeakNoticeToTarget or ToastNoticeLine")
         if re.search(r"If IsNoticePollDebugEnabled\(\)\s*\n\s*NoticeCoolCount\s*=\s*0", body):

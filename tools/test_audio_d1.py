@@ -133,10 +133,13 @@ def test_psc(text: str) -> None:
     if "LastNoticePickIndex" not in pick:
         fail("PickNoticeLine must set LastNoticePickIndex")
     play = extract_function(text, "PlayNoticeAudio")
-    if "Debug.Notification" not in play:
-        fail("PlayNoticeAudio must fail loud")
-    if "GetFormFromFile" not in play or ".Play(" not in play:
-        fail("PlayNoticeAudio must resolve Sound and Play")
+    if "PlayWhisperXwmByFile" not in play:
+        fail("PlayNoticeAudio must delegate to PlayWhisperXwmByFile")
+    xwm = extract_function(text, "PlayWhisperXwmByFile")
+    if "Debug.Notification" not in xwm:
+        fail("PlayWhisperXwmByFile must fail loud")
+    if "GetFormFromFile" not in xwm or ".Play(" not in xwm:
+        fail("PlayWhisperXwmByFile must resolve Sound and Play")
     # No hard-coded clip filename list in PSC
     if "OneCutForever.xwm" in text or "BelongsToTheBlade.xwm" in text:
         fail("PSC must not hard-code Desperate_Audio filenames")

@@ -23,13 +23,18 @@
 - [x] **D0.5** Clone SNDRs for Desperate_Audio.txt stems + WhisperSndrIds.txt
 - [x] **D1** Delivery mode + notice-hook audio maps (`tools/test_audio_d1.py`) — verify in-game
 
+## Slice E
+
+- [x] **E1** Named-victim kill toast + audio (`ModConfig.txt` keys; Potential Victims name) — toast shipped; audio key when `.xwm` ready
+- [x] **E2** Soft Necromantic intimacy hook (`OnNecroSceneStart`/`End` on 0x800; named victim `args[0]`; no ESP master)
+
 ## Later
 
-- [ ] **E** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
-- [ ] Corpse hold sync with Necromantic (F)
-- [ ] Bed corpse hallucination (G) — see docs/BED_CORPSE_HALLUCINATION.md
-- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (H)
-- [ ] Witnesses / killer rumors (I)
+- [ ] **F** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
+- [ ] Corpse hold sync with Necromantic (G)
+- [ ] Bed corpse hallucination (H) — see docs/BED_CORPSE_HALLUCINATION.md
+- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (I)
+- [ ] Witnesses / killer rumors (J)
 
 ## LoversLab release / visibility
 

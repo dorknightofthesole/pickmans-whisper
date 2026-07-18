@@ -240,9 +240,21 @@ String LastSleepRecognitionLine = "" ; no-immediate-repeat (raw template)
 String SleepRecognitionLoadStatus = ""
 ; After this many recognition toasts on one NPC (still unnamed), nudge toward MCM Victims.
 Int RECOGNITION_NAME_PROMPT_AT = 3
-; Loaded from ModConfig.txt (renamePromptFemaleNPC) — files-only, no baked mirror.
+; Loaded from ModConfig.txt — files-only, no baked mirror.
 String RenamePromptFemaleNPC = ""
+String NamedKillToast = ""
+String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
+String NamedIntimacyToast = ""
+String NamedIntimacyAudio = ""
 String ModConfigLoadStatus = ""
+
+; Slice E2 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
+Int FID_NECROMANTIC_MAIN = 0x00000800
+NecromanticMainQuestScript NecroQuestRef
+Bool NecroEventsRegistered = False
+Bool NecroSceneActive = False
+Float LastIntimacyToastRealTime = 0.0
+Float INTIMACY_TOAST_COOLDOWN = 45.0
 
 ; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
@@ -269,6 +281,7 @@ Event OnInit()
 		RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 		RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
 	EndIf
+
 	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
 	ScheduleBootArm()
@@ -296,6 +309,7 @@ Event OnQuestInit()
 	ScheduleBootArm()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
+	RegisterNecromanticSceneEvents()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	RefreshDebugStatus()
@@ -353,12 +367,14 @@ Function HandleGameResume(String reason)
 	ScheduleBootArm()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
+	RegisterNecromanticSceneEvents()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	SyncHungerAddictionSpell()
 	LastNoticeToastRealTime = 0.0
 	LastNoticeDiagRealTime = 0.0
 	NoticeCoolCount = 0
+	NecroSceneActive = False
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
 	; Potential Victims summary only — SetDisplayName re-applies lazily when she is seen.
@@ -366,6 +382,92 @@ Function HandleGameResume(String reason)
 	Debug.Trace("PickmansWhisper: game resume (" + reason + ") " + DEBUG_BUILD)
 	ToastDebug("Pickman's Whisper load [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
+EndFunction
+
+; Soft E2 — register Necromantic scene CustomEvents when plugin present.
+Function RegisterNecromanticSceneEvents()
+	NecromanticMainQuestScript necro = Game.GetFormFromFile(FID_NECROMANTIC_MAIN, "Necromantic.esp") as NecromanticMainQuestScript
+	If !necro
+		Debug.Trace("PickmansWhisper: Necromantic.esp absent or 0x800 cast failed — scene events not registered")
+		NecroEventsRegistered = False
+		NecroQuestRef = None
+		Return
+	EndIf
+	If NecroEventsRegistered && NecroQuestRef
+		UnregisterForCustomEvent(NecroQuestRef, "OnNecroSceneStart")
+		UnregisterForCustomEvent(NecroQuestRef, "OnNecroSceneEnd")
+	EndIf
+	RegisterForCustomEvent(necro, "OnNecroSceneStart")
+	RegisterForCustomEvent(necro, "OnNecroSceneEnd")
+	NecroQuestRef = necro
+	NecroEventsRegistered = True
+	Debug.Trace("PickmansWhisper: registered OnNecroSceneStart/End on Necromantic 0x800")
+EndFunction
+
+; Necromantic payload: [0] gen Int, [1] corpse Actor, [2] formId Int, [3] name String,
+; [4] hexId String, [5] craving Float, [6] unlocked Bool, [7] sated Bool, [8] witnesses Bool,
+; [9] positionId String, [10] completed Bool (End only; Start always False).
+Event NecromanticMainQuestScript.OnNecroSceneStart(NecromanticMainQuestScript akSender, Var[] akArgs)
+	If NecroSceneActive
+		Return
+	EndIf
+	Actor corpse = None
+	If akArgs && akArgs.Length > 1
+		corpse = akArgs[1] as Actor
+	EndIf
+	If !corpse
+		Debug.Trace("PickmansWhisper: OnNecroSceneStart — no corpse in akArgs[1]; skip")
+		Return
+	EndIf
+	NecroSceneActive = True
+	MaybeSpeakNamedIntimacyVoice(corpse)
+EndEvent
+
+Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSender, Var[] akArgs)
+	NecroSceneActive = False
+	Bool completed = False
+	If akArgs && akArgs.Length > 10
+		completed = akArgs[10] as Bool
+	EndIf
+	Debug.Trace("PickmansWhisper: OnNecroSceneEnd completed=" + completed)
+EndEvent
+
+; Named Potential Victim + namedIntimacyToast → ModConfig voice (throttled).
+Function MaybeSpeakNamedIntimacyVoice(Actor partner)
+	If !partner
+		Return
+	EndIf
+	String overrideName = GetVictimOverrideName(partner)
+	If !overrideName
+		Return
+	EndIf
+	If !NamedIntimacyToast
+		Debug.Trace("PickmansWhisper: namedIntimacyToast missing — intimacy skip")
+		Return
+	EndIf
+	If !IsVoiceEnabled()
+		Return
+	EndIf
+	If !IsVoiceWeaponReady()
+		Return
+	EndIf
+	String line = ApplyNamePlaceholder(NamedIntimacyToast, overrideName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		Return
+	EndIf
+	Int mode = GetVoiceDeliveryMode()
+	If mode != 1
+		ShowVoiceToast(line)
+	EndIf
+	If mode != 2
+		If NamedIntimacyAudio
+			PlayWhisperXwmByFile(NamedIntimacyAudio)
+		ElseIf mode == 1
+			ShowVoiceToast(line)
+			Debug.Trace("PickmansWhisper: namedIntimacyAudio missing — toast fallback for audio-only mode")
+		EndIf
+	EndIf
+	Debug.Trace("PickmansWhisper: named intimacy voice | " + line)
 EndFunction
 
 ; PlayerCombat quest owns the alias OnPlayerLoadGame hook. Start Game Enabled does
@@ -910,6 +1012,12 @@ Bool Function IsBladeKillWeaponReady()
 	Return IsBladeEquipped()
 EndFunction
 
+; Voice / whisper gate — same drawn-blade check as kills; do not reimplement GoE scan.
+; All toast + notice audio must call this (not inventory ownership alone).
+Bool Function IsVoiceWeaponReady()
+	Return IsBladeEquipped()
+EndFunction
+
 String Function GetDrawnWeaponDebugName()
 	If !PlayerRef
 		Return "(no player)"
@@ -1034,7 +1142,7 @@ Function MaybeSpeakTrustLine()
 	If Utility.IsInMenuMode()
 		Return
 	EndIf
-	If !PlayerHasBlade() && !IsBladeEquipped() && !IsPlayerInGallery()
+	If !IsVoiceWeaponReady()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
@@ -1294,6 +1402,11 @@ Function MaybeSpeakNoticeLine(String source)
 		WriteNoticeStatusToMcm()
 		Return
 	EndIf
+	If !IsVoiceWeaponReady()
+		LastNoticeStatus = "skip: Pickman's Blade not drawn"
+		WriteNoticeStatusToMcm()
+		Return
+	EndIf
 
 	; Ambient hunger cadence: at most once per NOTICE_MIN_GAME_HOURS (game time).
 	; Fixation has its own look-edge path and must not share this gate.
@@ -1373,6 +1486,9 @@ Function ToastNoticeLine(String line)
 	If !line
 		Return
 	EndIf
+	If !IsVoiceWeaponReady()
+		Return
+	EndIf
 	LastNoticeToastRealTime = Utility.GetCurrentRealTime()
 	LastNoticeToastGameTime = Utility.GetCurrentGameTime()
 	ShowVoiceToast(line)
@@ -1391,6 +1507,10 @@ EndFunction
 
 Function ShowVoiceToast(String line)
 	If !line
+		Return
+	EndIf
+	; Central toast sink — recognition / rename / trust / praise all land here.
+	If !IsVoiceWeaponReady()
 		Return
 	EndIf
 	Debug.Notification(FormatVoiceToast(line))
@@ -1827,7 +1947,13 @@ Function TickLookFixation()
 	If count == 1
 		; First look — track only (silent).
 		Return
-	ElseIf count == 2
+	EndIf
+	If !IsVoiceWeaponReady()
+		LastFixationStatus = label + " seen x" + count + " (no blade — silent)"
+		WriteFixationStatusToMcm()
+		Return
+	EndIf
+	If count == 2
 		SpeakFixationStageWhisper(ak, displayName)
 	Else
 		SpeakRecognitionLine(ak, displayName)
@@ -2109,6 +2235,9 @@ Function ToastVoice(String line)
 	If Utility.IsInMenuMode()
 		Return
 	EndIf
+	If !IsVoiceWeaponReady()
+		Return
+	EndIf
 	LastTrustToastRealTime = Utility.GetCurrentRealTime()
 	ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: voice | " + line)
@@ -2119,6 +2248,9 @@ Function ToastHungerLine(String line)
 		Return
 	EndIf
 	If Utility.IsInMenuMode()
+		Return
+	EndIf
+	If !IsVoiceWeaponReady()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
@@ -2145,10 +2277,13 @@ Function LoadLineBanks()
 	LoadTargetOverrides()
 EndFunction
 
-; ModConfig.txt — key=value prompts / toggles. Required for renamePromptFemaleNPC.
-; Files-only: missing key or file fails loud when the prompt would speak (no baked mirror).
+; ModConfig.txt — key=value prompts / toggles. Files-only (no baked mirror).
 Function LoadModConfig()
 	RenamePromptFemaleNPC = ""
+	NamedKillToast = ""
+	NamedKillAudio = ""
+	NamedIntimacyToast = ""
+	NamedIntimacyAudio = ""
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
 	ModConfigLoadStatus = "READ FAILED (GoE2 missing?)"
@@ -2187,15 +2322,33 @@ Function LoadModConfig()
 				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
 				If key == "renamePromptFemaleNPC"
 					RenamePromptFemaleNPC = val
+				ElseIf key == "namedKillToast"
+					NamedKillToast = val
+				ElseIf key == "namedKillAudio"
+					NamedKillAudio = val
+				ElseIf key == "namedIntimacyToast"
+					NamedIntimacyToast = val
+				ElseIf key == "namedIntimacyAudio"
+					NamedIntimacyAudio = val
 				EndIf
 			EndIf
 		EndIf
 	EndWhile
+	String status = ""
 	If RenamePromptFemaleNPC
-		ModConfigLoadStatus = "renamePromptFemaleNPC ok"
+		status += "rename "
+	EndIf
+	If NamedKillToast
+		status += "namedKill "
+	EndIf
+	If NamedIntimacyToast
+		status += "namedIntimacy "
+	EndIf
+	If status != ""
+		ModConfigLoadStatus = TrimString(status) + "ok"
 		Debug.Trace("PickmansWhisper: ModConfig ready | " + ModConfigLoadStatus)
 	Else
-		ModConfigLoadStatus = "renamePromptFemaleNPC missing"
+		ModConfigLoadStatus = "no known keys"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
 	EndIf
 EndFunction
@@ -2627,6 +2780,10 @@ EndFunction
 
 ; Play SNDR for *_Audio.txt[index]. Fail loud on missing map/xwm/SNDR — never substitute.
 Function PlayNoticeAudio(Int stage, Int index)
+	; Same drawn-blade gate as toasts — silent skip (no error spam while gun is out).
+	If !IsVoiceWeaponReady()
+		Return
+	EndIf
 	If index < 0
 		Debug.Notification("Pickman's Whisper: audio play skipped — bad index")
 		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio bad index stage=" + stage)
@@ -2650,16 +2807,29 @@ Function PlayNoticeAudio(Int stage, Int index)
 		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio empty filename")
 		Return
 	EndIf
+	PlayWhisperXwmByFile(fileName)
+EndFunction
+
+; Play one Whisper SNDR by .xwm filename (WhisperSndrIds key). Fail loud — never substitute.
+Function PlayWhisperXwmByFile(String fileName)
+	If !IsVoiceWeaponReady()
+		Return
+	EndIf
+	If !fileName || GardenOfEden.StrLength(fileName) < 1
+		Debug.Notification("Pickman's Whisper: empty audio filename")
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile empty filename")
+		Return
+	EndIf
 	Bool xwmOk = GardenOfEden2.DoesFileExist(fileName, ".\\Data\\Sound\\PickmansWhisper\\")
 	If !xwmOk
 		Debug.Notification("Pickman's Whisper: missing xwm " + fileName)
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio xwm missing " + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile xwm missing " + fileName)
 		Return
 	EndIf
 	Int fid = FindWhisperSndrFid(fileName)
 	If fid <= 0
 		Debug.Notification("Pickman's Whisper: no SNDR id for " + fileName + " — rebuild ESP")
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio no FormID for " + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile no FormID for " + fileName)
 		Return
 	EndIf
 	If !PlayerRef
@@ -2672,17 +2842,17 @@ Function PlayNoticeAudio(Int stage, Int index)
 	Sound snd = Game.GetFormFromFile(fid, "PickmansWhisper.esp") as Sound
 	If !snd
 		Debug.Notification("Pickman's Whisper: SNDR missing for " + fileName + " (fid=" + fid + ")")
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio GetFormFromFile failed fid=" + fid + " file=" + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile GetFormFromFile failed fid=" + fid + " file=" + fileName)
 		Return
 	EndIf
 	Int inst = snd.Play(PlayerRef)
 	If inst == 0
 		Debug.Notification("Pickman's Whisper: Play failed for " + fileName + " (instance 0)")
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio Play=0 file=" + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile Play=0 file=" + fileName)
 		Return
 	EndIf
 	LastAudioFile = fileName
-	Debug.Trace("PickmansWhisper: PlayNoticeAudio " + fileName + " inst=" + inst)
+	Debug.Trace("PickmansWhisper: PlayWhisperXwmByFile " + fileName + " inst=" + inst)
 EndFunction
 
 ; One modal dialog with the full step-by-step load trace (screenshot-friendly).
@@ -3138,6 +3308,9 @@ EndFunction
 
 Function ToastPraiseLine(String line)
 	If line == "" || !IsVoiceEnabled()
+		Return
+	EndIf
+	If !IsVoiceWeaponReady()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
@@ -4309,8 +4482,11 @@ Function ProcessKnifeKill(Actor victim)
 	EndIf
 	KnifeKillCount += 1
 	NoteKnifeActivity()
-	String line = PickPraiseLine()
-	ToastPraiseLine(line)
+	; E1 named-victim kill voice — satiation path unchanged; voice branch only.
+	If !MaybeSpeakNamedKillVoice(victim)
+		String line = PickPraiseLine()
+		ToastPraiseLine(line)
+	EndIf
 	SatiateHunger()
 	RefreshHungerPanel(False)
 	RefreshDebugStatus()
@@ -4320,6 +4496,51 @@ Function ProcessKnifeKill(Actor victim)
 	EndIf
 	Debug.Trace("PickmansWhisper: knife kill #" + KnifeKillCount + " victim=" + vid + " hunger=0 drawn=" + GetDrawnWeaponDebugName())
 	Debug.Notification("Pickman's Whisper: hunger sated")
+EndFunction
+
+; True if named-kill ModConfig voice handled this kill (skip generic praise).
+; Missing namedKillToast → False (fall back). Key set but xwm/SNDR missing → fail loud.
+Bool Function MaybeSpeakNamedKillVoice(Actor victim)
+	If !victim
+		Return False
+	EndIf
+	String overrideName = GetVictimOverrideName(victim)
+	If !overrideName
+		Return False
+	EndIf
+	If !NamedKillToast
+		Return False
+	EndIf
+	If !IsVoiceEnabled()
+		Return True
+	EndIf
+	If !IsVoiceWeaponReady()
+		Return True
+	EndIf
+	String line = ApplyNamePlaceholder(NamedKillToast, overrideName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		Return False
+	EndIf
+	Float now = Utility.GetCurrentRealTime()
+	If (now - LastPraiseToastRealTime) < PRAISE_TOAST_COOLDOWN
+		Return True
+	EndIf
+	LastPraiseToastRealTime = now
+	Int mode = GetVoiceDeliveryMode()
+	If mode != 1
+		ShowVoiceToast(line)
+	EndIf
+	If mode != 2
+		If NamedKillAudio
+			PlayWhisperXwmByFile(NamedKillAudio)
+		ElseIf mode == 1
+			; Audio-only with no audio key — still deliver toast so the kill is not silent.
+			ShowVoiceToast(line)
+			Debug.Trace("PickmansWhisper: namedKillAudio missing — toast fallback for audio-only mode")
+		EndIf
+	EndIf
+	Debug.Trace("PickmansWhisper: named kill voice | " + line)
+	Return True
 EndFunction
 
 ; Call after a valid knife kill (or MCM debug). Clears meter + sated window.
