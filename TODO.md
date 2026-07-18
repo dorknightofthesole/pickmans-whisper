@@ -27,7 +27,8 @@
 
 - [x] **E1** Named-victim kill toast + audio (`ModConfig.txt` keys; Potential Victims name) — toast shipped; audio key when `.xwm` ready
 - [x] **E2** Soft Necromantic intimacy hook (`OnNecroSceneStart`/`End` on 0x800; named victim `akArgs[1]`; no ESP master)
-- [x] **E3** `OnNecroSceneEnd` intimacy toast (`namedIntimacyEndToast`; shared speaker with toast param)
+- [x] **E3** `OnNecroSceneEnd` intimacy toast (shared speaker with toast param)
+- [x] **E4** Random intimacy from `Intimacy_Start_Named.txt` / `Intimacy_Stop_Named.txt`
 
 ## Later
 

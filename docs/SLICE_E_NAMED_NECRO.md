@@ -5,8 +5,9 @@
 ## Status
 
 - **E1**: `MaybeSpeakNamedKillVoice` on `ProcessKnifeKill` when `GetVictimOverrideName` + `namedKillToast`. Audio key commented until `.xwm` exists.
-- **E2**: soft `RegisterNecromanticSceneEvents` on init/load; `OnNecroSceneStart` → `namedIntimacyToast`. Corpse = `akArgs[1] as Actor`.
-- **E3**: `OnNecroSceneEnd` → `namedIntimacyEndToast` via same `MaybeSpeakNamedIntimacyVoice(partner, toast, audio)`.
+- **E2**: soft `RegisterNecromanticSceneEvents` on init/load; corpse = `akArgs[1] as Actor`.
+- **E3**: shared `MaybeSpeakNamedIntimacyVoice(partner, toast, audio)` for Start/End.
+- **E4**: Start/End randomly pick from `Intimacy_Start_Named.txt` / `Intimacy_Stop_Named.txt` (files-only under `config/necromantic/`).
 
 ## E1 — Named-victim kill voice
 

@@ -157,6 +157,8 @@ cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/Pi
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"
 cp -f "$ROOT/Data/PickmansWhisper/config/"*.txt "$DEPLOY/PickmansWhisper/config/" 2>/dev/null || true
+mkdir -p "$DEPLOY/PickmansWhisper/config/necromantic"
+cp -f "$ROOT/Data/PickmansWhisper/config/necromantic/"*.txt "$DEPLOY/PickmansWhisper/config/necromantic/" 2>/dev/null || true
 cp -f "$ROOT/Data/Sound/PickmansWhisper/"*.xwm "$DEPLOY/Sound/PickmansWhisper/" 2>/dev/null || true
 if [[ ! -f "$DEPLOY/Sound/PickmansWhisper/EndIt.xwm" ]]; then
   echo "ERROR: Deploy missing Sound/PickmansWhisper/EndIt.xwm (D0-POC audio)" >&2

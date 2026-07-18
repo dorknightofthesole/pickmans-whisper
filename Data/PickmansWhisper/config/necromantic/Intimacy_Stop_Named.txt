@@ -1,0 +1,28 @@
+# Pickman's Whisper — Necromantic intimacy STOP / END (named). E4 toast bank.
+# Loaded by LoadIntimacyNamedLines; OnNecroSceneEnd picks one at random.
+# {name} = Potential Victim override. Blank and # lines ignored.
+
+Done. Cold now. Better that way.
+Whatever was soft in {name} is gone. Good.
+You finished what the knife started. Leave the rest for the flies.
+{name} is empty. You're not. Remember which one of you is hungry.
+Pretty things break. Pretty corpses stay broken.
+Wipe your hands. {name} won't mind the mess.
+The quiet after is uglier. Keep it. Own it.
+{name} is ruined now. Beautiful like that. Don't clean it up.
+Broken suits {name}. Leave {name} that way.
+{name} wanted more of you. Look how open she stayed.
+Cold, and still greedy for you. Flattering, isn't it?
+{name} took you like she was starving. Maybe she was.
+Your size ruined her stillness. {name} doesn't mind.
+Too much for the living. Perfect for her.
+She stretched around the idea of you. Keep that.
+Even dead, she made room. You filled it.
+{name} would've begged if she still had breath. You didn't need it.
+Look at her. That's what wanting you looks like when it can't move.
+Soft for something that big. Soft forever now.
+{name} held on like she finally got what she was built for.
+The knife made the hole. You made it mean something.
+She was never going to take all of you. She tried anyway.
+Leave her like that — proof you were too much.
+Pretty mouth. Pretty ruin. You did both.

@@ -244,16 +244,23 @@ Int RECOGNITION_NAME_PROMPT_AT = 3
 String RenamePromptFemaleNPC = ""
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
-String NamedIntimacyToast = ""
-String NamedIntimacyEndToast = ""
-String NamedIntimacyAudio = ""
+String NamedIntimacyAudio = "" ; optional start-scene .xwm; omit until clip + SNDR exist
 String ModConfigLoadStatus = ""
 
-; Slice E2/E3 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
+; Slice E2–E4 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
+; E4: random toast from config/necromantic/Intimacy_*_Named.txt (files-only).
 Int FID_NECROMANTIC_MAIN = 0x00000800
 NecromanticMainQuestScript NecroQuestRef
 Bool NecroEventsRegistered = False
 Bool NecroSceneActive = False
+String[] IntimacyStartNamedLines
+Int IntimacyStartNamedCount = 0
+String LastIntimacyStartLine = "" ; no-immediate-repeat (raw template)
+String IntimacyStartNamedStatus = ""
+String[] IntimacyStopNamedLines
+Int IntimacyStopNamedCount = 0
+String LastIntimacyStopLine = "" ; no-immediate-repeat (raw template)
+String IntimacyStopNamedStatus = ""
 
 ; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
@@ -423,7 +430,13 @@ Event NecromanticMainQuestScript.OnNecroSceneStart(NecromanticMainQuestScript ak
 		Return
 	EndIf
 	NecroSceneActive = True
-	MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyToast, NamedIntimacyAudio)
+	String startLine = PickIntimacyStartNamedLine()
+	If !startLine
+		Debug.Notification("Pickman's Whisper: Intimacy_Start_Named.txt not loaded")
+		Debug.Trace("PickmansWhisper: ERROR intimacy start bank empty — " + IntimacyStartNamedStatus)
+	Else
+		MaybeSpeakNamedIntimacyVoice(corpse, startLine, NamedIntimacyAudio)
+	EndIf
 EndEvent
 
 Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSender, Var[] akArgs)
@@ -435,16 +448,22 @@ Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSe
 	If akArgs && akArgs.Length > 10
 		completed = akArgs[10] as Bool
 	EndIf
-	; E3 — end toast before clearing latch (same named-victim filter as start).
+	; E4 — random stop-bank toast before clearing latch (same named-victim filter as start).
 	If corpse
-		MaybeSpeakNamedIntimacyVoice(corpse, NamedIntimacyEndToast, "")
+		String stopLine = PickIntimacyStopNamedLine()
+		If !stopLine
+			Debug.Notification("Pickman's Whisper: Intimacy_Stop_Named.txt not loaded")
+			Debug.Trace("PickmansWhisper: ERROR intimacy stop bank empty — " + IntimacyStopNamedStatus)
+		Else
+			MaybeSpeakNamedIntimacyVoice(corpse, stopLine, "")
+		EndIf
 	EndIf
 	NecroSceneActive = False
 	Debug.Trace("PickmansWhisper: OnNecroSceneEnd completed=" + completed)
 EndEvent
 
-; Named Potential Victim + caller-supplied ModConfig toast → knife voice.
-; Start/End pass different toast templates (and optional .xwm) from ModConfig.
+; Named Potential Victim + caller-supplied toast template → knife voice.
+; E4: Start/End pass a random line from Intimacy_*_Named.txt (+ optional .xwm).
 Function MaybeSpeakNamedIntimacyVoice(Actor partner, String toastTemplate, String audioFile)
 	If !partner
 		Return
@@ -2350,17 +2369,17 @@ Function LoadLineBanks()
 	LoadWhisperSndrIds()
 	LoadRecognitionLines()
 	LoadSleepRecognitionLines()
+	LoadIntimacyNamedLines()
 	LoadModConfig()
 	LoadTargetOverrides()
 EndFunction
 
 ; ModConfig.txt — key=value prompts / toggles. Files-only (no baked mirror).
+; E4: intimacy toast text lives in necromantic/Intimacy_*_Named.txt, not here.
 Function LoadModConfig()
 	RenamePromptFemaleNPC = ""
 	NamedKillToast = ""
 	NamedKillAudio = ""
-	NamedIntimacyToast = ""
-	NamedIntimacyEndToast = ""
 	NamedIntimacyAudio = ""
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
@@ -2404,10 +2423,6 @@ Function LoadModConfig()
 					NamedKillToast = val
 				ElseIf key == "namedKillAudio"
 					NamedKillAudio = val
-				ElseIf key == "namedIntimacyToast"
-					NamedIntimacyToast = val
-				ElseIf key == "namedIntimacyEndToast"
-					NamedIntimacyEndToast = val
 				ElseIf key == "namedIntimacyAudio"
 					NamedIntimacyAudio = val
 				EndIf
@@ -2421,12 +2436,6 @@ Function LoadModConfig()
 	If NamedKillToast
 		status += "namedKill "
 	EndIf
-	If NamedIntimacyToast
-		status += "namedIntimacy "
-	EndIf
-	If NamedIntimacyEndToast
-		status += "namedIntimacyEnd "
-	EndIf
 	If status != ""
 		ModConfigLoadStatus = TrimString(status) + "ok"
 		Debug.Trace("PickmansWhisper: ModConfig ready | " + ModConfigLoadStatus)
@@ -2434,6 +2443,56 @@ Function LoadModConfig()
 		ModConfigLoadStatus = "no known keys"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
 	EndIf
+EndFunction
+
+; E4 — named intimacy toast banks (files-only under config/necromantic/).
+Function LoadIntimacyNamedLines()
+	IntimacyStartNamedLines = new String[64]
+	IntimacyStartNamedCount = LoadStageBankAt("Intimacy_Start_Named.txt", IntimacyStartNamedLines, NecromanticConfigPath())
+	IntimacyStartNamedStatus = LastStageLoadStatus
+	If IntimacyStartNamedCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR Intimacy_Start_Named.txt — " + IntimacyStartNamedStatus)
+	Else
+		Debug.Trace("PickmansWhisper: intimacy start named lines ready (" + IntimacyStartNamedCount + ")")
+	EndIf
+	IntimacyStopNamedLines = new String[64]
+	IntimacyStopNamedCount = LoadStageBankAt("Intimacy_Stop_Named.txt", IntimacyStopNamedLines, NecromanticConfigPath())
+	IntimacyStopNamedStatus = LastStageLoadStatus
+	If IntimacyStopNamedCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR Intimacy_Stop_Named.txt — " + IntimacyStopNamedStatus)
+	Else
+		Debug.Trace("PickmansWhisper: intimacy stop named lines ready (" + IntimacyStopNamedCount + ")")
+	EndIf
+EndFunction
+
+; Random raw template from start bank; "" if unloaded. No-immediate-repeat.
+String Function PickIntimacyStartNamedLine()
+	If IntimacyStartNamedCount <= 0 || !IntimacyStartNamedLines
+		Return ""
+	EndIf
+	String raw = IntimacyStartNamedLines[Utility.RandomInt(0, IntimacyStartNamedCount - 1)]
+	Int tries = 0
+	While tries < 8 && IntimacyStartNamedCount > 1 && raw == LastIntimacyStartLine
+		raw = IntimacyStartNamedLines[Utility.RandomInt(0, IntimacyStartNamedCount - 1)]
+		tries += 1
+	EndWhile
+	LastIntimacyStartLine = raw
+	Return raw
+EndFunction
+
+; Random raw template from stop bank; "" if unloaded. No-immediate-repeat.
+String Function PickIntimacyStopNamedLine()
+	If IntimacyStopNamedCount <= 0 || !IntimacyStopNamedLines
+		Return ""
+	EndIf
+	String raw = IntimacyStopNamedLines[Utility.RandomInt(0, IntimacyStopNamedCount - 1)]
+	Int tries = 0
+	While tries < 8 && IntimacyStopNamedCount > 1 && raw == LastIntimacyStopLine
+		raw = IntimacyStopNamedLines[Utility.RandomInt(0, IntimacyStopNamedCount - 1)]
+		tries += 1
+	EndWhile
+	LastIntimacyStopLine = raw
+	Return raw
 EndFunction
 
 
@@ -2988,12 +3047,20 @@ String Function NoticeConfigPath()
 	Return ".\\Data\\PickmansWhisper\\config\\"
 EndFunction
 
+; Necromantic intimacy banks (E4) — subdirectory under config/.
+String Function NecromanticConfigPath()
+	Return ".\\Data\\PickmansWhisper\\config\\necromantic\\"
+EndFunction
+
 ; Load one config .txt into a pre-allocated String[64] bank; returns usable count.
+Int Function LoadStageBank(String fileName, String[] bank)
+	Return LoadStageBankAt(fileName, bank, NoticeConfigPath())
+EndFunction
+
 ; Mirrors Necromantic LoadWitnessInsults / LoadPositionList: DoesFileExist ->
 ; GetLinesFromFile -> parse (# and blank lines skipped). Files-only (no builtin
 ; fallback). Sets LastStageLoadStatus (MCM) and LastStageLoadDiag (MessageBox trace).
-Int Function LoadStageBank(String fileName, String[] bank)
-	String path = NoticeConfigPath()
+Int Function LoadStageBankAt(String fileName, String[] bank, String path)
 	String nl = " | "
 	LastStageLoadDiag = fileName
 	; Pessimistic default survives a GoE2 native abort (e.g. GoE not installed).

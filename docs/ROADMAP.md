@@ -59,7 +59,8 @@ Special lines when the player has a personal stake (Potential Victims name) and 
 
 - [x] **E1** — Named-victim kill voice: on a valid blade kill, if the victim has a player-assigned Potential Victim name (`GetVictimOverrideName`), speak a dedicated toast + audio from `ModConfig.txt` (text + optional SNDR stem keys) instead of the generic praise line. Later: optional randomized banks. *(toast shipped; uncomment `namedKillAudio` when `.xwm` exists)*
 - [x] **E2** — Soft Necromantic intimacy hook: `GetFormFromFile(0x800)` + `RegisterForCustomEvent` `OnNecroSceneStart` / `OnNecroSceneEnd`; named Potential Victim corpse in `akArgs[1]` → ModConfig intimacy toast + optional audio. Fail loud if audio key set but xwm/SNDR missing.
-- [x] **E3** — `OnNecroSceneEnd` named-victim toast via `namedIntimacyEndToast` (shared `MaybeSpeakNamedIntimacyVoice` with toast template param; mirrors start).
+- [x] **E3** — `OnNecroSceneEnd` named-victim toast (shared `MaybeSpeakNamedIntimacyVoice` with toast template param; mirrors start).
+- [x] **E4** — Random intimacy toasts from files: `config/necromantic/Intimacy_Start_Named.txt` / `Intimacy_Stop_Named.txt` (no ModConfig single-line toast keys). Fail loud if bank missing when the event would speak.
 - Honor direction rules: not sexual here; soft complementarity only; blade-drawn voice gate still applies.
 
 ## Slice F — slow hunger + peak wait rewards

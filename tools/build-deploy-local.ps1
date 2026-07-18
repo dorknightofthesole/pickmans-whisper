@@ -190,6 +190,14 @@ Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join
 Get-ChildItem (Join-Path $Root "Data\PickmansWhisper\config\*.txt") -ErrorAction SilentlyContinue | ForEach-Object {
   Copy-Item -Force $_.FullName (Join-Path $Deploy "PickmansWhisper\config\")
 }
+$necroCfg = Join-Path $Root "Data\PickmansWhisper\config\necromantic"
+$necroDeploy = Join-Path $Deploy "PickmansWhisper\config\necromantic"
+if (Test-Path $necroCfg) {
+  New-Item -ItemType Directory -Force -Path $necroDeploy | Out-Null
+  Get-ChildItem (Join-Path $necroCfg "*.txt") -ErrorAction SilentlyContinue | ForEach-Object {
+    Copy-Item -Force $_.FullName $necroDeploy
+  }
+}
 Get-ChildItem (Join-Path $Root "Data\Sound\PickmansWhisper\*.xwm") -ErrorAction SilentlyContinue | ForEach-Object {
   Copy-Item -Force $_.FullName (Join-Path $Deploy "Sound\PickmansWhisper\")
 }

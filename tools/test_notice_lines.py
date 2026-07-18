@@ -367,12 +367,19 @@ def test_psc_contracts() -> None:
         if "aborted" not in body.lower():
             errors.append("LoadNoticeLines must pre-arm rows with a GoE2-abort sentinel")
 
-    # LoadStageBank mirrors Necromantic's proven loader: fixed ".\Data\..\config\"
-    # path, DoesFileExist -> GetLinesFromFile -> "!raw || raw.Length == 0" guard.
+    # LoadStageBank / LoadStageBankAt mirror Necromantic's proven loader:
+    # DoesFileExist -> GetLinesFromFile -> "!raw || raw.Length == 0" guard.
+    # LoadStageBank may thin-wrap LoadStageBankAt(NoticeConfigPath()).
     lsb = re.search(r"Int Function LoadStageBank\(String fileName, String\[\] bank\)(.*?)EndFunction", text, re.S)
+    lsb_at = re.search(
+        r"Int Function LoadStageBankAt\(String fileName, String\[\] bank, String path\)(.*?)EndFunction",
+        text,
+        re.S,
+    )
     if not lsb:
         errors.append("LoadStageBank not found")
-    else:
+    elif not lsb_at:
+        # Legacy: all load logic inside LoadStageBank
         lsb_body = lsb.group(1)
         if "LastStageLoadStatus =" not in lsb_body:
             errors.append("LoadStageBank must set LastStageLoadStatus (per-file MCM debug)")
@@ -382,12 +389,28 @@ def test_psc_contracts() -> None:
             errors.append("LoadStageBank must use GoE2 DoesFileExist + GetLinesFromFile (Necromantic pattern)")
         if "raw.Length == 0" not in lsb_body:
             errors.append("LoadStageBank must guard '!raw || raw.Length == 0' like Necromantic")
+    else:
+        wrap = lsb.group(1)
+        if "LoadStageBankAt" not in wrap:
+            errors.append("LoadStageBank must delegate to LoadStageBankAt")
+        at_body = lsb_at.group(1)
+        if "LastStageLoadStatus =" not in at_body:
+            errors.append("LoadStageBankAt must set LastStageLoadStatus (per-file MCM debug)")
+        if "LastStageLoadDiag" not in at_body:
+            errors.append("LoadStageBankAt must build LastStageLoadDiag (Necromantic-style load trace)")
+        if "GardenOfEden2.DoesFileExist(" not in at_body or "GardenOfEden2.GetLinesFromFile(" not in at_body:
+            errors.append("LoadStageBankAt must use GoE2 DoesFileExist + GetLinesFromFile (Necromantic pattern)")
+        if "raw.Length == 0" not in at_body:
+            errors.append("LoadStageBankAt must guard '!raw || raw.Length == 0' like Necromantic")
     # Proven fixed path, exactly mirroring Necromantic's ".\Data\<Mod>\config\".
     ncp = re.search(r"String Function NoticeConfigPath\(\)(.*?)EndFunction", text, re.S)
     if not ncp:
         errors.append("NoticeConfigPath helper missing (fixed proven GoE2 path)")
     elif r'".\\Data\\PickmansWhisper\\config\\"' not in ncp.group(1):
         errors.append(r"NoticeConfigPath must return '.\Data\PickmansWhisper\config\' (Necromantic-proven form)")
+    ncro = re.search(r"String Function NecromanticConfigPath\(\)(.*?)EndFunction", text, re.S)
+    if ncro and r"necromantic" not in ncro.group(1):
+        errors.append("NecromanticConfigPath must include necromantic subdir")
 
     # FO4 has no StringUtil — notice parse/trim must use real GoE natives.
     trim = re.search(r"String Function TrimString\(String s\)(.*?)EndFunction", text, re.S)
