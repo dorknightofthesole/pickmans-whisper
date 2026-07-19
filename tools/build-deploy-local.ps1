@@ -135,6 +135,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_corpse_sever.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Bed hallucination (Slice G) contract test"
+& python (Join-Path $Root "tools\test_bed_hallucination.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_bed_hallucination.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

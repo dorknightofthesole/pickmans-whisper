@@ -35,9 +35,12 @@
 
 - [x] **F** Blade corpse sever (`/` + MSG limb menu + `Actor.Dismember`) — see docs/SLICE_F_CORPSE_SEVER.md (verified in-game)
 
+## Slice G
+
+- [x] **G1** Bed corpse hallucination (sleep spawn + look-away despawn) — see docs/BED_CORPSE_HALLUCINATION.md (`tools/test_bed_hallucination.py`); verify in-game
+
 ## Later
 
-- [ ] **G** Bed corpse hallucination — see docs/BED_CORPSE_HALLUCINATION.md
 - [ ] **H** Corpse decay / consume + victim places — see docs/SLICE_H_CORPSE_DECAY.md
 - [ ] **I** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
 - [ ] Corpse hold sync with Necromantic (J)

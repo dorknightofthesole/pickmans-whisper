@@ -7,16 +7,19 @@ Scriptname PickmansWhisperPlayerAliasScript extends ReferenceAlias
 ;
 ; Slice F butcher key: RegisterForKey + OnKeyDown live HERE (player alias), not
 ; on the main Quest. Quest key registration is unreliable in FO4/F4SE.
+; Slice G sleep: RegisterForPlayerSleep also lives HERE for the same reason.
 
 Int FID_MAIN_QUEST = 0x00000800
 ; F4SE RegisterForKey uses Windows VK codes (same as Necromantic N=78), not DX DIK.
 ; /? on US keyboards = VK_OEM_2 = 191 (DIK 53 was wrong and never fired).
 Int KEY_BUTCHER = 191
 Bool ButcherKeyRegistered = False
+Bool BedSleepRegistered = False
 
 Event OnAliasInit()
 	EnsurePlayerFill()
 	RegisterButcherKey()
+	RegisterBedGiftSleep()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.EnsurePlayerCombatQuest()
@@ -30,6 +33,7 @@ EndEvent
 Event OnPlayerLoadGame()
 	EnsurePlayerFill()
 	RegisterButcherKey()
+	RegisterBedGiftSleep()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.HandlePlayerLoadFromAlias()
@@ -46,6 +50,34 @@ Function RegisterButcherKey()
 	ButcherKeyRegistered = True
 	Debug.Trace("PickmansWhisper: alias registered butcher key " + KEY_BUTCHER)
 EndFunction
+
+; Re-register every load — Quest-level sleep registration was missing most sleeps.
+Function RegisterBedGiftSleep()
+	If BedSleepRegistered
+		UnregisterForPlayerSleep()
+	EndIf
+	RegisterForPlayerSleep()
+	BedSleepRegistered = True
+	Debug.Trace("PickmansWhisper: alias registered PlayerSleep (bed gift)")
+EndFunction
+
+Event OnPlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
+	PickmansWhisperMainQuestScript main = GetMain()
+	If !main
+		Debug.Trace("PickmansWhisper: alias sleep start — main missing")
+		Return
+	EndIf
+	main.HandlePlayerSleepStart(afSleepStartTime, afDesiredSleepEndTime, akBed)
+EndEvent
+
+Event OnPlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
+	PickmansWhisperMainQuestScript main = GetMain()
+	If !main
+		Debug.Trace("PickmansWhisper: alias sleep stop — main missing")
+		Return
+	EndIf
+	main.HandlePlayerSleepStop(abInterrupted, akBed)
+EndEvent
 
 Event OnKeyDown(Int keyCode)
 	If keyCode != KEY_BUTCHER

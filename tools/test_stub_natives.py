@@ -59,6 +59,50 @@ FORBIDDEN = [
         r"Function\s+IsKeyPressed\s*\(",
         "Input.IsKeyPressed (Skyrim SKSE; FO4 uses RegisterForKey + OnKeyDown)",
     ),
+    (
+        "Actor.psc",
+        r"Function\s+HasLOS\s*\(",
+        "Actor.HasLOS (Skyrim; FO4 uses HasDetectionLOS / RegisterForDirectLOS*)",
+    ),
+    (
+        "ScriptObject.psc",
+        r"Function\s+RegisterForLOS\s*\(",
+        "ScriptObject.RegisterForLOS (not FO4; use RegisterForDirectLOSGain/Lost)",
+    ),
+]
+
+# Real FO4 APIs Slice G needs — must stay Native in stubs.
+REQUIRED_NATIVES = [
+    (
+        "ScriptObject.psc",
+        r"Function\s+RegisterForPlayerSleep\s*\(\s*\)\s*Native",
+        "RegisterForPlayerSleep",
+    ),
+    (
+        "ScriptObject.psc",
+        r"Function\s+RegisterForDirectLOSGain\s*\(",
+        "RegisterForDirectLOSGain",
+    ),
+    (
+        "ScriptObject.psc",
+        r"Function\s+RegisterForDirectLOSLost\s*\(",
+        "RegisterForDirectLOSLost",
+    ),
+    (
+        "Actor.psc",
+        r"Bool\s+Function\s+HasDetectionLOS\s*\(",
+        "HasDetectionLOS",
+    ),
+    (
+        "Actor.psc",
+        r"Function\s+KillSilent\s*\(",
+        "KillSilent",
+    ),
+    (
+        "Actor.psc",
+        r"Bool\s+Function\s+SnapIntoInteraction\s*\(",
+        "SnapIntoInteraction",
+    ),
 ]
 
 # Calls in our scripts that must never appear (even if stub is gone).
@@ -100,11 +144,22 @@ def main() -> None:
         if re.search(r"Function\s+IsKeyPressed\s*\(", text):
             fail("Input.psc: forbidden IsKeyPressed Native")
 
+    for rel, pattern, label in REQUIRED_NATIVES:
+        path = STUBS / rel
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not re.search(pattern, text):
+            fail(f"{rel}: missing required Native {label}")
+        print(f"OK: {rel} declares {label}")
+
     for psc in sorted(USER_SCRIPTS.glob("*.psc")):
         text = psc.read_text(encoding="utf-8", errors="replace")
         for pattern, label in FORBIDDEN_CALLS:
             if re.search(pattern, text):
                 fail(f"{psc.name}: forbidden call {label}")
+        if re.search(r"\bHasLOS\s*\(", text):
+            fail(f"{psc.name}: forbidden Skyrim HasLOS (use HasDetectionLOS / DirectLOS)")
+        if re.search(r"\bRegisterForLOS\s*\(", text):
+            fail(f"{psc.name}: forbidden RegisterForLOS (use RegisterForDirectLOSGain/Lost)")
     print("OK: user scripts have no forbidden Skyrim/fake native calls")
     print("All stub-native contracts passed.")
 

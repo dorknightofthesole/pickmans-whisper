@@ -10,7 +10,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **D** | Audio bank playback (research + implement) | **Done** — D0–D1 Desperate audio; delivery modes verified |
 | **E** | Named-victim kill voice + soft Necromantic intimacy hooks | **Done** — E1–E5 |
 | **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`) | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md)) |
-| **G** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
+| **G** | Bed corpse hallucination (sleep spawn + look-away despawn) | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
 | **H** | Corpse decay / consume + victim places | Planned — design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
 | **I** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
 | **J** | Corpse preserve sync with Necromantic | Planned |
@@ -78,13 +78,14 @@ Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (veri
 
 ## Slice G — bed corpse hallucination
 
-Design notes: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md).
+Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contract: `tools/test_bed_hallucination.py`.
 
+- [x] **G1** — Pre-warm living `LCharRaiderFemale`; wake `SnapIntoInteraction` + `KillSilent` (ragdoll fallback); timed despawn; bond + MCM + cooldown. Optional `BedGiftLines.txt` wake toast.
 - On sleep start: spawn disabled vanilla female Actor at bed, silent `Kill()`, place on/beside bed.
 - On wake: player finds the corpse; no visible place→ragdoll if timed during sleep fade.
-- Track presence via script ref; `HasLOS` (+ optional facing) for in-view.
-- Despawn on look-away (preferred) so look-back finds an empty bed.
-- Bond / hunger / cooldown gates; MCM toggle + debug; no custom corpse mesh.
+- Track presence via script ref; FO4 Direct LOS (not Skyrim `HasLOS`).
+- Despawn on look-away so look-back finds an empty bed.
+- MCM Voice toggle + Debug force/clear; no custom corpse mesh.
 
 ## Slice H — corpse decay / consume + victim places
 

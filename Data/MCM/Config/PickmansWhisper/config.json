@@ -65,6 +65,15 @@
 					"html": true
 				},
 				{
+					"text": "Bed gift",
+					"type": "section"
+				},
+				{
+					"text": "After the bond, sometimes a corpse appears in your bed when you sleep. Look away and she is gone. Toggle under <b>Voice</b>.",
+					"type": "text",
+					"html": true
+				},
+				{
 					"text": "Suite",
 					"type": "section"
 				},
@@ -218,6 +227,15 @@
 					}
 				},
 				{
+					"id": "bBedGift:Voice",
+					"text": "Bed gift hallucination",
+					"type": "switcher",
+					"help": "While bonded, occasionally spawn an ephemeral corpse in your bed on sleep. Look away after seeing her and she vanishes. Pure vignette — no hunger change.",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
 					"text": "Tests",
 					"type": "section"
 				},
@@ -343,6 +361,15 @@
 					"text": "Kill / scan debug toasts",
 					"type": "switcher",
 					"help": "Blade status, scan heartbeats, HUMAN kill / ignore reasons. Off by default. Praise and hunger voice are separate (Voice page).",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"id": "bBedGiftEverySleep:Debug",
+					"text": "Bed gift every sleep",
+					"type": "switcher",
+					"help": "Slice G testing: skip the ~12 game-hour bed-gift cooldown so a corpse can appear every sleep. Turn off for normal cadence.",
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
 					}
@@ -598,6 +625,26 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugPlayTestWhisper"
+					}
+				},
+				{
+					"text": "Force bed gift",
+					"type": "button",
+					"help": "Slice G: spawn the bed-hallucination corpse beside the player (no sleep). Look at her, then look away to clear.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugForceBedGift"
+					}
+				},
+				{
+					"text": "Clear bed gift",
+					"type": "button",
+					"help": "Slice G: despawn the ephemeral bed corpse immediately.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugClearBedGift"
 					}
 				},
 				{

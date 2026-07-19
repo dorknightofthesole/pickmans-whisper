@@ -17,6 +17,11 @@ Bool Function SetDisplayName(String asName, Bool abForce = False) Native
 ; F4SE — attached ObjectMods (legendary + weapon mods on this instance)
 ObjectMod[] Function GetAllMods() Native
 ObjectReference Function PlaceAtMe(Form akFormToPlace, Int aiCount = 1, Bool abForcePersist = False, Bool abInitiallyDisabled = False, Bool abDeleteWhenAble = True) Native
+; FO4 native — enable/disable any world ref (STAT clutter, actors, etc.).
+Function Disable(Bool abFadeOut = False) Native
+Function Enable(Bool abFadeIn = False) Native
+Bool Function IsDisabled() Native
+Function Delete() Native
 Function ApplyHavokImpulse(Float afX, Float afY, Float afZ, Float afMagnitude) Native
 Function ForceAddRagdollToWorld() Native
 Function ForceRemoveRagdollFromWorld() Native
@@ -30,4 +35,6 @@ Function TranslateTo(Float afX, Float afY, Float afZ, Float afXAngle, Float afYA
 Function StopTranslation() Native
 Function AddItem(Form akItem, Int aiCount = 1, Bool abSilent = False) Native
 Function RemoveItem(Form akItem, Int aiCount = 1, Bool abSilent = False, ObjectReference akOtherContainer = None) Native
+; FO4 native — strip inventory (weapons/armor/junk). akTransferTo None = destroy.
+Function RemoveAllItems(ObjectReference akTransferTo = None, Bool abKeepOwnership = False) Native
 Int Function GetItemCount(Form akItem) Native

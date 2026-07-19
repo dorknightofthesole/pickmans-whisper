@@ -22,6 +22,17 @@ Function UnregisterForAllHitEvents(ScriptObject akTarget = None) Native
 ; Do NOT stub Skyrim RegisterForUpdate* — removed in FO4; fake Natives compile green
 ; and fail at runtime. See .cursor/rules/no-fake-native-stubs.mdc.
 
+; FO4 sleep — RegisterForPlayerSleep on Quest/alias/script; not Wait (chairs).
+Function RegisterForPlayerSleep() Native
+Function UnregisterForPlayerSleep() Native
+
+; FO4 LOS — single-shot Direct/Detection gain/lost (no Skyrim RegisterForLOS / HasLOS).
+Function RegisterForDetectionLOSGain(Actor akViewer, ObjectReference akTarget) Native
+Function RegisterForDetectionLOSLost(Actor akViewer, ObjectReference akTarget) Native
+Function RegisterForDirectLOSGain(ObjectReference akViewer, ObjectReference akTarget, String asViewerNode = "", String asTargetNode = "") Native
+Function RegisterForDirectLOSLost(ObjectReference akViewer, ObjectReference akTarget, String asViewerNode = "", String asTargetNode = "") Native
+Function UnregisterForLOS(ObjectReference akViewer, ObjectReference akTarget) Native
+
 Event OnKeyDown(Int keyCode)
 EndEvent
 
@@ -35,4 +46,16 @@ Event OnControlUp(String control, Float time)
 EndEvent
 
 Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource, Projectile akProjectile, Bool abPowerAttack, Bool abSneakAttack, Bool abBashAttack, Bool abHitBlocked, String asMaterialName)
+EndEvent
+
+Event OnPlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
+EndEvent
+
+Event OnPlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
+EndEvent
+
+Event OnGainLOS(ObjectReference akViewer, ObjectReference akTarget)
+EndEvent
+
+Event OnLostLOS(ObjectReference akViewer, ObjectReference akTarget)
 EndEvent

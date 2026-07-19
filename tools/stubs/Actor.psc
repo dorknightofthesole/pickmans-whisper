@@ -27,12 +27,18 @@ Function SetRestrained(Bool abRestrained) Native
 Function SetUnconscious(Bool abUnconscious) Native
 Function Resurrect() Native
 Function Kill(Actor akKiller = None) Native
+; FO4 native — kill without OnDeath kill-event attribution noise.
+Function KillSilent(Actor akKiller = None) Native
+; FO4 native — near-instantly enter furniture/mount (fails if seat occupied / no 3D).
+Bool Function SnapIntoInteraction(ObjectReference akTarget) Native
 Function Disable(Bool abFadeOut = False) Native
 Function Enable(Bool abFadeIn = False) Native
 Bool Function IsDisabled() Native
 Bool Function Is3DLoaded() Native
 ; FO4 native — 0 not sleeping, 2 wants sleep, 3 sleeping, 4 wants wake.
 Int Function GetSleepState() Native
+; FO4 native — detection LOS (player may check non-actors). Not Skyrim HasLOS.
+Bool Function HasDetectionLOS(ObjectReference akOther) Native
 
 ; FO4 native — body part strings match CK Body Part Data (e.g. "Head1", "LeftArm1").
 ; For corpses: abForceDismember=True, abForceExplode=False. Prefer abForceBloodyMess=False —
@@ -43,6 +49,9 @@ Event OnPlayerLoadGame()
 EndEvent
 Weapon Function GetEquippedWeapon(Int aiEquipIndex = 0) Native
 Bool Function IsEquipped(Form akItem) Native
+; FO4 native — unequip worn gear (pair with RemoveAllItems to strip corpses).
+Function UnequipAll() Native
+Function UnequipItem(Form akItem, Bool abPreventEquip = False, Bool abSilent = False) Native
 Event OnItemEquipped(Form akBaseObject, ObjectReference akReference)
 EndEvent
 Event OnItemUnequipped(Form akBaseObject, ObjectReference akReference)

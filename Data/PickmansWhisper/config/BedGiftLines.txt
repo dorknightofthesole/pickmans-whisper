@@ -1,0 +1,7 @@
+# Pickman's Whisper — bed gift wake toasts (Slice G). Optional; blank/# ignored.
+# Spoken on wake when voice + blade are ready. Vignette still works if this file is empty.
+
+A gift for when you close your eyes.
+She was waiting in the dark.
+Look again... or don't.
+Someone left her for you.
