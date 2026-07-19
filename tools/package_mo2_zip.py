@@ -75,13 +75,18 @@ def stage() -> None:
         )
     shutil.copy2(esp, STAGING / "PickmansWhisper.esp")
 
-    pex = ROOT / "Data" / "Scripts" / "PickmansWhisperMainQuestScript.pex"
-    require_file(pex, "compiled .pex")
     (STAGING / "Scripts" / "Source" / "User").mkdir(parents=True)
-    shutil.copy2(pex, STAGING / "Scripts" / "PickmansWhisperMainQuestScript.pex")
-    psc = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
-    require_file(psc, "script source")
-    shutil.copy2(psc, STAGING / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc")
+    for script_stem in (
+        "PickmansWhisperMainQuestScript",
+        "PickmansWhisperBedGiftScript",
+        "PickmansWhisperPlayerAliasScript",
+    ):
+        pex = ROOT / "Data" / "Scripts" / f"{script_stem}.pex"
+        require_file(pex, f"compiled {script_stem}.pex")
+        shutil.copy2(pex, STAGING / "Scripts" / f"{script_stem}.pex")
+        psc = ROOT / "Data" / "Scripts" / "Source" / "User" / f"{script_stem}.psc"
+        require_file(psc, f"{script_stem}.psc")
+        shutil.copy2(psc, STAGING / "Scripts" / "Source" / "User" / f"{script_stem}.psc")
 
     copy_tree_contents(ROOT / "Data" / "MCM", STAGING / "MCM")
     copy_tree_contents(ROOT / "Data" / "PickmansWhisper", STAGING / "PickmansWhisper")

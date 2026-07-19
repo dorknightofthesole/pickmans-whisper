@@ -3,11 +3,11 @@
 
 Locks:
   - FO4 sleep stubs; PlayerAlias owns RegisterForPlayerSleep
-  - Single gameplay PlaceAtMe: MaybeWarmBedGiftBody → LCharRaiderFemale + Kill + Strip
-  - SleepStart/Stop never spawn; Present or skip; no retries
+  - Logic on PickmansWhisperBedGiftScript; Main keeps thin façades
+  - Single gameplay PlaceAtMe: MaybeWarmBedGiftBody → LCharRaiderFemale
+  - SnapIntoInteraction + KillSilent; SleepStart/Stop never spawn
   - FID_BED_SPAWN_LVLN matches Fallout4.esm LCharRaiderFemale
-  - MCM bBedGift + DebugForceBedGift / DebugClearBedGift
-  - BedGiftLines.txt loaded via LoadLineBanks
+  - ESP attaches both Main + BedGift scripts; Caprica/deploy compile BedGift
 
 Usage:
   python tools/test_bed_hallucination.py
@@ -25,12 +25,14 @@ from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+BED_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBedGiftScript.psc"
 ALIAS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
 SCRIPT_STUB = ROOT / "tools" / "stubs" / "ScriptObject.psc"
 BED_LINES = ROOT / "Data" / "PickmansWhisper" / "config" / "BedGiftLines.txt"
 MCM = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
 DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
+ESP_BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
 
 FID_BED_SPAWN = 0x000D39F5
 EDID_BED_SPAWN = b"LCharRaiderFemale"
@@ -120,26 +122,49 @@ def test_alias(alias_text: str) -> None:
     ok("PlayerAlias owns bed gift sleep registration")
 
 
-def test_psc(text: str) -> None:
-    if re.search(r"\bRegisterForPlayerSleep\s*\(", text):
+def test_main_facade(main: str) -> None:
+    if re.search(r"\bRegisterForPlayerSleep\s*\(", main):
         fail("main quest must not RegisterForPlayerSleep — use PlayerAlias")
-    if "Event OnPlayerSleepStart" in text or "Event OnPlayerSleepStop" in text:
+    if "Event OnPlayerSleepStart" in main or "Event OnPlayerSleepStop" in main:
         fail("main quest must not declare OnPlayerSleep*")
-    start = extract_function(text, "HandlePlayerSleepStart")
-    if "TrySpawnBedCorpse" in start or "CreateBedCorpseAt" in start or "PlaceAtMe" in start:
-        fail("HandlePlayerSleepStart must not spawn (anchor only)")
-    stop = extract_function(text, "HandlePlayerSleepStop")
-    if "PresentBedCorpseOnWake" not in stop:
-        fail("HandlePlayerSleepStop must PresentBedCorpseOnWake when corpse ready")
-    if "TrySpawnBedCorpse" in stop or "CreateBedCorpseAt" in stop or "PlaceAtMe" in stop:
-        fail("HandlePlayerSleepStop must not spawn")
-    if "TIMER_BED_PRESENT" in text:
-        fail("TIMER_BED_PRESENT retired — no wake retries")
-    if "FID_BED_CORPSE_STAT" in text or "RaiderDismemberedBody01" in text:
-        fail("STAT clutter path retired — use LCharRaiderFemale Actor")
-    if "Actor BedCorpse" not in text:
-        fail("BedCorpse must be Actor")
-    create = extract_function(text, "CreateBedCorpseAt")
+    if "TIMER_BED_DESPAWN" in main and "aiTimerID == TIMER_BED_DESPAWN" in main:
+        fail("Main OnTimer must not handle TIMER_BED_DESPAWN — BedGift owns it")
+    bed_fn = extract_function(main, "BedGift")
+    if "as PickmansWhisperBedGiftScript" not in bed_fn:
+        fail("Main BedGift() must cast to PickmansWhisperBedGiftScript")
+    if "as Quest" not in bed_fn:
+        fail("Main BedGift() must cast via Quest (Caprica sibling-script rule)")
+    for name in (
+        "LoadBedGiftLines",
+        "MaybeWarmBedGiftBody",
+        "HandlePlayerSleepStart",
+        "HandlePlayerSleepStop",
+        "DebugForceBedGift",
+        "DebugClearBedGift",
+    ):
+        body = extract_function(main, name)
+        if "BedGift()" not in body:
+            fail(f"Main {name} must forward via BedGift()")
+        if "PlaceAtMe" in body:
+            fail(f"Main {name} must not PlaceAtMe (façade only)")
+    if "MaybeWarmBedGiftBody()" not in main:
+        fail("killscan must call MaybeWarmBedGiftBody")
+    load = extract_function(main, "LoadLineBanks")
+    if "LoadBedGiftLines()" not in load:
+        fail("LoadLineBanks must LoadBedGiftLines")
+    if "GetLastStageLoadStatus" not in main:
+        fail("Main must expose GetLastStageLoadStatus for BedGift LoadStageBank")
+    ok("Main bed gift façades + killscan/LoadLineBanks hooks")
+
+
+def test_bed_script(bed: str) -> None:
+    if "Scriptname PickmansWhisperBedGiftScript extends Quest" not in bed:
+        fail("BedGift must extend Quest")
+    if "Event OnTimer" not in bed or "TIMER_BED_DESPAWN" not in bed:
+        fail("BedGift must own OnTimer TIMER_BED_DESPAWN")
+    if "Actor BedCorpse" not in bed:
+        fail("BedCorpse must be Actor on BedGift")
+    create = extract_function(bed, "CreateBedCorpseAt")
     if "FID_BED_SPAWN_LVLN" not in create or "PlaceAtMe" not in create:
         fail("CreateBedCorpseAt must PlaceAtMe LCharRaiderFemale")
     if ".Kill(" in create or "KillSilent" in create:
@@ -148,11 +173,11 @@ def test_psc(text: str) -> None:
         fail("CreateBedCorpseAt must park (warm) or PoseBedCorpseInFurniture (debug)")
     if not re.search(r"PlaceAtMe\([^)]*False\s*\)", create):
         fail("CreateBedCorpseAt PlaceAtMe should use InitiallyDisabled=False")
-    if re.search(r"\bSetSilent\s*\(", text):
+    if re.search(r"\bSetSilent\s*\(", bed):
         fail("PSC must not call SetSilent — not a FO4 native")
-    if "MuteBedCorpseVoice" in text or "SetOverrideVoiceType" in text:
+    if "MuteBedCorpseVoice" in bed or "SetOverrideVoiceType" in bed:
         fail("bed gift mute path retired — no MuteBedCorpseVoice / SetOverrideVoiceType")
-    pose = extract_function(text, "PoseBedCorpseInFurniture")
+    pose = extract_function(bed, "PoseBedCorpseInFurniture")
     if "SnapIntoInteraction" not in pose or "KillSilent" not in pose:
         fail("PoseBedCorpseInFurniture must SnapIntoInteraction + KillSilent")
     if "Utility.Wait" not in pose:
@@ -161,34 +186,39 @@ def test_psc(text: str) -> None:
         fail("PoseBedCorpseInFurniture must ragdoll-fallback if snap fails")
     if "Debug.Notification" not in pose or "SnapIntoInteraction FAILED" not in pose:
         fail("PoseBedCorpseInFurniture must always toast clearly when snap fails")
-    warm = extract_function(text, "MaybeWarmBedGiftBody")
+    warm = extract_function(bed, "MaybeWarmBedGiftBody")
     if "CreateBedCorpseAt" not in warm or "BedPresentedThisSleep" not in warm:
         fail("MaybeWarmBedGiftBody must CreateBedCorpseAt and skip during presented cycle")
-    if "MaybeWarmBedGiftBody()" not in text:
-        fail("killscan must call MaybeWarmBedGiftBody")
-    strip = extract_function(text, "StripBedCorpse")
+    start = extract_function(bed, "HandlePlayerSleepStart")
+    if "TrySpawnBedCorpse" in start or "CreateBedCorpseAt" in start or "PlaceAtMe" in start:
+        fail("HandlePlayerSleepStart must not spawn (anchor only)")
+    stop = extract_function(bed, "HandlePlayerSleepStop")
+    if "PresentBedCorpseOnWake" not in stop:
+        fail("HandlePlayerSleepStop must PresentBedCorpseOnWake when corpse ready")
+    if "TrySpawnBedCorpse" in stop or "CreateBedCorpseAt" in stop or "PlaceAtMe" in stop:
+        fail("HandlePlayerSleepStop must not spawn")
+    if "TIMER_BED_PRESENT" in bed:
+        fail("TIMER_BED_PRESENT retired — no wake retries")
+    strip = extract_function(bed, "StripBedCorpse")
     if "UnequipAll" not in strip or "RemoveAllItems" not in strip:
         fail("StripBedCorpse must UnequipAll + RemoveAllItems")
-    snap = extract_function(text, "SnapBedCorpseToAnchor")
+    snap = extract_function(bed, "SnapBedCorpseToAnchor")
     if "SetPosition" not in snap or "ForceAddRagdollToWorld" not in snap:
         fail("SnapBedCorpseToAnchor must SetPosition + ForceAddRagdollToWorld")
     if "MoveTo" in snap:
         fail("SnapBedCorpseToAnchor must not MoveTo furniture")
-    present = extract_function(text, "PresentBedCorpseOnWake")
+    present = extract_function(bed, "PresentBedCorpseOnWake")
     if "PoseBedCorpseInFurniture" not in present:
         fail("PresentBedCorpseOnWake must PoseBedCorpseInFurniture when still alive")
     if "PlaceAtMe" in present:
         fail("PresentBedCorpseOnWake must not PlaceAtMe")
     if "TIMER_BED_DESPAWN" not in present:
         fail("PresentBedCorpseOnWake must StartTimer TIMER_BED_DESPAWN")
-    if "0x000D39F5" not in text:
-        fail("PSC must declare FID_BED_SPAWN_LVLN = 0x000D39F5")
-    load = extract_function(text, "LoadLineBanks")
-    if "LoadBedGiftLines()" not in load:
-        fail("LoadLineBanks must LoadBedGiftLines")
-    extract_function(text, "DebugForceBedGift")
-    extract_function(text, "DebugClearBedGift")
-    ok("PSC bed gift SnapIntoInteraction + KillSilent + single warm spawn")
+    if "0x000D39F5" not in bed:
+        fail("BedGift must declare FID_BED_SPAWN_LVLN = 0x000D39F5")
+    extract_function(bed, "DebugForceBedGift")
+    extract_function(bed, "DebugClearBedGift")
+    ok("BedGift SnapIntoInteraction + KillSilent + single warm spawn")
 
 
 def test_esm(esm: Path | None) -> None:
@@ -203,7 +233,7 @@ def test_esm(esm: Path | None) -> None:
     ok(f"FID_BED_SPAWN_LVLN = LCharRaiderFemale ({esm.name})")
 
 
-def test_config_mcm() -> None:
+def test_config_mcm_deploy() -> None:
     if not BED_LINES.is_file():
         fail(f"missing {BED_LINES}")
     mcm = MCM.read_text(encoding="utf-8")
@@ -212,13 +242,21 @@ def test_config_mcm() -> None:
     settings = SETTINGS.read_text(encoding="utf-8")
     if "bBedGiftEverySleep=1" not in settings:
         fail("settings.ini must default bBedGiftEverySleep=1 for testing")
-    psc = PSC.read_text(encoding="utf-8", errors="replace")
-    m = re.search(r"Bool Function BedGiftCooldownReady\(\)(.*?)EndFunction", psc, re.S)
+    bed = BED_PSC.read_text(encoding="utf-8", errors="replace")
+    m = re.search(r"Bool Function BedGiftCooldownReady\(\)(.*?)EndFunction", bed, re.S)
     if not m or "IsBedGiftEverySleep" not in m.group(1):
         fail("BedGiftCooldownReady must honor IsBedGiftEverySleep")
-    if "test_bed_hallucination.py" not in DEPLOY_PS1.read_text(encoding="utf-8", errors="replace"):
+    deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
+    if "test_bed_hallucination.py" not in deploy:
         fail("build-deploy-local.ps1 must run test_bed_hallucination.py")
-    ok("BedGiftLines + MCM + deploy slot")
+    if "PickmansWhisperBedGiftScript" not in deploy:
+        fail("build-deploy-local.ps1 must compile/deploy BedGift script")
+    esp = ESP_BUILDER.read_text(encoding="utf-8", errors="replace")
+    if "PickmansWhisperBedGiftScript" not in esp:
+        fail("build_hunger_spell_esp.py must attach BedGift script to Main quest")
+    if "build_vmad_scripts" not in esp:
+        fail("ESP builder must support multi-script VMAD")
+    ok("BedGiftLines + MCM + ESP/deploy BedGift attach")
 
 
 def main() -> None:
@@ -227,13 +265,17 @@ def main() -> None:
     args = ap.parse_args()
     if not PSC.is_file():
         fail(f"missing {PSC}")
-    text = PSC.read_text(encoding="utf-8", errors="replace")
+    if not BED_PSC.is_file():
+        fail(f"missing {BED_PSC}")
+    main_text = PSC.read_text(encoding="utf-8", errors="replace")
+    bed_text = BED_PSC.read_text(encoding="utf-8", errors="replace")
     alias = ALIAS.read_text(encoding="utf-8", errors="replace")
     test_stubs()
     test_alias(alias)
-    test_psc(text)
+    test_main_facade(main_text)
+    test_bed_script(bed_text)
     test_esm(find_esm(args.esm))
-    test_config_mcm()
+    test_config_mcm_deploy()
     print("All bed-hallucination (G1) contracts passed.")
 
 

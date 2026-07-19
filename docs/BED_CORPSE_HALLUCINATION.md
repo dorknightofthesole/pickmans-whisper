@@ -6,6 +6,8 @@
 
 Ephemeral vignette — `LCharRaiderFemale` Actor via `PlaceAtMe`, then `SnapIntoInteraction` + `KillSilent` on the bed (ragdoll fallback if snap fails). Not Necromantic preserve / not permanent.
 
+**Code layout:** Logic lives on `PickmansWhisperBedGiftScript` (attached to the same Main quest). `PickmansWhisperMainQuestScript` keeps thin façades (`HandlePlayerSleep*`, `MaybeWarmBedGiftBody`, MCM debug) so PlayerAlias / killscan / MCM keep calling Main.
+
 ---
 
 ## G1 locked decisions

@@ -1,5 +1,5 @@
 # Rebuild PickmansWhisper.esp with:
-#   QUST 0x01000800 PickmansWhisperMain (quest script only)
+#   QUST 0x01000800 PickmansWhisperMain (MainQuest + BedGift scripts)
 #   QUST 0x01000805 PickmansWhisperPlayerCombat (Player UniqueActor alias —
 #     VMAD mirrors DialogueGenericPlayer: 0 quest scripts + alias script)
 #   GLOB / MGEF / SPEL Knife Hunger
@@ -123,11 +123,19 @@ def parse_fields(payload: bytes):
     return fields
 
 
-def build_vmad_script(script_name: str, status: int = 0) -> bytes:
-    data = struct.pack("<HHH", 6, 2, 1)
-    data += wstring(script_name)
-    data += struct.pack("<BH", status & 0xFF, 0)
+def build_vmad_scripts(script_names: list[str], status: int = 0) -> bytes:
+    """FO4 quest VMAD with one or more scripts attached (no properties)."""
+    if not script_names:
+        raise ValueError("script_names must be non-empty")
+    data = struct.pack("<HHH", 6, 2, len(script_names))
+    for script_name in script_names:
+        data += wstring(script_name)
+        data += struct.pack("<BH", status & 0xFF, 0)
     return data
+
+
+def build_vmad_script(script_name: str, status: int = 0) -> bytes:
+    return build_vmad_scripts([script_name], status=status)
 
 
 def build_vmad_alias_only(alias_script: str, quest_fid: int, status: int = 2) -> bytes:
@@ -166,7 +174,15 @@ def build_player_alias_fields() -> bytes:
 def build_main_quest_payload() -> bytes:
     body = b""
     body += field(b"EDID", zstr("PickmansWhisperMain"))
-    body += field(b"VMAD", build_vmad_script("PickmansWhisperMainQuestScript"))
+    body += field(
+        b"VMAD",
+        build_vmad_scripts(
+            [
+                "PickmansWhisperMainQuestScript",
+                "PickmansWhisperBedGiftScript",
+            ]
+        ),
+    )
     body += field(b"FULL", zstr("PickmansWhisperMain"))
     body += field(b"DNAM", bytes.fromhex("11005C730000000000000000"))
     body += field(b"NEXT", b"")

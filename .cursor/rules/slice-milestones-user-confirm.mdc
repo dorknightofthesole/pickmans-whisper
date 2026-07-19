@@ -1,0 +1,29 @@
+---
+description: Never mark Slice / roadmap milestones done until the user confirms in-game
+alwaysApply: true
+---
+
+# Slice milestones — user confirmation required
+
+Do **not** check off Slice milestones, mark roadmap items **Done / Shipped / verified**, or rewrite status tables in `docs/ROADMAP.md` / `TODO.md` as complete based only on:
+
+- compile success
+- contract / deploy gate passing
+- agent assumption that a feature “should work”
+
+## Rule
+
+1. After implementing a slice (or G1/F1-style sub-milestone), leave status as **in progress / implemented — awaiting in-game confirm** (or leave checkboxes unchecked).
+2. Only mark **Done**, **Shipped**, **verified in-game**, or tick `[x]` when the **user explicitly confirms** it works in-game (or explicitly asks you to mark it done).
+3. Docs may note “deployed; contracts pass” without claiming milestone completion.
+4. If the user reports a failure, keep or revert the milestone to incomplete — do not leave a false “Done”.
+
+## Example
+
+```markdown
+; ❌ BAD — agent marks Done after deploy only
+| **G** | Bed corpse… | **Done** — G1 verified |
+
+; ✅ GOOD — wait for user
+| **G** | Bed corpse… | **G1 implemented** — awaiting in-game confirm |
+```

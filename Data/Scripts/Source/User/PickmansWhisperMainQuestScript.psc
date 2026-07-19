@@ -117,7 +117,7 @@ Int TIMER_KILL = 4 ; legacy unused
 Int TIMER_NOTICE = 5 ; C2 notice voice (slow ambient)
 Int TIMER_NOTICE_APPROACH = 6 ; retired — CancelTimer only (0.5s poll silenced the quest)
 Int TIMER_BOOT_ARM = 7 ; post-load delayed ArmRuntimeLoops (OnInit often skips on mid-game saves)
-Int TIMER_BED_DESPAWN = 8 ; Slice G — real-time despawn after wake present
+; TIMER_BED_DESPAWN (8) lives on PickmansWhisperBedGiftScript — that script StartTimer/OnTimer.
 Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
 Int TIMER_RENAME_PROMPT = 14 ; delayed renamePromptFemaleNPC (avoid clobbering recognition toast)
 Float RENAME_PROMPT_DELAY = 2.5
@@ -133,12 +133,6 @@ Int FID_COMBAT_KNIFE = 0x000913CA ; WEAP Knife — equipped base for Pickman's
 Int FID_OMOD_BLEED = 0x001E7C20 ; mod_Legendary_Weapon_Bleed (Wounding)
 Int FID_OMOD_STEALTH = 0x00187A10 ; mod_melee_Knife_SerratedStealth
 Int FID_PICKMAN_GALLERY = 0x000379C5
-; Slice G — vanilla female leveled NPC list (Fallout4.esm LCharRaiderFemale)
-Int FID_BED_SPAWN_LVLN = 0x000D39F5
-; Bed furniture keywords (Fallout4.esm) — distinguish beds from chairs
-Int FID_KYWD_ANIM_FURN_BED = 0x000BC262 ; AnimFurnBedAnims
-Int FID_KYWD_ANIM_FURN_FLOOR_BED = 0x0003ADA2 ; AnimFurnFloorBedAnims
-
 ; Local forms (PickmansWhisper.esp) — low word for GetFormFromFile
 Int FID_HUNGER_SPEL = 0x00000801
 Int FID_HUNGER_GLOB = 0x00000802
@@ -282,27 +276,8 @@ String IntimacyEndAudioStatus = ""
 String LastIntimacyAudioFile = "" ; no-immediate-repeat for audio-only intimacy rolls
 Int WHISPER_SNDR_MAX = 128 ; Desperate + Necromantic intimacy maps
 
-; Slice G — bed corpse hallucination (ephemeral Actor; PlaceAtMe + Kill).
-; ONE PlaceAtMe site for gameplay: MaybeWarmBedGiftBody (killscan while awake).
-; SleepStart/Stop never spawn — Start saves bed, Stop Presents or skips. No retries.
-Actor BedCorpse = None
-ObjectReference BedAnchor = None ; bed furniture from SleepStart / Stop
-Bool BedPresentedThisSleep = False ; Present once per sleep
-Bool BedCorpseWarmed = False ; True after MaybeWarmBedGiftBody (not yet presented)
-Bool BedSpawnBusy = False ; lock around PlaceAtMe
-Float LastBedGiftGameTime = -999.0
-Float BED_GIFT_COOLDOWN_DAYS = 0.5 ; ~12 game hours (bypassed by Debug every-sleep)
-Float BED_DESPAWN_SECONDS = 6.0 ; how long she stays after wake before timer clear
-; Mattress placement via SetPosition (NOT MoveTo furniture).
-Float BED_SPAWN_OFFSET_X = 0.0
-Float BED_SPAWN_OFFSET_Y = 8.0
-Float BED_SPAWN_OFFSET_Z = 36.0
-Float BED_WARM_PARK_Z = -2000.0 ; park warmed body under the player until sleep
-String[] BedGiftLines
-Int BedGiftLineCount = 0
-String LastBedGiftLine = ""
-String BedGiftLoadStatus = ""
-String Property LastBedGiftStatus = "" Auto ; MCM / Trace — last spawn/skip reason
+; Slice G — logic on PickmansWhisperBedGiftScript (same quest). Façade syncs status here.
+String Property LastBedGiftStatus = "" Auto ; MCM / Trace — mirrored from BedGiftScript
 
 ; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
@@ -871,12 +846,6 @@ Event OnTimer(Int aiTimerID)
 			Debug.Trace("PickmansWhisper: name-her prompt (delayed) | " + PendingRenamePrompt)
 			PendingRenamePrompt = ""
 		EndIf
-	ElseIf aiTimerID == TIMER_BED_DESPAWN
-		; Timed vanish — more reliable than look-away LOS.
-		ClearBedCorpse(False)
-		BedAnchor = None
-		BedPresentedThisSleep = False ; allow next pre-warm (one body only via HasLiveBedCorpse)
-		SetBedGiftStatus("despawned (timer)")
 	EndIf
 EndEvent
 
@@ -2829,434 +2798,62 @@ Function PlayIntimacyAudioAt(Bool abStart, Int index)
 	PlayWhisperXwmByFile(fileName)
 EndFunction
 
-; --- Slice G — bed corpse hallucination ---------------------------------------
-; Sleep events are registered on PlayerAlias (Quest RegisterForPlayerSleep is flaky,
-; same class of bug as butcher RegisterForKey). Alias forwards into HandlePlayerSleep*.
+; --- Slice G — bed corpse hallucination (façade) ------------------------------
+; Logic lives on PickmansWhisperBedGiftScript (same QUST). Alias/MCM/killscan
+; keep calling these Main names so external APIs do not change.
 
-Function SetBedGiftStatus(String reason)
-	LastBedGiftStatus = reason
-	Debug.Trace("PickmansWhisper: bed gift | " + reason)
-	ToastDebug("PW bed: " + reason)
-EndFunction
-
-Bool Function IsBedGiftEnabled()
-	Bool on = True
-	If MCM.IsInstalled()
-		on = MCM.GetModSettingBool(MOD_NAME, "bBedGift:Voice")
-	EndIf
-	Return on
-EndFunction
-
-; Debug "Bed gift every sleep" bypasses the ~12h game cooldown (testing).
-Bool Function IsBedGiftEverySleep()
-	If MCM.IsInstalled()
-		Return MCM.GetModSettingBool(MOD_NAME, "bBedGiftEverySleep:Debug")
-	EndIf
-	Return False
-EndFunction
-
-Bool Function BedGiftCooldownReady()
-	If IsBedGiftEverySleep()
-		Return True
-	EndIf
-	Float now = Utility.GetCurrentGameTime()
-	If LastBedGiftGameTime < 0.0
-		Return True
-	EndIf
-	Return (now - LastBedGiftGameTime) >= BED_GIFT_COOLDOWN_DAYS
-EndFunction
-
-Bool Function HasLiveBedCorpse()
-	If !BedCorpse
-		Return False
-	EndIf
-	Return True
+PickmansWhisperBedGiftScript Function BedGift()
+	; Caprica forbids Self-as-sibling; Quest intermediate is the FO4 co-script cast.
+	Return (Self as Quest) as PickmansWhisperBedGiftScript
 EndFunction
 
 Function LoadBedGiftLines()
-	BedGiftLines = new String[64]
-	BedGiftLineCount = LoadStageBank("BedGiftLines.txt", BedGiftLines)
-	BedGiftLoadStatus = LastStageLoadStatus
-	If BedGiftLineCount <= 0
-		; Optional bank — vignette still works; Trace only (no Notification spam).
-		Debug.Trace("PickmansWhisper: BedGiftLines.txt — " + BedGiftLoadStatus + " (wake toast skipped)")
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed
+		bed.LoadBedGiftLines()
 	Else
-		Debug.Trace("PickmansWhisper: bed gift lines ready (" + BedGiftLineCount + ")")
+		Debug.Trace("PickmansWhisper: ERROR BedGift script missing on Main quest")
+		Debug.Notification("Pickman's Whisper: BedGift script missing — reinstall ESP")
 	EndIf
 EndFunction
 
-String Function PickBedGiftLine()
-	If BedGiftLineCount <= 0 || !BedGiftLines
-		Return ""
-	EndIf
-	String raw = BedGiftLines[Utility.RandomInt(0, BedGiftLineCount - 1)]
-	Int tries = 0
-	While tries < 8 && BedGiftLineCount > 1 && raw == LastBedGiftLine
-		raw = BedGiftLines[Utility.RandomInt(0, BedGiftLineCount - 1)]
-		tries += 1
-	EndWhile
-	LastBedGiftLine = raw
-	Return raw
-EndFunction
-
-Function MaybeSpeakBedGiftWakeToast()
-	If !IsVoiceEnabled()
-		Return
-	EndIf
-	If !IsVoiceWeaponReady()
-		Return
-	EndIf
-	String line = PickBedGiftLine()
-	If !line || GardenOfEden.StrLength(line) < 1
-		Return
-	EndIf
-	ShowVoiceToast(line)
-	Debug.Trace("PickmansWhisper: bed gift wake toast | " + line)
-EndFunction
-
-; Strip worn + inventory (must run while enabled — disabled strip often no-ops).
-Function StripBedCorpse(Actor corpse)
-	If !corpse
-		Return
-	EndIf
-	corpse.UnequipAll()
-	corpse.RemoveAllItems(None, False)
-EndFunction
-
-; True for bed / mattress / sleeping-bag furniture (not chairs).
-Bool Function IsBedFurniture(ObjectReference akRef)
-	If !akRef
-		Return False
-	EndIf
-	Keyword bedKw = Game.GetFormFromFile(FID_KYWD_ANIM_FURN_BED, "Fallout4.esm") as Keyword
-	If bedKw && akRef.HasKeyword(bedKw)
-		Return True
-	EndIf
-	Keyword floorKw = Game.GetFormFromFile(FID_KYWD_ANIM_FURN_FLOOR_BED, "Fallout4.esm") as Keyword
-	If floorKw && akRef.HasKeyword(floorKw)
-		Return True
-	EndIf
-	String n = akRef.GetName()
-	If n && (StrContains(n, "Bed") || StrContains(n, "Mattress") || StrContains(n, "Sleeping") || StrContains(n, "Cot"))
-		Return True
-	EndIf
-	Return False
-EndFunction
-
-; Prefer sleep-event bed; else saved anchor; else nearest bed FURN near player. Never PlayerRef.
-ObjectReference Function ResolveBedAnchor(ObjectReference akBed)
-	If akBed
-		Return akBed
-	EndIf
-	If BedAnchor
-		Return BedAnchor
-	EndIf
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !PlayerRef
-		Return None
-	EndIf
-	String[] types = new String[1]
-	types[0] = "FURN"
-	ObjectReference near = GardenOfEden3.FindClosestReferencesWithFormType(types, PlayerRef, 320.0)
-	If near && IsBedFurniture(near)
-		Return near
-	EndIf
-	Return None
-EndFunction
-
-; Hide warmed (still-living) NPC under the player until Present poses her.
-Function ParkWarmedBedCorpse(Actor corpse)
-	If !corpse || !PlayerRef
-		Return
-	EndIf
-	corpse.SetGhost(True)
-	GardenOfEden3.DisableCollision(corpse, True)
-	corpse.SetPosition(PlayerRef.GetPositionX(), PlayerRef.GetPositionY(), PlayerRef.GetPositionZ() + BED_WARM_PARK_Z)
-	If !corpse.IsDisabled()
-		corpse.Disable(False)
-	EndIf
-EndFunction
-
-; Fallback when SnapIntoInteraction fails — SetPosition + ragdoll (not furniture MoveTo).
-Function SnapBedCorpseToAnchor(Actor corpse, ObjectReference akAnchor)
-	If !corpse || !akAnchor
-		Return
-	EndIf
-	Float ang = akAnchor.GetAngleZ()
-	Float lx = BED_SPAWN_OFFSET_X
-	Float ly = BED_SPAWN_OFFSET_Y
-	Float wx = akAnchor.GetPositionX() + (lx * Math.Cos(ang)) + (ly * Math.Sin(ang))
-	Float wy = akAnchor.GetPositionY() + (lx * (-Math.Sin(ang))) + (ly * Math.Cos(ang))
-	Float wz = akAnchor.GetPositionZ() + BED_SPAWN_OFFSET_Z
-	GardenOfEden3.DisableCollision(corpse, True)
-	corpse.SetAngle(0.0, 0.0, ang)
-	corpse.SetPosition(wx, wy, wz)
-	corpse.ForceAddRagdollToWorld()
-	corpse.ApplyHavokImpulse(0.0, 0.0, -1.0, 2.0)
-	GardenOfEden3.DisableCollision(corpse, False)
-EndFunction
-
-; Living NPC → SnapIntoInteraction → Wait → KillSilent → Strip.
-; Falls back to KillSilent + SetPosition ragdoll if the bed seat is busy / snap fails.
-Bool Function PoseBedCorpseInFurniture(Actor corpse, ObjectReference akBed)
-	If !corpse || !akBed
-		Return False
-	EndIf
-	If corpse.IsDisabled()
-		corpse.Enable(False)
-	EndIf
-	corpse.SetGhost(False)
-	StripBedCorpse(corpse)
-	Bool snapped = corpse.SnapIntoInteraction(akBed)
-	If snapped
-		Utility.Wait(0.5)
-		corpse.KillSilent()
-		StripBedCorpse(corpse)
-		SetBedGiftStatus("posed via SnapIntoInteraction + KillSilent")
-		Return True
-	EndIf
-	; Bed occupied / no seat / no 3D — drop onto mattress the old way.
-	; Always toast (not debug-gated) so snap failure is impossible to miss.
-	Debug.Notification("Pickman's Whisper: bed SnapIntoInteraction FAILED — ragdoll fallback")
-	Debug.Trace("PickmansWhisper: ERROR bed SnapIntoInteraction failed — ragdoll fallback")
-	corpse.KillSilent()
-	StripBedCorpse(corpse)
-	SnapBedCorpseToAnchor(corpse, akBed)
-	SetBedGiftStatus("ERROR: SnapIntoInteraction failed — ragdoll fallback")
-	Return False
-EndFunction
-
-; PlaceAtMe LCharRaiderFemale. Warm path keeps her alive until Present poses+kills.
-Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer)
-	If !akAnchor
-		Return False
-	EndIf
-	If BedSpawnBusy
-		SetBedGiftStatus("skip: spawn already in progress")
-		Return False
-	EndIf
-	If HasLiveBedCorpse()
-		SetBedGiftStatus("skip: corpse already present")
-		Return False
-	EndIf
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !PlayerRef
-		Return False
-	EndIf
-	Form spawnForm = Game.GetFormFromFile(FID_BED_SPAWN_LVLN, "Fallout4.esm")
-	If !spawnForm
-		SetBedGiftStatus("ERROR: LCharRaiderFemale missing")
-		Debug.Notification("Pickman's Whisper: bed gift spawn form missing (LCharRaiderFemale)")
-		Return False
-	EndIf
-	BedSpawnBusy = True
-	; Enabled PlaceAtMe — warm parks disabled; Present / debug pose while living.
-	ObjectReference placed = akAnchor.PlaceAtMe(spawnForm, 1, False, False)
-	Actor corpse = placed as Actor
-	If !corpse
-		If placed
-			placed.Delete()
-		EndIf
-		BedSpawnBusy = False
-		SetBedGiftStatus("ERROR: PlaceAtMe failed")
-		Debug.Notification("Pickman's Whisper: bed gift PlaceAtMe failed")
-		Return False
-	EndIf
-	If abParkUnderPlayer
-		ParkWarmedBedCorpse(corpse)
-	Else
-		PoseBedCorpseInFurniture(corpse, akAnchor)
-		If !corpse.IsDisabled()
-			corpse.Disable(False)
-		EndIf
-	EndIf
-	BedCorpse = corpse
-	BedCorpseWarmed = True
-	BedSpawnBusy = False
-	Return True
-EndFunction
-
-; Pre-warm while awake (killscan). Sole gameplay PlaceAtMe site.
 Function MaybeWarmBedGiftBody()
-	If BedSpawnBusy || HasLiveBedCorpse() || BedPresentedThisSleep
-		Return
-	EndIf
-	If !BondStarted || !IsBedGiftEnabled() || !BedGiftCooldownReady()
-		Return
-	EndIf
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !PlayerRef
-		Return
-	EndIf
-	If CreateBedCorpseAt(PlayerRef, True)
-		SetBedGiftStatus("warmed (awaiting sleep)")
-		Debug.Trace("PickmansWhisper: bed gift body pre-warmed while awake")
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed
+		bed.MaybeWarmBedGiftBody()
 	EndIf
 EndFunction
 
-; MCM Debug only — not used by sleep start/stop.
-Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
-	If !akAnchor
-		SetBedGiftStatus("skip: no bed anchor")
-		Return False
-	EndIf
-	If BedSpawnBusy || HasLiveBedCorpse()
-		SetBedGiftStatus("skip: corpse already present")
-		Return False
-	EndIf
-	If !abForce
-		If !BondStarted
-			SetBedGiftStatus("skip: not bonded")
-			Return False
-		EndIf
-		If !IsBedGiftEnabled()
-			SetBedGiftStatus("skip: MCM bed gift off")
-			Return False
-		EndIf
-		If !BedGiftCooldownReady()
-			SetBedGiftStatus("skip: cooldown (~12 game hours)")
-			Return False
-		EndIf
-	EndIf
-	If !CreateBedCorpseAt(akAnchor, False)
-		Return False
-	EndIf
-	BedAnchor = akAnchor
-	SetBedGiftStatus("spawned (debug force)")
-	Return True
-EndFunction
-
-; Deletes tracked corpse + cancels despawn timer. Does NOT clear BedAnchor.
-Function ClearBedCorpse(Bool abStampCooldown = False)
-	CancelTimer(TIMER_BED_DESPAWN)
-	BedCorpseWarmed = False
-	BedSpawnBusy = False
-	If BedCorpse
-		Actor c = BedCorpse
-		BedCorpse = None
-		If c
-			If !c.IsDead()
-				c.KillSilent()
-			EndIf
-			If !c.IsDisabled()
-				c.Disable(False)
-			EndIf
-			c.Delete()
-		EndIf
-		Debug.Trace("PickmansWhisper: bed corpse cleared")
-	EndIf
-	BedCorpse = None
-	If abStampCooldown
-		LastBedGiftGameTime = Utility.GetCurrentGameTime()
-	EndIf
-EndFunction
-
-; Wake: Enable → SnapIntoInteraction → KillSilent (or ragdoll fallback) → toast → despawn.
-; No PlaceAtMe here. If already dead (debug force), leave pose — do not ForceAddRagdoll.
-Function PresentBedCorpseOnWake()
-	If BedPresentedThisSleep
-		Return
-	EndIf
-	If !HasLiveBedCorpse()
-		Return
-	EndIf
-	BedPresentedThisSleep = True
-	BedCorpseWarmed = False
-	If BedCorpse.IsDisabled()
-		BedCorpse.Enable(False)
-	EndIf
-	If BedAnchor && !BedCorpse.IsDead()
-		PoseBedCorpseInFurniture(BedCorpse, BedAnchor)
-	ElseIf BedAnchor && BedCorpse.IsDead()
-		; Already posed+killed (debug force) — strip only; keep furniture pose.
-		StripBedCorpse(BedCorpse)
-	ElseIf !BedCorpse.IsDead()
-		BedCorpse.KillSilent()
-		StripBedCorpse(BedCorpse)
-	Else
-		StripBedCorpse(BedCorpse)
-	EndIf
-	LastBedGiftGameTime = Utility.GetCurrentGameTime()
-	MaybeSpeakBedGiftWakeToast()
-	CancelTimer(TIMER_BED_DESPAWN)
-	StartTimer(BED_DESPAWN_SECONDS, TIMER_BED_DESPAWN)
-	SetBedGiftStatus("presented; despawn timer " + BED_DESPAWN_SECONDS + "s | " + LastBedGiftStatus)
-EndFunction
-
-; SleepStart: remember bed only. Never PlaceAtMe.
 Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
-	BedPresentedThisSleep = False
-	ObjectReference anchor = ResolveBedAnchor(akBed)
-	If anchor
-		BedAnchor = anchor
-		If HasLiveBedCorpse()
-			SetBedGiftStatus("sleep start — bed saved; warmed body ready")
-		Else
-			SetBedGiftStatus("sleep start — bed saved; no warmed body")
-		EndIf
-	Else
-		SetBedGiftStatus("sleep start: no bed anchor")
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed
+		bed.HandlePlayerSleepStart(afSleepStartTime, afDesiredSleepEndTime, akBed)
 	EndIf
 EndFunction
 
-; SleepStop: Present if warmed, else skip. Never PlaceAtMe. No retries.
 Function HandlePlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
-	If abInterrupted
-		If BedPresentedThisSleep
-			ClearBedCorpse(False)
-		EndIf
-		BedAnchor = None
-		BedPresentedThisSleep = False
-		SetBedGiftStatus("sleep interrupted")
-		Return
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed
+		bed.HandlePlayerSleepStop(abInterrupted, akBed)
 	EndIf
-	ObjectReference anchor = ResolveBedAnchor(akBed)
-	If anchor
-		BedAnchor = anchor
-	EndIf
-	If HasLiveBedCorpse()
-		PresentBedCorpseOnWake()
-		Return
-	EndIf
-	SetBedGiftStatus("wake: no warmed body — skip")
 EndFunction
 
-; MCM Debug — prefer nearby bed; player only as last resort for the smoke test.
 Function DebugForceBedGift()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed
+		bed.DebugForceBedGift()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nBedGift script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
 	EndIf
-	If !PlayerRef
-		Debug.MessageBox("Pickman's Whisper\n\nNo player.")
-		Return
-	EndIf
-	BedPresentedThisSleep = False
-	ClearBedCorpse(False)
-	ObjectReference anchor = ResolveBedAnchor(None)
-	If !anchor
-		anchor = PlayerRef
-	EndIf
-	BedAnchor = anchor
-	If !TrySpawnBedCorpse(anchor, True)
-		Debug.MessageBox("Pickman's Whisper\n\nForce bed gift failed.\n" + LastBedGiftStatus)
-		Return
-	EndIf
-	PresentBedCorpseOnWake()
-	Debug.MessageBox("Pickman's Whisper\n\nBed gift forced.\n" + LastBedGiftStatus + "\nDespawns on timer.")
 EndFunction
 
 Function DebugClearBedGift()
-	ClearBedCorpse(False)
-	BedAnchor = None
-	BedPresentedThisSleep = False
-	SetBedGiftStatus("cleared (debug)")
-	Debug.MessageBox("Pickman's Whisper\n\nBed gift cleared.\n" + LastBedGiftStatus)
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed
+		bed.DebugClearBedGift()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nBedGift script missing on Main quest.")
+	EndIf
 EndFunction
 
 ; C5 P2 — awake recognition bank (files-only). Later bands can use GetRecognitionBank(band).
@@ -3854,6 +3451,11 @@ String Function NecromanticConfigPath()
 EndFunction
 
 ; Load one config .txt into a pre-allocated String[64] bank; returns usable count.
+; Exposed for feature scripts (BedGift) that load banks via Main.
+String Function GetLastStageLoadStatus()
+	Return LastStageLoadStatus
+EndFunction
+
 Int Function LoadStageBank(String fileName, String[] bank)
 	Return LoadStageBankAt(fileName, bank, NoticeConfigPath())
 EndFunction

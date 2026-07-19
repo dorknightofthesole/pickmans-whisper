@@ -55,6 +55,8 @@ STUBS="$ROOT/tools/stubs"
 SRC="$ROOT/Data/Scripts/Source/User"
 PEX_OUT="$ROOT/Data/Scripts"
 PSC="PickmansWhisperMainQuestScript.psc"
+PSC_BED="PickmansWhisperBedGiftScript.psc"
+PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 
 to_win_path() {
   local p="$1"
@@ -126,19 +128,34 @@ python "$ROOT/tools/test_env_loader.py" || exit 1
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_ALIAS"
 (
   cd "$SRC"
-  # Caprica wants Windows paths when run as .exe from Git Bash
-  "$CAPRICA" "$PSC" \
-    -g fallout4 \
-    -i "${STUBS_WIN};${SRC_WIN}" \
-    -f "$FLAGS_WIN" \
-    -o "$OUT_WIN"
+  for script in "$PSC" "$PSC_BED" "$PSC_ALIAS"; do
+    if [[ ! -f "$script" ]]; then
+      echo "ERROR: missing $SRC/$script" >&2
+      exit 1
+    fi
+    echo "    Caprica $script"
+    # Caprica wants Windows paths when run as .exe from Git Bash
+    "$CAPRICA" "$script" \
+      -g fallout4 \
+      -i "${STUBS_WIN};${SRC_WIN}" \
+      -f "$FLAGS_WIN" \
+      -o "$OUT_WIN"
+  done
 )
 
 if [[ ! -f "$PEX_OUT/PickmansWhisperMainQuestScript.pex" ]]; then
-  echo "ERROR: compile produced no .pex" >&2
+  echo "ERROR: compile produced no main .pex" >&2
+  exit 1
+fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" ]]; then
+  echo "ERROR: compile produced no BedGift .pex" >&2
+  exit 1
+fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" ]]; then
+  echo "ERROR: compile produced no PlayerAlias .pex" >&2
   exit 1
 fi
 
@@ -152,7 +169,11 @@ mkdir -p \
   "$DEPLOY/docs"
 
 cp -f "$PEX_OUT/PickmansWhisperMainQuestScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"

@@ -1,0 +1,28 @@
+---
+description: Keep Papyrus features modular — prefer feature scripts on Main over growing MainQuest
+alwaysApply: true
+---
+
+# Prefer modular feature scripts
+
+Do **not** keep dumping large new features into `PickmansWhisperMainQuestScript.psc`. FO4 has no `#include`; modularity means **separate `Scriptname` files attached to the same quest** (or the existing PlayerAlias pattern for registration).
+
+## Pattern (Slice G reference)
+
+- **Feature script** on QUST `PickmansWhisperMain` (e.g. `PickmansWhisperBedGiftScript`) owns state, timers, and logic.
+- **Main façades** keep stable external names (`HandlePlayerSleep*`, MCM `CallFunction`, killscan one-liners) that forward via `(Self as Quest) as FeatureScript`.
+- Caprica forbids direct `Self as SiblingScript` — always cast through `Quest`.
+- ESP VMAD must list every attached script (`build_vmad_scripts` in `tools/build_hunger_spell_esp.py`).
+- Caprica + deploy + FOMOD must compile/copy the new `.psc` / `.pex`.
+- Contracts assert bodies in the feature PSC and façades on Main.
+
+## When adding a slice / large subsystem
+
+1. Prefer a new `PickmansWhisper<Feature>Script.psc` (or PlayerAlias for FO4 registration hooks).
+2. Leave Main as a thin router for MCM, alias, and frozen killscan/notice arming.
+3. Do not expand Main “just this once” past a small façade unless the change is a few lines of glue.
+
+## Do not break
+
+- Frozen arming / notice / hunger-whisper core rules still apply.
+- Alias owns `RegisterForPlayerSleep` / `RegisterForKey`; Main (or feature via Main façade) owns logic.

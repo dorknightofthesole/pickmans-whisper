@@ -80,7 +80,7 @@ Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (veri
 
 Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contract: `tools/test_bed_hallucination.py`.
 
-- [x] **G1** — Pre-warm living `LCharRaiderFemale`; wake `SnapIntoInteraction` + `KillSilent` (ragdoll fallback); timed despawn; bond + MCM + cooldown. Optional `BedGiftLines.txt` wake toast.
+- [x] **G1** — Pre-warm living `LCharRaiderFemale`; wake `SnapIntoInteraction` + `KillSilent` (ragdoll fallback); timed despawn; bond + MCM + cooldown. Optional `BedGiftLines.txt` wake toast. Logic on `PickmansWhisperBedGiftScript` (Main façades).
 - On sleep start: spawn disabled vanilla female Actor at bed, silent `Kill()`, place on/beside bed.
 - On wake: player finds the corpse; no visible place→ragdoll if timed during sleep fade.
 - Track presence via script ref; FO4 Direct LOS (not Skyrim `HasLOS`).

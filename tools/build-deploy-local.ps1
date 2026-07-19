@@ -46,6 +46,7 @@ $Stubs = Join-Path $Root "tools\stubs"
 $Src = Join-Path $Root "Data\Scripts\Source\User"
 $PexOut = Join-Path $Root "Data\Scripts"
 $Psc = "PickmansWhisperMainQuestScript.psc"
+$PscBed = "PickmansWhisperBedGiftScript.psc"
 $PscAlias = "PickmansWhisperPlayerAliasScript.psc"
 
 Write-Host "==> Pickman's Whisper local build + deploy"
@@ -159,10 +160,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscAlias"
+Write-Host "==> Compiling $Psc + $PscBed + $PscAlias"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscAlias)) {
+  foreach ($script in @($Psc, $PscBed, $PscAlias)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -175,8 +176,10 @@ try {
 }
 
 $Pex = Join-Path $PexOut "PickmansWhisperMainQuestScript.pex"
+$PexBed = Join-Path $PexOut "PickmansWhisperBedGiftScript.pex"
 $PexAlias = Join-Path $PexOut "PickmansWhisperPlayerAliasScript.pex"
 if (-not (Test-Path $Pex)) { throw "compile produced no main .pex" }
+if (-not (Test-Path $PexBed)) { throw "compile produced no BedGift .pex" }
 if (-not (Test-Path $PexAlias)) { throw "compile produced no PlayerAlias .pex" }
 
 Write-Host "==> Deploying to $Deploy"
@@ -192,8 +195,10 @@ Write-Host "==> Deploying to $Deploy"
 }
 
 Copy-Item -Force $Pex (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexBed (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexAlias (Join-Path $Deploy "Scripts\")
 Copy-Item -Force (Join-Path $Src $Psc) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscBed) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscAlias) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\config.json") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
