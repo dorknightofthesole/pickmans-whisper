@@ -105,6 +105,15 @@ REQUIRED_NATIVES = [
     ),
 ]
 
+# Fake APIs that must never appear as Native stubs.
+FORBIDDEN_FAKE_NATIVES = [
+    (
+        "Actor.psc",
+        r"Function\s+SetSilent\s*\(",
+        "Actor.SetSilent (not FO4 — Skyrim folklore / wishful API)",
+    ),
+]
+
 # Calls in our scripts that must never appear (even if stub is gone).
 FORBIDDEN_CALLS = [
     (r"Game\.GetCurrentCrosshairRef\s*\(\s*\)", "Game.GetCurrentCrosshairRef()"),
@@ -113,6 +122,7 @@ FORBIDDEN_CALLS = [
     (r"\bUnregisterForUpdate\s*\(", "UnregisterForUpdate("),
     (r"Math\.NumberOfSetBits\s*\(", "Math.NumberOfSetBits("),
     (r"Input\.IsKeyPressed\s*\(", "Input.IsKeyPressed("),
+    (r"\bSetSilent\s*\(", "SetSilent("),
 ]
 
 
@@ -125,7 +135,7 @@ def main() -> None:
     if not STUBS.is_dir():
         fail(f"missing stubs dir {STUBS}")
 
-    for rel, pattern, why in FORBIDDEN:
+    for rel, pattern, why in FORBIDDEN + FORBIDDEN_FAKE_NATIVES:
         path = STUBS / rel
         if not path.is_file():
             # Input.psc must not exist with IsKeyPressed; absence is fine.

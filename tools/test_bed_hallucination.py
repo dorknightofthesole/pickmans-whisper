@@ -70,11 +70,11 @@ def find_esm(explicit: str | None) -> Path | None:
     return None
 
 
-def get_lvln_edid(data: bytes, fid: int) -> bytes | None:
+def get_record_edid(data: bytes, sig: bytes, fid: int) -> bytes | None:
     target = fid.to_bytes(4, "little")
     start = 0
     while True:
-        i = data.find(b"LVLN", start)
+        i = data.find(sig, start)
         if i < 0 or i + 16 > len(data):
             break
         if data[i + 12 : i + 16] == target:
@@ -100,6 +100,8 @@ def test_stubs() -> None:
         fail("Actor.psc must declare KillSilent Native")
     if not re.search(r"Bool\s+Function\s+SnapIntoInteraction\s*\(", actor):
         fail("Actor.psc must declare SnapIntoInteraction Native")
+    if re.search(r"Function\s+SetSilent\s*\(", actor):
+        fail("Actor.SetSilent is not FO4 — do not stub it")
     ok("FO4 sleep + SnapIntoInteraction / KillSilent stubs")
 
 
@@ -146,6 +148,10 @@ def test_psc(text: str) -> None:
         fail("CreateBedCorpseAt must park (warm) or PoseBedCorpseInFurniture (debug)")
     if not re.search(r"PlaceAtMe\([^)]*False\s*\)", create):
         fail("CreateBedCorpseAt PlaceAtMe should use InitiallyDisabled=False")
+    if re.search(r"\bSetSilent\s*\(", text):
+        fail("PSC must not call SetSilent — not a FO4 native")
+    if "MuteBedCorpseVoice" in text or "SetOverrideVoiceType" in text:
+        fail("bed gift mute path retired — no MuteBedCorpseVoice / SetOverrideVoiceType")
     pose = extract_function(text, "PoseBedCorpseInFurniture")
     if "SnapIntoInteraction" not in pose or "KillSilent" not in pose:
         fail("PoseBedCorpseInFurniture must SnapIntoInteraction + KillSilent")
@@ -189,7 +195,7 @@ def test_esm(esm: Path | None) -> None:
     if not esm:
         fail("Fallout4.esm not found — set FALLOUT4_ESM or pass --esm")
     data = esm.read_bytes()
-    edid = get_lvln_edid(data, FID_BED_SPAWN)
+    edid = get_record_edid(data, b"LVLN", FID_BED_SPAWN)
     if edid is None:
         fail(f"LVLN {hex(FID_BED_SPAWN)} not found in {esm}")
     if edid != EDID_BED_SPAWN:
