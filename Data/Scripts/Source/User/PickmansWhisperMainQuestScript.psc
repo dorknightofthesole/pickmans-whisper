@@ -121,6 +121,9 @@ Int TIMER_KILL_SCAN = 13 ; match Necromantic TIMER_CRAVING id class
 Int TIMER_RENAME_PROMPT = 14 ; delayed renamePromptFemaleNPC (avoid clobbering recognition toast)
 Float RENAME_PROMPT_DELAY = 2.5
 String PendingRenamePrompt = "" ; queued ModConfig line for TIMER_RENAME_PROMPT
+Actor LastButcherCorpse = None ; last valid sever target (floor corpses miss camera rays)
+Float BUTCHER_CORPSE_RADIUS = 500.0 ; slightly > Necromantic 350; floor corpses need slack
+Float BUTCHER_FACING_DEG = 75.0 ; yaw cone for faced-corpse fallback
 Float BOOT_ARM_SECONDS = 2.0
 
 ; Vanilla anchors (Fallout4.esm)
@@ -136,14 +139,11 @@ Int FID_HUNGER_GLOB = 0x00000802
 Int FID_HUNGER_MGEF_AGI = 0x00000803
 Int FID_HUNGER_MGEF_CHA = 0x00000804
 Int FID_PLAYER_COMBAT_QUEST = 0x00000805 ; alias OnPlayerLoadGame lives here
-Int FID_SEVER_MSG = 0x00000806 ; PW_SeverLimbMenu — Slice F limb picker
+Int FID_SEVER_MSG = 0x00000806 ; PW_SeverLimbMenu — Slice F butcher menu
 ; D0-POC / D0.5 whisper SNDRs — EndIt is BASE+0; clones follow Desperate_Audio.txt order.
 Int FID_WHISPER_ENDIT = 0x00000807
 Int FID_WHISPER_BASE = 0x00000807
-; DX scancode for US keyboard "/?" key. Non-US layouts may need a later MCM remap.
-Int KEY_SEVER_SLASH = 53
 Message SeverLimbMenu
-Bool SeverKeyRegistered = False
 
 String MOD_NAME = "PickmansWhisper"
 Int LINE_FILE_MAX = 64
@@ -249,11 +249,10 @@ Int RECOGNITION_NAME_PROMPT_AT = 3
 String RenamePromptFemaleNPC = ""
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
-String NamedIntimacyAudio = "" ; optional start-scene .xwm; omit until clip + SNDR exist
 String ModConfigLoadStatus = ""
 
-; Slice E2–E4 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
-; E4: random toast from config/necromantic/Intimacy_*_Named.txt (files-only).
+; Slice E2–E5 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
+; E4/E5: Named toast banks + parallel Intimacy_*_Audio.txt (same-index delivery).
 Int FID_NECROMANTIC_MAIN = 0x00000800
 NecromanticMainQuestScript NecroQuestRef
 Bool NecroEventsRegistered = False
@@ -262,10 +261,20 @@ String[] IntimacyStartNamedLines
 Int IntimacyStartNamedCount = 0
 String LastIntimacyStartLine = "" ; no-immediate-repeat (raw template)
 String IntimacyStartNamedStatus = ""
-String[] IntimacyStopNamedLines
-Int IntimacyStopNamedCount = 0
-String LastIntimacyStopLine = "" ; no-immediate-repeat (raw template)
-String IntimacyStopNamedStatus = ""
+Int LastIntimacyStartPickIndex = -1
+String[] IntimacyEndNamedLines
+Int IntimacyEndNamedCount = 0
+String LastIntimacyEndLine = "" ; no-immediate-repeat (raw template)
+String IntimacyEndNamedStatus = ""
+Int LastIntimacyEndPickIndex = -1
+String[] IntimacyStartAudioLines
+Int IntimacyStartAudioCount = 0
+String IntimacyStartAudioStatus = ""
+String[] IntimacyEndAudioLines
+Int IntimacyEndAudioCount = 0
+String IntimacyEndAudioStatus = ""
+String LastIntimacyAudioFile = "" ; no-immediate-repeat for audio-only intimacy rolls
+Int WHISPER_SNDR_MAX = 128 ; Desperate + Necromantic intimacy maps
 
 ; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
@@ -325,7 +334,7 @@ Event OnQuestInit()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
-	RegisterSeverKey()
+	EnsureSeverLimbMenu()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	RefreshDebugStatus()
@@ -357,7 +366,7 @@ Function HandleGameResume(String reason)
 		EnsurePlayerCombatQuest()
 		ArmRuntimeLoops()
 		ScheduleBootArm()
-		RegisterSeverKey()
+		EnsureSeverLimbMenu()
 		Return
 	EndIf
 	LastGameResumeRealTime = now
@@ -385,7 +394,7 @@ Function HandleGameResume(String reason)
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
-	RegisterSeverKey()
+	EnsureSeverLimbMenu()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	SyncHungerAddictionSpell()
@@ -402,17 +411,7 @@ Function HandleGameResume(String reason)
 	ToastBladeDetectStatus("load")
 EndFunction
 
-; Slice F — RegisterForKey for corpse sever ("/" = DX 53 on US keyboards).
-Function RegisterSeverKey()
-	If SeverKeyRegistered
-		UnregisterForKey(KEY_SEVER_SLASH)
-	EndIf
-	RegisterForKey(KEY_SEVER_SLASH)
-	SeverKeyRegistered = True
-	EnsureSeverLimbMenu()
-	Debug.Trace("PickmansWhisper: registered sever key " + KEY_SEVER_SLASH)
-EndFunction
-
+; Slice F — butcher menu MSG (key RegisterForKey lives on PlayerAlias).
 Function EnsureSeverLimbMenu()
 	If SeverLimbMenu
 		Return
@@ -423,45 +422,114 @@ Function EnsureSeverLimbMenu()
 	EndIf
 EndFunction
 
-Event OnKeyDown(Int keyCode)
-	If keyCode != KEY_SEVER_SLASH
-		Return
+; Butcher aim (no timer): activate → camera → last butcher (if still facing) → one FindActors.
+; Dual FindActors was the hitch before Message.Show when the camera ray missed.
+Actor Function ResolveSeverCorpseAim(Bool abAllowVictimsCache = False)
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
 	EndIf
-	TrySeverAimedCorpse()
-EndEvent
+	; Activate before camera: corpses on the floor often miss the camera ray.
+	Actor aimed = GardenOfEden2.GetLastActivateTargetRef() as Actor
+	If aimed && aimed != PlayerRef && IsSeverCorpseEligible(aimed) && IsWithinButcherRange(aimed)
+		LastButcherCorpse = aimed
+		Return aimed
+	EndIf
+	ObjectReference cam = GardenOfEden3.GetCameraTargetReference()
+	aimed = cam as Actor
+	If aimed && aimed != PlayerRef && IsSeverCorpseEligible(aimed) && IsWithinButcherRange(aimed)
+		LastButcherCorpse = aimed
+		Return aimed
+	EndIf
+	; Reuse last butcher before any FindActors (repeat presses / slight aim wobble).
+	If LastButcherCorpse && IsSeverCorpseEligible(LastButcherCorpse) && IsWithinButcherRange(LastButcherCorpse)
+		If Math.abs(PlayerRef.GetHeadingAngle(LastButcherCorpse)) <= BUTCHER_FACING_DEG
+			Return LastButcherCorpse
+		EndIf
+	EndIf
+	Actor faced = GetFacedSeverCorpse()
+	If faced
+		LastButcherCorpse = faced
+		Return faced
+	EndIf
+	If abAllowVictimsCache
+		aimed = ResolveVictimsAimActor()
+		If aimed && IsSeverCorpseEligible(aimed) && IsWithinButcherRange(aimed)
+			LastButcherCorpse = aimed
+			Return aimed
+		EndIf
+	EndIf
+	Return None
+EndFunction
 
-; Aim corpse + blade + Message limb menu → Dismember (combat sever gore).
-Function TrySeverAimedCorpse()
-	If Utility.IsInMenuMode()
-		Return
+Bool Function IsWithinButcherRange(Actor ak)
+	If !ak || !PlayerRef
+		Return False
 	EndIf
+	Return PlayerRef.GetDistance(ak) <= BUTCHER_CORPSE_RADIUS
+EndFunction
+
+; One GoE scan (dead+female+3D) — pick nearest in yaw cone. No second FindActors.
+Actor Function GetFacedSeverCorpse()
+	If !PlayerRef
+		Return None
+	EndIf
+	Actor[] found = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, BUTCHER_CORPSE_RADIUS, 0, 1, -1, 1, -1, -1, None, None, "", 0, 1, 1)
+	If !found || found.Length == 0
+		Return None
+	EndIf
+	Actor best = None
+	Float bestDist = BUTCHER_CORPSE_RADIUS + 1.0
+	Int i = 0
+	While i < found.Length
+		Actor ak = found[i]
+		If ak && ak != PlayerRef && IsSeverCorpseEligible(ak)
+			If Math.abs(PlayerRef.GetHeadingAngle(ak)) <= BUTCHER_FACING_DEG
+				Float d = PlayerRef.GetDistance(ak)
+				If d < bestDist
+					bestDist = d
+					best = ak
+				EndIf
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	Return best
+EndFunction
+
+; Aim corpse + blade → butcher Message.Show → Dismember.
+; abIgnoreMenuMode: True for MCM Debug (victims aim cache + allow while MCM open).
+Function TrySeverAimedCorpse(Bool abIgnoreMenuMode = False)
+	; Do not soft-fail on IsInMenuMode for the hotkey — some HUD mods leave it sticky.
 	If NecroSceneActive
+		Debug.Notification("Pickman's Whisper: butcher unavailable during Necromantic scene")
 		Return
 	EndIf
 	If !IsBladeEquipped()
+		Debug.Notification("Pickman's Whisper: draw Pickman's Blade for the butcher menu")
 		Return
 	EndIf
 	If !PlayerRef
 		PlayerRef = Game.GetPlayer()
 	EndIf
-	Actor aimed = GetLookAimActor()
-	If !aimed || aimed == PlayerRef
-		Debug.Notification("Pickman's Whisper: aim at a corpse to sever")
-		Return
-	EndIf
-	If !IsSeverCorpseEligible(aimed)
-		Debug.Notification("Pickman's Whisper: not a valid corpse to sever")
+	Actor aimed = ResolveSeverCorpseAim(abIgnoreMenuMode)
+	If !aimed
+		Debug.Notification("Pickman's Whisper: aim / face a corpse for the butcher menu")
 		Return
 	EndIf
 	EnsureSeverLimbMenu()
 	If !SeverLimbMenu
-		Debug.Notification("Pickman's Whisper: sever menu missing — rebuild ESP")
+		Debug.Notification("Pickman's Whisper: butcher menu missing — rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR TrySeverAimedCorpse no MSG 0x806")
 		Return
 	EndIf
 	Int btn = SeverLimbMenu.Show()
 	; 0 Head / 1 LArm / 2 RArm / 3 LLeg / 4 RLeg / 5 Cancel
-	If btn < 0 || btn >= 5
+	If btn < 0
+		Debug.Notification("Pickman's Whisper: butcher Show failed (btn=" + btn + ")")
+		Debug.Trace("PickmansWhisper: ERROR SeverLimbMenu.Show returned " + btn)
+		Return
+	EndIf
+	If btn >= 5
 		Return
 	EndIf
 	String part = SeverButtonToPart(btn)
@@ -517,10 +585,15 @@ Function SeverCorpseLimb(Actor ak, String partName)
 		Debug.Notification("Pickman's Whisper: already severed")
 		Return
 	EndIf
-	; Combat sever: force dismember + bloody mess; do NOT explode (keep piece visible).
-	ak.Dismember(partName, False, True, True)
+	; Force dismember only — ForceBloodyMess=True gibs/explodes heads; keep False so pieces sever clean.
+	ak.Dismember(partName, False, True, False)
 	Debug.Notification("Pickman's Whisper: severed " + partName)
 	Debug.Trace("PickmansWhisper: severed " + partName + " id=0x" + GardenOfEden.GetHexFormID(ak))
+EndFunction
+
+; MCM Debug — open butcher menu (uses victims aim cache while MCM is open).
+Function DebugOpenButcherMenu()
+	TrySeverAimedCorpse(True)
 EndFunction
 
 ; MCM Debug — sever aimed corpse head with no limb menu (spike / verify gore).
@@ -532,13 +605,9 @@ Function DebugTestSeverAimedHead()
 		Debug.MessageBox("Pickman's Whisper\n\nDraw Pickman's Blade first.")
 		Return
 	EndIf
-	Actor aimed = GetLookAimActor()
-	If !aimed || !IsSeverCorpseEligible(aimed)
-		; Fall back to last victims aim cache (MCM often kills camera target).
-		aimed = ResolveVictimsAimActor()
-	EndIf
-	If !aimed || !IsSeverCorpseEligible(aimed)
-		Debug.MessageBox("Pickman's Whisper\n\nAim at a dead adult female (or look then open MCM), then retry.")
+	Actor aimed = ResolveSeverCorpseAim(True)
+	If !aimed
+		Debug.MessageBox("Pickman's Whisper\n\nAim / face a dead adult female (or look then open MCM), then retry.")
 		Return
 	EndIf
 	SeverCorpseLimb(aimed, "Head1")
@@ -581,13 +650,7 @@ Event NecromanticMainQuestScript.OnNecroSceneStart(NecromanticMainQuestScript ak
 		Return
 	EndIf
 	NecroSceneActive = True
-	String startLine = PickIntimacyStartNamedLine()
-	If !startLine
-		Debug.Notification("Pickman's Whisper: Intimacy_Start_Named.txt not loaded")
-		Debug.Trace("PickmansWhisper: ERROR intimacy start bank empty — " + IntimacyStartNamedStatus)
-	Else
-		MaybeSpeakNamedIntimacyVoice(corpse, startLine, NamedIntimacyAudio)
-	EndIf
+	MaybeSpeakNamedIntimacyEvent(corpse, True)
 EndEvent
 
 Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSender, Var[] akArgs)
@@ -599,28 +662,18 @@ Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSe
 	If akArgs && akArgs.Length > 10
 		completed = akArgs[10] as Bool
 	EndIf
-	; E4 — random stop-bank toast before clearing latch (same named-victim filter as start).
+	; E5 — speak before clearing latch (same named-victim filter as start).
 	If corpse
-		String stopLine = PickIntimacyStopNamedLine()
-		If !stopLine
-			Debug.Notification("Pickman's Whisper: Intimacy_Stop_Named.txt not loaded")
-			Debug.Trace("PickmansWhisper: ERROR intimacy stop bank empty — " + IntimacyStopNamedStatus)
-		Else
-			MaybeSpeakNamedIntimacyVoice(corpse, stopLine, "")
-		EndIf
+		MaybeSpeakNamedIntimacyEvent(corpse, False)
 	EndIf
 	NecroSceneActive = False
 	Debug.Trace("PickmansWhisper: OnNecroSceneEnd completed=" + completed)
 EndEvent
 
-; Named Potential Victim + caller-supplied toast template → knife voice.
-; E4: Start/End pass a random line from Intimacy_*_Named.txt (+ optional .xwm).
-Function MaybeSpeakNamedIntimacyVoice(Actor partner, String toastTemplate, String audioFile)
+; Named Potential Victim + iVoiceDelivery (0 toast+audio / 1 audio / 2 toast).
+; abStart=True → Start banks; False → End banks. Same-index toast/audio like notice D1.
+Function MaybeSpeakNamedIntimacyEvent(Actor partner, Bool abStart)
 	If !partner
-		Return
-	EndIf
-	If !toastTemplate
-		Debug.Trace("PickmansWhisper: intimacy toast template empty — skip")
 		Return
 	EndIf
 	String overrideName = GetVictimOverrideName(partner)
@@ -633,23 +686,42 @@ Function MaybeSpeakNamedIntimacyVoice(Actor partner, String toastTemplate, Strin
 	If !IsVoiceWeaponReady()
 		Return
 	EndIf
+	Int mode = GetVoiceDeliveryMode()
+	If mode == 1
+		Int aIdx = PickIntimacyAudioIndex(abStart)
+		If aIdx < 0
+			Return
+		EndIf
+		PlayIntimacyAudioAt(abStart, aIdx)
+		Debug.Trace("PickmansWhisper: intimacy audio-only idx=" + aIdx + " start=" + abStart)
+		Return
+	EndIf
+	Int tIdx = PickIntimacyNamedIndex(abStart)
+	If tIdx < 0
+		If abStart
+			Debug.Notification("Pickman's Whisper: Intimacy_Start_Named.txt not loaded")
+			Debug.Trace("PickmansWhisper: ERROR intimacy start bank empty — " + IntimacyStartNamedStatus)
+		Else
+			Debug.Notification("Pickman's Whisper: Intimacy_End_Named.txt not loaded")
+			Debug.Trace("PickmansWhisper: ERROR intimacy end bank empty — " + IntimacyEndNamedStatus)
+		EndIf
+		Return
+	EndIf
+	String toastTemplate = ""
+	If abStart
+		toastTemplate = IntimacyStartNamedLines[tIdx]
+	Else
+		toastTemplate = IntimacyEndNamedLines[tIdx]
+	EndIf
 	String line = ApplyNamePlaceholder(toastTemplate, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return
 	EndIf
-	Int mode = GetVoiceDeliveryMode()
-	If mode != 1
-		ShowVoiceToast(line)
+	ShowVoiceToast(line)
+	If mode == 0
+		PlayIntimacyAudioAt(abStart, tIdx)
 	EndIf
-	If mode != 2
-		If audioFile
-			PlayWhisperXwmByFile(audioFile)
-		ElseIf mode == 1
-			ShowVoiceToast(line)
-			Debug.Trace("PickmansWhisper: intimacy audio empty — toast fallback for audio-only mode")
-		EndIf
-	EndIf
-	Debug.Trace("PickmansWhisper: named intimacy voice | " + line)
+	Debug.Trace("PickmansWhisper: named intimacy voice idx=" + tIdx + " start=" + abStart + " | " + line)
 EndFunction
 
 ; PlayerCombat quest owns the alias OnPlayerLoadGame hook. Start Game Enabled does
@@ -2526,12 +2598,11 @@ Function LoadLineBanks()
 EndFunction
 
 ; ModConfig.txt — key=value prompts / toggles. Files-only (no baked mirror).
-; E4: intimacy toast text lives in necromantic/Intimacy_*_Named.txt, not here.
+; E4/E5: intimacy toast+audio live in necromantic/Intimacy_*_Named.txt / *_Audio.txt.
 Function LoadModConfig()
 	RenamePromptFemaleNPC = ""
 	NamedKillToast = ""
 	NamedKillAudio = ""
-	NamedIntimacyAudio = ""
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
 	ModConfigLoadStatus = "READ FAILED (GoE2 missing?)"
@@ -2574,8 +2645,6 @@ Function LoadModConfig()
 					NamedKillToast = val
 				ElseIf key == "namedKillAudio"
 					NamedKillAudio = val
-				ElseIf key == "namedIntimacyAudio"
-					NamedIntimacyAudio = val
 				EndIf
 			EndIf
 		EndIf
@@ -2596,7 +2665,7 @@ Function LoadModConfig()
 	EndIf
 EndFunction
 
-; E4 — named intimacy toast banks (files-only under config/necromantic/).
+; E4/E5 — named intimacy toast + audio maps (files-only under config/necromantic/).
 Function LoadIntimacyNamedLines()
 	IntimacyStartNamedLines = new String[64]
 	IntimacyStartNamedCount = LoadStageBankAt("Intimacy_Start_Named.txt", IntimacyStartNamedLines, NecromanticConfigPath())
@@ -2606,44 +2675,122 @@ Function LoadIntimacyNamedLines()
 	Else
 		Debug.Trace("PickmansWhisper: intimacy start named lines ready (" + IntimacyStartNamedCount + ")")
 	EndIf
-	IntimacyStopNamedLines = new String[64]
-	IntimacyStopNamedCount = LoadStageBankAt("Intimacy_Stop_Named.txt", IntimacyStopNamedLines, NecromanticConfigPath())
-	IntimacyStopNamedStatus = LastStageLoadStatus
-	If IntimacyStopNamedCount <= 0
-		Debug.Trace("PickmansWhisper: ERROR Intimacy_Stop_Named.txt — " + IntimacyStopNamedStatus)
+	IntimacyEndNamedLines = new String[64]
+	IntimacyEndNamedCount = LoadStageBankAt("Intimacy_End_Named.txt", IntimacyEndNamedLines, NecromanticConfigPath())
+	IntimacyEndNamedStatus = LastStageLoadStatus
+	If IntimacyEndNamedCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR Intimacy_End_Named.txt — " + IntimacyEndNamedStatus)
 	Else
-		Debug.Trace("PickmansWhisper: intimacy stop named lines ready (" + IntimacyStopNamedCount + ")")
+		Debug.Trace("PickmansWhisper: intimacy end named lines ready (" + IntimacyEndNamedCount + ")")
 	EndIf
+	IntimacyStartAudioLines = new String[64]
+	IntimacyStartAudioCount = LoadStageBankAt("Intimacy_Start_Audio.txt", IntimacyStartAudioLines, NecromanticConfigPath())
+	IntimacyStartAudioStatus = LastStageLoadStatus
+	IntimacyEndAudioLines = new String[64]
+	IntimacyEndAudioCount = LoadStageBankAt("Intimacy_End_Audio.txt", IntimacyEndAudioLines, NecromanticConfigPath())
+	IntimacyEndAudioStatus = LastStageLoadStatus
+	ReportIntimacyAudioCountMismatch(True, IntimacyStartNamedCount, IntimacyStartAudioCount)
+	ReportIntimacyAudioCountMismatch(False, IntimacyEndNamedCount, IntimacyEndAudioCount)
+	Debug.Trace("PickmansWhisper: intimacy audio start=" + IntimacyStartAudioCount + " end=" + IntimacyEndAudioCount)
 EndFunction
 
-; Random raw template from start bank; "" if unloaded. No-immediate-repeat.
-String Function PickIntimacyStartNamedLine()
-	If IntimacyStartNamedCount <= 0 || !IntimacyStartNamedLines
-		Return ""
+Function ReportIntimacyAudioCountMismatch(Bool abStart, Int toastCount, Int audioCount)
+	If audioCount <= 0
+		Return
 	EndIf
-	String raw = IntimacyStartNamedLines[Utility.RandomInt(0, IntimacyStartNamedCount - 1)]
-	Int tries = 0
-	While tries < 8 && IntimacyStartNamedCount > 1 && raw == LastIntimacyStartLine
-		raw = IntimacyStartNamedLines[Utility.RandomInt(0, IntimacyStartNamedCount - 1)]
-		tries += 1
-	EndWhile
-	LastIntimacyStartLine = raw
-	Return raw
+	If toastCount == audioCount
+		Return
+	EndIf
+	String which = "End"
+	If abStart
+		which = "Start"
+	EndIf
+	String msg = "intimacy " + which + " toast/audio mismatch toast=" + toastCount + " audio=" + audioCount
+	Debug.Notification("Pickman's Whisper: " + msg)
+	Debug.Trace("PickmansWhisper: ERROR " + msg)
 EndFunction
 
-; Random raw template from stop bank; "" if unloaded. No-immediate-repeat.
-String Function PickIntimacyStopNamedLine()
-	If IntimacyStopNamedCount <= 0 || !IntimacyStopNamedLines
-		Return ""
+; Random toast index; -1 if unloaded. No-immediate-repeat on raw template.
+Int Function PickIntimacyNamedIndex(Bool abStart)
+	If abStart
+		If IntimacyStartNamedCount <= 0 || !IntimacyStartNamedLines
+			Return -1
+		EndIf
+		Int idx = Utility.RandomInt(0, IntimacyStartNamedCount - 1)
+		String raw = IntimacyStartNamedLines[idx]
+		Int tries = 0
+		While tries < 8 && IntimacyStartNamedCount > 1 && raw == LastIntimacyStartLine
+			idx = Utility.RandomInt(0, IntimacyStartNamedCount - 1)
+			raw = IntimacyStartNamedLines[idx]
+			tries += 1
+		EndWhile
+		LastIntimacyStartLine = raw
+		LastIntimacyStartPickIndex = idx
+		Return idx
 	EndIf
-	String raw = IntimacyStopNamedLines[Utility.RandomInt(0, IntimacyStopNamedCount - 1)]
+	If IntimacyEndNamedCount <= 0 || !IntimacyEndNamedLines
+		Return -1
+	EndIf
+	Int eIdx = Utility.RandomInt(0, IntimacyEndNamedCount - 1)
+	String eRaw = IntimacyEndNamedLines[eIdx]
+	Int eTries = 0
+	While eTries < 8 && IntimacyEndNamedCount > 1 && eRaw == LastIntimacyEndLine
+		eIdx = Utility.RandomInt(0, IntimacyEndNamedCount - 1)
+		eRaw = IntimacyEndNamedLines[eIdx]
+		eTries += 1
+	EndWhile
+	LastIntimacyEndLine = eRaw
+	LastIntimacyEndPickIndex = eIdx
+	Return eIdx
+EndFunction
+
+; Audio-only roll — index or -1.
+Int Function PickIntimacyAudioIndex(Bool abStart)
+	Int count = IntimacyEndAudioCount
+	String[] bank = IntimacyEndAudioLines
+	If abStart
+		count = IntimacyStartAudioCount
+		bank = IntimacyStartAudioLines
+	EndIf
+	If count <= 0 || !bank
+		Debug.Notification("Pickman's Whisper: intimacy audio map empty")
+		Debug.Trace("PickmansWhisper: ERROR PickIntimacyAudioIndex empty start=" + abStart)
+		Return -1
+	EndIf
+	Int idx = Utility.RandomInt(0, count - 1)
+	String fileName = bank[idx]
 	Int tries = 0
-	While tries < 8 && IntimacyStopNamedCount > 1 && raw == LastIntimacyStopLine
-		raw = IntimacyStopNamedLines[Utility.RandomInt(0, IntimacyStopNamedCount - 1)]
+	While tries < 8 && count > 1 && fileName == LastIntimacyAudioFile
+		idx = Utility.RandomInt(0, count - 1)
+		fileName = bank[idx]
 		tries += 1
 	EndWhile
-	LastIntimacyStopLine = raw
-	Return raw
+	LastIntimacyAudioFile = fileName
+	Return idx
+EndFunction
+
+Function PlayIntimacyAudioAt(Bool abStart, Int index)
+	Int count = IntimacyEndAudioCount
+	String[] bank = IntimacyEndAudioLines
+	If abStart
+		count = IntimacyStartAudioCount
+		bank = IntimacyStartAudioLines
+	EndIf
+	If count <= 0 || !bank
+		Debug.Notification("Pickman's Whisper: intimacy audio map empty")
+		Return
+	EndIf
+	If index < 0 || index >= count
+		Debug.Notification("Pickman's Whisper: intimacy audio index out of range " + index)
+		Debug.Trace("PickmansWhisper: ERROR PlayIntimacyAudioAt idx=" + index + " count=" + count)
+		Return
+	EndIf
+	String fileName = bank[index]
+	If !fileName || GardenOfEden.StrLength(fileName) < 1
+		Debug.Notification("Pickman's Whisper: empty intimacy audio filename at " + index)
+		Return
+	EndIf
+	PlayWhisperXwmByFile(fileName)
 EndFunction
 
 
@@ -2906,8 +3053,9 @@ EndFunction
 
 ; Generated by esp build — maps EndIt.xwm=2055 (local FormID decimal).
 Function LoadWhisperSndrIds()
-	WhisperSndrFiles = new String[64]
-	WhisperSndrFids = new Int[64]
+	; Cap must fit Desperate + Necromantic Start/End maps (see WHISPER_SNDR_MAX).
+	WhisperSndrFiles = new String[128]
+	WhisperSndrFids = new Int[128]
 	WhisperSndrCount = 0
 	WhisperSndrIdsStatus = "READ FAILED (GoE2 missing?)"
 	String fileName = "WhisperSndrIds.txt"
@@ -2926,7 +3074,7 @@ Function LoadWhisperSndrIds()
 		Return
 	EndIf
 	Int i = 0
-	While i < raw.Length && WhisperSndrCount < 64
+	While i < raw.Length && WhisperSndrCount < WHISPER_SNDR_MAX
 		String line = TrimString(raw[i])
 		i += 1
 		If line == ""
@@ -3103,7 +3251,9 @@ Function PlayNoticeAudio(Int stage, Int index)
 	PlayWhisperXwmByFile(fileName)
 EndFunction
 
-; Play one Whisper SNDR by .xwm filename (WhisperSndrIds key). Fail loud — never substitute.
+; Play one Whisper SNDR by map key (WhisperSndrIds). Top-level or relative
+; under Sound\PickmansWhisper\ (e.g. Necromantic/Start/01-LooksPeaceful.xwm).
+; Fail loud — never substitute.
 Function PlayWhisperXwmByFile(String fileName)
 	If !IsVoiceWeaponReady()
 		Return
@@ -3113,12 +3263,47 @@ Function PlayWhisperXwmByFile(String fileName)
 		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile empty filename")
 		Return
 	EndIf
-	Bool xwmOk = GardenOfEden2.DoesFileExist(fileName, ".\\Data\\Sound\\PickmansWhisper\\")
-	If !xwmOk
-		Debug.Notification("Pickman's Whisper: missing xwm " + fileName)
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile xwm missing " + fileName)
+	String leaf = fileName
+	String dirPath = ".\\Data\\Sound\\PickmansWhisper\\"
+	Int len = GardenOfEden.StrLength(fileName)
+	Int lastSep = -1
+	Int si = 0
+	While si < len
+		String c = GardenOfEden.SubStr(fileName, si, 1)
+		If c == "/" || c == "\\"
+			lastSep = si
+		EndIf
+		si += 1
+	EndWhile
+	If lastSep >= 0
+		String relDir = GardenOfEden.SubStr(fileName, 0, lastSep + 1)
+		leaf = GardenOfEden.SubStr(fileName, lastSep + 1, -1)
+		; GoE paths use backslashes; audio maps use forward slashes.
+		String relBack = ""
+		Int ri = 0
+		Int rlen = GardenOfEden.StrLength(relDir)
+		While ri < rlen
+			String rc = GardenOfEden.SubStr(relDir, ri, 1)
+			If rc == "/"
+				relBack += "\\"
+			Else
+				relBack += rc
+			EndIf
+			ri += 1
+		EndWhile
+		dirPath = ".\\Data\\Sound\\PickmansWhisper\\" + relBack
+	EndIf
+	If !leaf || GardenOfEden.StrLength(leaf) < 1
+		Debug.Notification("Pickman's Whisper: empty audio leaf for " + fileName)
 		Return
 	EndIf
+	Bool xwmOk = GardenOfEden2.DoesFileExist(leaf, dirPath)
+	If !xwmOk
+		Debug.Notification("Pickman's Whisper: missing xwm " + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile xwm missing " + fileName + " path=" + dirPath)
+		Return
+	EndIf
+	; WhisperSndrIds keys match the map line (forward-slash relative path).
 	Int fid = FindWhisperSndrFid(fileName)
 	If fid <= 0
 		Debug.Notification("Pickman's Whisper: no SNDR id for " + fileName + " — rebuild ESP")

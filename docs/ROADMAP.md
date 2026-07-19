@@ -8,14 +8,15 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **B** | Kill-with-knife praise + satiation rules | **Done** |
 | **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **Done** — C1–C5 verified in-game |
 | **D** | Audio bank playback (research + implement) | **Done** — D0–D1 Desperate audio; delivery modes verified |
-| **E** | Named-victim kill voice + soft Necromantic intimacy hooks | **Done** — E1–E4 |
-| **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`) | Implemented — verify in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md)) |
-| **G** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
-| **H** | Corpse preserve sync with Necromantic | Planned |
-| **I** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
-| **J** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
-| **K** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
-| **L** | Infamy / serial-killer whispers | Planned |
+| **E** | Named-victim kill voice + soft Necromantic intimacy hooks | **Done** — E1–E5 |
+| **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`) | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md)) |
+| **G** | Bed corpse hallucination (sleep spawn + look-away despawn) | Planned — design: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) |
+| **H** | Corpse decay / consume + victim places | Planned — design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
+| **I** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
+| **J** | Corpse preserve sync with Necromantic | Planned |
+| **K** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
+| **L** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
+| **M** | Infamy / serial-killer whispers | Planned |
 
 ## Slice A — trigger, toast, hunger, MCM
 
@@ -60,23 +61,43 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 Special lines when the player has a personal stake (Potential Victims name) and soft suite hooks with Necromantic. **No** `Necromantic.esp` master; no AAF/sex code in this mod.
 
 - [x] **E1** — Named-victim kill voice: on a valid blade kill, if the victim has a player-assigned Potential Victim name (`GetVictimOverrideName`), speak a dedicated toast + audio from `ModConfig.txt` (text + optional SNDR stem keys) instead of the generic praise line. Later: optional randomized banks. *(toast shipped; uncomment `namedKillAudio` when `.xwm` exists)*
-- [x] **E2** — Soft Necromantic intimacy hook: `GetFormFromFile(0x800)` + `RegisterForCustomEvent` `OnNecroSceneStart` / `OnNecroSceneEnd`; named Potential Victim corpse in `akArgs[1]` → ModConfig intimacy toast + optional audio. Fail loud if audio key set but xwm/SNDR missing.
-- [x] **E3** — `OnNecroSceneEnd` named-victim toast (shared `MaybeSpeakNamedIntimacyVoice` with toast template param; mirrors start).
-- [x] **E4** — Random intimacy toasts from files: `config/necromantic/Intimacy_Start_Named.txt` / `Intimacy_Stop_Named.txt` (no ModConfig single-line toast keys). Fail loud if bank missing when the event would speak.
+- [x] **E2** — Soft Necromantic intimacy hook: `GetFormFromFile(0x800)` + `RegisterForCustomEvent` `OnNecroSceneStart` / `OnNecroSceneEnd`; named Potential Victim corpse in `akArgs[1]`.
+- [x] **E3** — `OnNecroSceneEnd` named-victim voice (shared speaker; mirrors start).
+- [x] **E4** — Random intimacy toasts from files: `config/necromantic/Intimacy_Start_Named.txt` / `Intimacy_End_Named.txt` (no ModConfig single-line toast keys). Fail loud if bank missing when the event would speak.
+- [x] **E5** — Parallel audio maps `Intimacy_Start_Audio.txt` / `Intimacy_End_Audio.txt` (23+23 relative `.xwm` under `Sound/PickmansWhisper/Necromantic/Start|End`); ESP SNDRs; same-index `iVoiceDelivery` like notice D1. Retire `namedIntimacyAudio`.
 - Honor direction rules: not sexual here; soft complementarity only; blade-drawn voice gate still applies.
 
 ## Slice F — blade corpse sever
 
-Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Implemented** — verify in-game.
+Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (verified in-game).
 
-- [x] Aim reticule at a dead adult female; wield **Pickman's Blade**; press **`/`** (DX 53).
-- [x] Limb picker via MSG `PW_SeverLimbMenu` (`0x806`) → `Actor.Dismember(part, False, True, True)` (force sever + bloody mess, not explode).
-- [x] Skip menu mode and Necromantic scene latch. Hacksaw / other weapons later.
+- [x] Aim reticule at a dead adult female; wield **Pickman's Blade**; press **`/`** (`VK_OEM_2` = 191).
+- [x] Limb picker via MSG `PW_SeverLimbMenu` (`0x806`) → `Actor.Dismember(part, False, True, False)` (force sever, no BloodyMess gib).
+- [x] Skip Necromantic scene latch. Hacksaw / other weapons later.
 - [x] Contract: `tools/test_corpse_sever.py`.
 
-## Slice G — slow hunger + peak wait rewards
+## Slice G — bed corpse hallucination
 
-(Was Slice F.)
+Design notes: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md).
+
+- On sleep start: spawn disabled vanilla female Actor at bed, silent `Kill()`, place on/beside bed.
+- On wake: player finds the corpse; no visible place→ragdoll if timed during sleep fade.
+- Track presence via script ref; `HasLOS` (+ optional facing) for in-view.
+- Despawn on look-away (preferred) so look-back finds an empty bed.
+- Bond / hunger / cooldown gates; MCM toggle + debug; no custom corpse mesh.
+
+## Slice H — corpse decay / consume + victim places
+
+Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
+
+Bodies and Victims list should not be immortal. After enough game-days, corpses **decay** (static/gore swap or soft despawn). Optionally **incentivize eating** the corpse (Cannibal / blade action) so the player clears her deliberately — that path **removes her from Potential Victims**.
+
+Tangential foundation: stamp each victim with a **last-known place** (cell + optional coords / MCM label) on name, kill, or butcher, so finding her again (and resolving unloaded refs for decay/eat) is tractable.
+
+- Soft with J (preserve pauses decay) and K (Cannibal stretch).
+- Cap stays aligned with Victims (32) unless J raises holds.
+
+## Slice I — slow hunger + peak wait rewards
 
 Stretch the hunger climb so each stage lasts **days** of game time (not a quick meter fill). Reward patience when the player waits until hunger is peaking before killing.
 
@@ -85,47 +106,33 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Do **not** break C3 stage file mapping or the verified killscan arming path while tuning rise rate.
 - Soft-stack with Necromantic craving feel; no ESP master dependency.
 
-## Slice H — corpse preserve
-
-(Was Slice G.)
+## Slice J — corpse preserve
 
 - `HeldCorpses[]` + soft claim token on knife-kill victims.
 - Compatible with Necromantic holds; no ESP master dependency.
-- Ephemeral bed-hallucination corpses (Slice I) are **not** long-term hold targets.
+- Ephemeral bed-hallucination corpses (Slice G) are **not** long-term hold targets.
+- Soft with **H**: preserved / claimed corpses pause or reset decay.
 
-## Slice I — bed corpse hallucination
-
-(Was Slice H.) Design notes: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md).
-
-- On sleep start: spawn disabled vanilla female Actor at bed, silent `Kill()`, place on/beside bed.
-- On wake: player finds the corpse; no visible place→ragdoll if timed during sleep fade.
-- Track presence via script ref; `HasLOS` (+ optional facing) for in-view.
-- Despawn on look-away (preferred) so look-back finds an empty bed.
-- Bond / hunger / cooldown gates; MCM toggle + debug; no custom corpse mesh.
-
-## Slice J — perk / stretch
-
-(Was Slice I.)
+## Slice K — perk / stretch
 
 - Soft-gate or enhance via Lady Killer / Black Widow.
 - Optional Cannibal; stretch butcher-shop cell.
 - Occult Pact bridges documented only until that mod exists.
+- Soft with **H**: Cannibal / blade-eat consume path that clears Victims.
 
-## Slice K — witnesses
+## Slice L — witnesses
 
-(Was Slice J.) NPCs who witness a knife kill (or catch the player mid-crime) react instead of ignoring it.
+NPCs who witness a knife kill (or catch the player mid-crime) react instead of ignoring it.
 
 - **Reaction on witness:** either
   - **Flee** — run in fear / scream / call for help, or
   - **Fight** — turn hostile and attack the player.
 - Reuse existing GoE proximity / LOS scanning (kill-watch + `GetActorsDetecting`) to find who actually saw it; gate by distance/line-of-sight so unseen kills stay quiet.
-- **K1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
+- **L1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
 - Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
 - Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
 
-## Slice L — infamy
-
-(Was Slice K.)
+## Slice M — infamy
 
 - Whispers about a new serial killer in the commonwealth
 - References to past murders, could include the name of the victim that differs from the name the player gave them, but the player would realize it is "Cindy"
@@ -137,7 +144,8 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Essential NPC filters must never break main quests.
 - Tone is extreme — keep lines in editable config files.
 - Named-kill / Necromantic hooks (E): soft stub + CustomEvents; no `Necromantic.esp` master.
-- Corpse sever (F): limb-under-reticule unavailable in Papyrus; MSG menu + `Dismember` must leave gore pieces (no force-explode).
-- Hunger pacing (G): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
-- Bed hallucination: sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice I doc).
-- Witnesses (K): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
+- Corpse sever (F): limb-under-reticule unavailable in Papyrus; MSG menu + `Dismember` must leave gore pieces (no force-explode / no BloodyMess gib).
+- Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
+- Corpse decay / places (H): unloaded Actor refs; decay vs J preserve race; eat must clear Victims without orphaning place data; exterior place labels are fuzzy.
+- Hunger pacing (I): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
+- Witnesses (L): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.

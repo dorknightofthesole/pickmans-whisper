@@ -1,0 +1,26 @@
+# Pickman's Whisper — intimacy audio map (E5). One .xwm relative path per Named toast row.
+# Paths relative to Data/Sound/PickmansWhisper/. Blank and # lines ignored.
+
+Necromantic/Start/01-LooksPeaceful.xwm
+Necromantic/Start/02-HerStillness.xwm
+Necromantic/Start/03-QuietSoft.xwm
+Necromantic/Start/04LookAtHer.xwm
+Necromantic/Start/05-TooStill.xwm
+Necromantic/Start/06-BeautyLikeThat.xwm
+Necromantic/Start/07-QuietBeauty.xwm
+Necromantic/Start/08-StillnessLikeThat.xwm
+Necromantic/Start/09-LookAtHerWaiting.xwm
+Necromantic/Start/10-AnswerHer.xwm
+Necromantic/Start/11-AlreadyWet.xwm
+Necromantic/Start/12-SheCantMove.xwm
+Necromantic/Start/13-FillIt.xwm
+Necromantic/Start/14-ShellTake.xwm
+Necromantic/Start/15-TooPerfect.xwm
+Necromantic/Start/16-YourHandsShake.xwm
+Necromantic/Start/17-LooksLikeYes.xwm
+Necromantic/Start/18-BigEnough.xwm
+Necromantic/Start/19-DeathCooperative.xwm
+Necromantic/Start/20-packing.xwm
+Necromantic/Start/21-NoBreathLeft.xwm
+Necromantic/Start/22-YouWontFit.xwm
+Necromantic/Start/23-TheKnifeBrought.xwm

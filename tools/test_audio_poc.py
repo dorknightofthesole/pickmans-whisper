@@ -127,13 +127,16 @@ def test_builder() -> None:
         "build_whisper_sndr_payload",
         "Desperate_Audio.txt",
         "WhisperSndrIds.txt",
-        "NEXT_OID = 0x00000820",
+        "NEXT_OID = 0x00000850",
     ):
         if needle not in src:
             fail(f"build_hunger_spell_esp.py missing {needle!r}")
     if 'group(b"SNDR"' not in src and "group(b'SNDR'" not in src:
         fail("builder must emit SNDR group")
-    ok("esp builder clones Desperate_Audio SNDRs")
+    # E5 intimacy maps need headroom past Desperate-only 0x820.
+    if "Intimacy_Start_Audio.txt" not in src or "Intimacy_End_Audio.txt" not in src:
+        fail("builder must also emit E5 intimacy SNDRs from Intimacy_*_Audio.txt")
+    ok("esp builder clones Desperate + E5 intimacy SNDRs")
 
     deploy_ps1 = (ROOT / "tools" / "build-deploy-local.ps1").read_text(encoding="utf-8")
     if "Sound\\PickmansWhisper" not in deploy_ps1 and "Sound/PickmansWhisper" not in deploy_ps1:

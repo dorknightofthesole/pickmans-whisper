@@ -3,10 +3,11 @@
 #   QUST 0x01000805 PickmansWhisperPlayerCombat (Player UniqueActor alias —
 #     VMAD mirrors DialogueGenericPlayer: 0 quest scripts + alias script)
 #   GLOB / MGEF / SPEL Knife Hunger
-#   SNDR clones for every Desperate_Audio.txt .xwm stem (D0.5) starting at
-#     0x01000807 — EDID PW_Whisper_<Stem>, path Sound\PickmansWhisper\<file>
-#   Writes Data/PickmansWhisper/config/WhisperSndrIds.txt (filename=localFid)
+#   SNDR clones for Desperate_Audio.txt + E5 Intimacy_*_Audio.txt starting at
+#     0x01000807 — EDID PW_Whisper_<SanitizedStem>, path Sound\PickmansWhisper\<rel>
+#   Writes Data/PickmansWhisper/config/WhisperSndrIds.txt (mapKey=localFid)
 import os
+import re
 import struct
 import sys
 from pathlib import Path
@@ -17,10 +18,17 @@ from _env import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 ESP_PATH = ROOT / "Data" / "PickmansWhisper.esp"
 DESPERATE_AUDIO = ROOT / "Data" / "PickmansWhisper" / "config" / "Desperate_Audio.txt"
+INTIMACY_START_AUDIO = (
+    ROOT / "Data" / "PickmansWhisper" / "config" / "necromantic" / "Intimacy_Start_Audio.txt"
+)
+INTIMACY_END_AUDIO = (
+    ROOT / "Data" / "PickmansWhisper" / "config" / "necromantic" / "Intimacy_End_Audio.txt"
+)
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 SOUND_DIR = ROOT / "Data" / "Sound" / "PickmansWhisper"
 SNDR_IDS_PATH = ROOT / "Data" / "PickmansWhisper" / "config" / "WhisperSndrIds.txt"
-MOD_CONFIG_AUDIO_KEYS = ("namedKillAudio", "namedIntimacyAudio")
+# namedIntimacyAudio retired (E5 banks). namedKillAudio still optional.
+MOD_CONFIG_AUDIO_KEYS = ("namedKillAudio",)
 
 FID_QUEST = 0x01000800
 FID_SPEL = 0x01000801
@@ -30,8 +38,8 @@ FID_MGEF_CHA = 0x01000804
 FID_PLAYER_QUEST = 0x01000805
 FID_SEVER_MSG = 0x01000806  # PW_SeverLimbMenu (Slice F)
 FID_WHISPER_BASE = 0x01000807
-# Whisper SNDRs use 0x807+; leave headroom past 12 Desperate stems.
-NEXT_OID = 0x00000820
+# Whisper SNDRs: ~12 Desperate + ~46 Necromantic intimacy; leave headroom.
+NEXT_OID = 0x00000850
 
 # Vanilla PeakValueMod alcohol-withdrawal MGEFs we clone DATA from
 VANILLA_MGEF_AGI = 0x0010224F
@@ -278,25 +286,43 @@ def parse_audio_map(path: Path) -> list[str]:
     if not path.is_file():
         raise SystemExit(f"Missing audio map: {path}")
     out: list[str] = []
-    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw.strip()
+    # utf-8-sig strips a leading BOM so "# comment" is not treated as a map key.
+    for raw in path.read_text(encoding="utf-8-sig", errors="replace").splitlines():
+        line = raw.strip().lstrip("\ufeff")
         if not line or line.startswith("#"):
             continue
         out.append(line)
     return out
 
 
-def stem_from_xwm(filename: str) -> str:
-    name = filename.strip()
+def normalize_audio_map_key(filename: str) -> str:
+    """Map line as stored in *_Audio.txt / WhisperSndrIds (forward slashes)."""
+    name = filename.strip().replace("\\", "/")
     if not name.lower().endswith(".xwm"):
         raise SystemExit(f"Audio map entry must be .xwm, got {filename!r}")
+    return name
+
+
+def stem_from_xwm(filename: str) -> str:
+    name = normalize_audio_map_key(filename)
     return name[: -len(".xwm")]
 
 
-def build_whisper_sndr_payload(stem: str, xwm_filename: str) -> bytes:
+def edid_stem_from_map_key(filename: str) -> str:
+    """EDID-safe stem: path seps / hyphens / dots → underscore."""
+    stem = stem_from_xwm(filename)
+    safe = re.sub(r"[^A-Za-z0-9_]+", "_", stem)
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    if not safe:
+        raise SystemExit(f"Audio map entry yields empty EDID stem: {filename!r}")
+    return safe
+
+
+def build_whisper_sndr_payload(edid_stem: str, map_key: str) -> bytes:
     """Standard one-shot SNDR cloned from golden EndIt field layout."""
-    edid = f"PW_Whisper_{stem}"
-    anam = rf"Sound\PickmansWhisper\{xwm_filename}"
+    edid = f"PW_Whisper_{edid_stem}"
+    rel = map_key.replace("/", "\\")
+    anam = rf"Sound\PickmansWhisper\{rel}"
     # BNAM: freqShift, freqVar, priority=128, dbVar, staticAtten*100 (12.78 → 1278)
     bnam = struct.pack("<bbBBH", 0, 0, 128, 0, 1278)
     return b"".join(
@@ -313,7 +339,7 @@ def build_whisper_sndr_payload(stem: str, xwm_filename: str) -> bytes:
 
 
 def parse_modconfig_audio_files() -> list[str]:
-    """Optional namedKillAudio / namedIntimacyAudio .xwm keys from ModConfig.txt."""
+    """Optional namedKillAudio .xwm keys from ModConfig.txt."""
     if not MOD_CONFIG.is_file():
         return []
     out: list[str] = []
@@ -328,14 +354,18 @@ def parse_modconfig_audio_files() -> list[str]:
         val = val.strip()
         if key not in MOD_CONFIG_AUDIO_KEYS or not val:
             continue
-        stem_from_xwm(val)  # validate .xwm
-        if val not in out:
-            out.append(val)
+        key_norm = normalize_audio_map_key(val)
+        if key_norm not in out:
+            out.append(key_norm)
     return out
 
 
 def build_sever_limb_menu_payload() -> bytes:
-    """MESG message-box with limb buttons. DNAM bit0 = Message Box."""
+    """MESG message-box with limb buttons. DNAM bit0 = Message Box.
+
+    Field order matches working FO4 mod menus (AFT/CAM/etc): EDID DESC FULL
+    INAM DNAM ITXT… — do NOT emit TNAM (vanilla/mod boxes that work omit it).
+    """
     buttons = (
         "Head",
         "Left Arm",
@@ -346,11 +376,10 @@ def build_sever_limb_menu_payload() -> bytes:
     )
     parts = [
         field(b"EDID", zstr("PW_SeverLimbMenu")),
-        field(b"DESC", zstr("Sever which part?")),
-        field(b"FULL", zstr("Pickman's Whisper")),
+        field(b"DESC", zstr("Butcher which part?")),
+        field(b"FULL", zstr("Pickmans Whisper - Butcher")),
         field(b"INAM", u32(0)),
         field(b"DNAM", u32(0x00000001)),  # Message Box
-        field(b"TNAM", u32(0)),
     ]
     for label in buttons:
         parts.append(field(b"ITXT", zstr(label)))
@@ -358,36 +387,54 @@ def build_sever_limb_menu_payload() -> bytes:
 
 
 def collect_sndr_records() -> list[bytes]:
-    """Emit SNDRs for Desperate_Audio.txt then optional ModConfig named audio stems."""
-    files = parse_audio_map(DESPERATE_AUDIO)
+    """Emit SNDRs for Desperate + E5 intimacy maps + optional ModConfig namedKillAudio."""
+    files: list[str] = []
+    seen: set[str] = set()
+
+    def add_map(path: Path) -> None:
+        for raw in parse_audio_map(path):
+            key = normalize_audio_map_key(raw)
+            if key in seen:
+                continue
+            xwm_path = SOUND_DIR / Path(*key.split("/"))
+            if not xwm_path.is_file():
+                raise SystemExit(f"Missing xwm for SNDR clone: {xwm_path}")
+            files.append(key)
+            seen.add(key)
+
+    add_map(DESPERATE_AUDIO)
     if len(files) < 1:
         raise SystemExit(f"{DESPERATE_AUDIO} has no usable .xwm rows")
-    seen = set(files)
+    add_map(INTIMACY_START_AUDIO)
+    add_map(INTIMACY_END_AUDIO)
     for extra in parse_modconfig_audio_files():
         if extra in seen:
             continue
-        xwm_path = SOUND_DIR / extra
+        xwm_path = SOUND_DIR / Path(*extra.split("/"))
         if not xwm_path.is_file():
             raise SystemExit(
                 f"ModConfig audio key set but missing xwm for SNDR clone: {xwm_path}"
             )
         files.append(extra)
         seen.add(extra)
+
     out: list[bytes] = []
     id_lines = [
         "# Generated by tools/build_hunger_spell_esp.py — do not hand-edit.",
-        "# filename=.xwm key → local FormID decimal (low 24 bits) for GetFormFromFile.",
+        "# mapKey=.xwm (relative under Sound/PickmansWhisper) → local FormID decimal.",
     ]
-    for i, filename in enumerate(files):
-        stem = stem_from_xwm(filename)
-        xwm_path = SOUND_DIR / filename
+    for i, map_key in enumerate(files):
+        edid_stem = edid_stem_from_map_key(map_key)
+        xwm_path = SOUND_DIR / Path(*map_key.split("/"))
         if not xwm_path.is_file():
             raise SystemExit(f"Missing xwm for SNDR clone: {xwm_path}")
         fid = FID_WHISPER_BASE + i
         local_fid = fid & 0xFFFFFF
-        out.append(record(b"SNDR", fid, build_whisper_sndr_payload(stem, filename)))
-        id_lines.append(f"{filename}={local_fid}")
-        print(f"  SNDR 0x{fid:08X} PW_Whisper_{stem} -> Sound\\PickmansWhisper\\{filename}")
+        out.append(record(b"SNDR", fid, build_whisper_sndr_payload(edid_stem, map_key)))
+        id_lines.append(f"{map_key}={local_fid}")
+        print(
+            f"  SNDR 0x{fid:08X} PW_Whisper_{edid_stem} -> Sound\\PickmansWhisper\\{map_key.replace('/', chr(92))}"
+        )
     SNDR_IDS_PATH.parent.mkdir(parents=True, exist_ok=True)
     SNDR_IDS_PATH.write_text("\n".join(id_lines) + "\n", encoding="utf-8")
     print(f"  Wrote {SNDR_IDS_PATH} ({len(files)} entries)")
@@ -439,7 +486,7 @@ def main() -> None:
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
     print(f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain")
     print(f"  QUST 0x{FID_PLAYER_QUEST:08X} PickmansWhisperPlayerCombat + PlayerAlias")
-    print(f"  SNDR count={len(sndr_recs)} (Desperate_Audio.txt clones)")
+    print(f"  SNDR count={len(sndr_recs)} (Desperate + Intimacy Start/End maps)")
 
 
 if __name__ == "__main__":

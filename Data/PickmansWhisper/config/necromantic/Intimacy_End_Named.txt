@@ -1,6 +1,7 @@
-# Pickman's Whisper — Necromantic intimacy STOP / END (named). E4 toast bank.
+# Pickman's Whisper — Necromantic intimacy END (named). E4/E5 toast bank.
 # Loaded by LoadIntimacyNamedLines; OnNecroSceneEnd picks one at random.
-# {name} = Potential Victim override. Blank and # lines ignored.
+# Parallel audio: Intimacy_End_Audio.txt (same row index). Blank and # lines ignored.
+# {name} = Potential Victim override.
 
 Done. Cold now. Better that way.
 Whatever was soft in {name} is gone. Good.
@@ -25,4 +26,3 @@ Soft for something that big. Soft forever now.
 The knife made the hole. You made it mean something.
 She was never going to take all of you. She tried anyway.
 Leave her like that — proof you were too much.
-Pretty mouth. Pretty ruin. You did both.

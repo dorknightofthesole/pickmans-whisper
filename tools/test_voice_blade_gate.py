@@ -77,7 +77,7 @@ def main() -> None:
         "PlayNoticeAudio",
         "PlayWhisperXwmByFile",
         "MaybeSpeakNamedKillVoice",
-        "MaybeSpeakNamedIntimacyVoice",
+        "MaybeSpeakNamedIntimacyEvent",
     ):
         body = extract_function(text, name)
         if "IsVoiceWeaponReady" not in body:

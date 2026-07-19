@@ -23,5 +23,5 @@ Alias Function GetAlias(Int aiAliasID) Native
 Function RegisterForRemoteEvent(Form akForm, String asEventName) Native
 Function UnregisterForRemoteEvent(Form akForm, String asEventName) Native
 Function RegisterForExternalEvent(String asEventName, String asCallback) Native
-Function RegisterForKey(Int keyCode) Native
-Function UnregisterForKey(Int keyCode) Native
+; RegisterForKey / UnregisterForKey live on ScriptObject — do not redeclare here
+; (a Quest-only Native shadow can compile green and fail silently at runtime).

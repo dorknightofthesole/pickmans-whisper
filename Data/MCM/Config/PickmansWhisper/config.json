@@ -56,11 +56,11 @@
 					"html": true
 				},
 				{
-					"text": "Corpse sever",
+					"text": "Butcher menu",
 					"type": "section"
 				},
 				{
-					"text": "With <b>Pickman's Blade</b> drawn, aim at a dead adult woman and press <b>/</b>. Choose a limb — same combat gore (piece stays visible). Skipped during Necromantic scenes.",
+					"text": "With <b>Pickman's Blade</b> drawn, aim at a dead adult woman and press <b>/</b> to open the <b>butcher menu</b>. Choose a limb — same combat gore (piece stays visible). Skipped during Necromantic scenes.",
 					"type": "text",
 					"html": true
 				},
@@ -598,6 +598,16 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugPlayTestWhisper"
+					}
+				},
+				{
+					"text": "Open butcher menu",
+					"type": "button",
+					"help": "Slice F: open the butcher limb menu on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. Works from MCM.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugOpenButcherMenu"
 					}
 				},
 				{

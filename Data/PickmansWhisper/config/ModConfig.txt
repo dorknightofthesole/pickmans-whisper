@@ -6,14 +6,13 @@
 # namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
 #   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
 #   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
-# namedIntimacyAudio — optional OnNecroSceneStart .xwm (E2); toast text is E4 banks.
-# E4 intimacy toasts (random, files-only):
-#   config/necromantic/Intimacy_Start_Named.txt
-#   config/necromantic/Intimacy_Stop_Named.txt
-# Nameless VO banks (not yet wired): Intimacy_Start.txt / Intimacy_Stop.txt
-# Retired (E4): namedIntimacyToast / namedIntimacyEndToast — do not re-add as single lines.
+# E4/E5 intimacy (named Potential Victim + Necromantic scene):
+#   config/necromantic/Intimacy_Start_Named.txt + Intimacy_Start_Audio.txt
+#   config/necromantic/Intimacy_End_Named.txt + Intimacy_End_Audio.txt
+#   Voice delivery (iVoiceDelivery) picks toast/audio same-index like notice D1.
+# Nameless VO banks (not yet wired): Intimacy_Start.txt / Intimacy_End.txt
+# Retired: namedIntimacyToast / namedIntimacyEndToast / namedIntimacyAudio (E5 banks).
 
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
-# namedIntimacyAudio=NamedIntimacy.xwm

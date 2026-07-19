@@ -28,20 +28,22 @@
 - [x] **E1** Named-victim kill toast + audio (`ModConfig.txt` keys; Potential Victims name) — toast shipped; audio key when `.xwm` ready
 - [x] **E2** Soft Necromantic intimacy hook (`OnNecroSceneStart`/`End` on 0x800; named victim `akArgs[1]`; no ESP master)
 - [x] **E3** `OnNecroSceneEnd` intimacy toast (shared speaker with toast param)
-- [x] **E4** Random intimacy from `Intimacy_Start_Named.txt` / `Intimacy_Stop_Named.txt`
+- [x] **E4** Random intimacy from `Intimacy_Start_Named.txt` / `Intimacy_End_Named.txt`
+- [x] **E5** Intimacy audio maps (23+23 Necromantic Start/End `.xwm`) + same-index delivery
 
 ## Slice F
 
-- [x] **F** Blade corpse sever (`/` + MSG limb menu + `Actor.Dismember`) — see docs/SLICE_F_CORPSE_SEVER.md (verify in-game)
+- [x] **F** Blade corpse sever (`/` + MSG limb menu + `Actor.Dismember`) — see docs/SLICE_F_CORPSE_SEVER.md (verified in-game)
 
 ## Later
 
-- [ ] **G** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
-- [ ] Corpse hold sync with Necromantic (H)
-- [ ] Bed corpse hallucination (I) — see docs/BED_CORPSE_HALLUCINATION.md
-- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (J)
-- [ ] Witnesses / killer rumors (K)
-- [ ] Infamy whispers (L)
+- [ ] **G** Bed corpse hallucination — see docs/BED_CORPSE_HALLUCINATION.md
+- [ ] **H** Corpse decay / consume + victim places — see docs/SLICE_H_CORPSE_DECAY.md
+- [ ] **I** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
+- [ ] Corpse hold sync with Necromantic (J)
+- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (K)
+- [ ] Witnesses / killer rumors (L)
+- [ ] Infamy whispers (M)
 
 ## LoversLab release / visibility
 

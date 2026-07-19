@@ -13,5 +13,5 @@ Data/PickmansWhisper/whispers/*.mp3
 
 Data/PickmansWhisper/config/TargetOverrides.txt
 
-Data\PickmansWhisper\whispers\Necromantic\start\*.mp3
-Data\PickmansWhisper\whispers\Necromantic\end\*.mp3
+Data/PickmansWhisper/whispers/Necromantic/start/*.mp3
+Data/PickmansWhisper/whispers/Necromantic/end/*.mp3

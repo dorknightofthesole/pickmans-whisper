@@ -204,12 +204,20 @@ if (Test-Path $necroCfg) {
     Copy-Item -Force $_.FullName $necroDeploy
   }
 }
-Get-ChildItem (Join-Path $Root "Data\Sound\PickmansWhisper\*.xwm") -ErrorAction SilentlyContinue | ForEach-Object {
-  Copy-Item -Force $_.FullName (Join-Path $Deploy "Sound\PickmansWhisper\")
+# Recursive — Desperate top-level .xwm plus E5 Necromantic\Start|End clips.
+$soundSrc = Join-Path $Root "Data\Sound\PickmansWhisper"
+$soundDeploy = Join-Path $Deploy "Sound\PickmansWhisper"
+if (Test-Path $soundSrc) {
+  New-Item -ItemType Directory -Force -Path $soundDeploy | Out-Null
+  Copy-Item -Force -Recurse (Join-Path $soundSrc "*") $soundDeploy
 }
 $endItDeployed = Join-Path $Deploy "Sound\PickmansWhisper\EndIt.xwm"
 if (-not (Test-Path $endItDeployed)) {
   throw "Deploy missing Sound\PickmansWhisper\EndIt.xwm (D0-POC audio). Source should be Data\Sound\PickmansWhisper\EndIt.xwm"
+}
+$necroStartClip = Join-Path $Deploy "Sound\PickmansWhisper\Necromantic\Start\01-LooksPeaceful.xwm"
+if (-not (Test-Path $necroStartClip)) {
+  throw "Deploy missing Necromantic Start xwm (E5). Expected Sound\PickmansWhisper\Necromantic\Start\01-LooksPeaceful.xwm"
 }
 
 $Esp = Join-Path $Root "Data\PickmansWhisper.esp"

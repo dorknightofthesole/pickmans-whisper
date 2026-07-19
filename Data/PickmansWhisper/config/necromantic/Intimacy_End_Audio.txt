@@ -1,0 +1,26 @@
+# Pickman's Whisper — intimacy audio map (E5). One .xwm relative path per Named toast row.
+# Paths relative to Data/Sound/PickmansWhisper/. Blank and # lines ignored.
+
+Necromantic/End/01-ColdNow..xwm
+Necromantic/End/02-WhateverWasSoft.xwm
+Necromantic/End/03-LeaveTheRestForTheFlies.xwm
+Necromantic/End/04-Hungry.xwm
+Necromantic/End/05-PrettyThingsBreak.xwm
+Necromantic/End/06-WipeYourHands.xwm
+Necromantic/End/07-TheQuietAfter.xwm
+Necromantic/End/08-DontCleanItUp.xwm
+Necromantic/End/09-BrokenSuitsHer.xwm
+Necromantic/End/10-LookHowOpen.xwm
+Necromantic/End/11-ColdAndStillGreedy.xwm
+Necromantic/End/12-TookYouLikeSheWasStarving.xwm
+Necromantic/End/13-YourSize.xwm
+Necromantic/End/14-PerfectForHer.xwm
+Necromantic/End/15-SheStretched.xwm
+Necromantic/End/16-YouFilledIt.xwm
+Necromantic/End/17-SheWouldHaveBegged.xwm
+Necromantic/End/18-WhenItCantMove.xwm
+Necromantic/End/19-SoftForSomethingThatBig.xwm
+Necromantic/End/20-GotWhatSheWasBuiltFor.xwm
+Necromantic/End/21-KnifeMadeTheWhole.xwm
+Necromantic/End/22-TakeAllOfYou.xwm
+Necromantic/End/23-ProofYouWereTooMuch.xwm

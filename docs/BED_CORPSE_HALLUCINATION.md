@@ -158,7 +158,8 @@ Alternate (if we want a jump-scare second look): keep until look-away **and** lo
 | **B+** | Stronger fantasy if hunger/intensity gates gifts |
 | **C** | Same adult-female non-essential filter language; GoE optional for camera |
 | **E** | Do **not** treat hallucination corpse as preserved trophy |
-| **G** (ex-F) | Independent of perk / butcher stretch |
+| **J** | Preserve holds skip ephemeral bed corpses |
+| **K** | Independent of perk / butcher stretch (this vignette does not wait on K) |
 
 Necromantic: if player somehow starts a scene on this body before despawn, that is an edge case — prefer despawn-on-look-away fast enough that it is rare; do not add AAF code here.
 

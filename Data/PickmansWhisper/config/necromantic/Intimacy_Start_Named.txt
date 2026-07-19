@@ -1,6 +1,7 @@
-# Pickman's Whisper — Necromantic intimacy START (named). E4 toast bank.
+# Pickman's Whisper — Necromantic intimacy START (named). E4/E5 toast bank.
 # Loaded by LoadIntimacyNamedLines; OnNecroSceneStart picks one at random.
-# {name} = Potential Victim override. Blank and # lines ignored.
+# Parallel audio: Intimacy_Start_Audio.txt (same row index). Blank and # lines ignored.
+# {name} = Potential Victim override.
 
 {name} looks so peaceful. I can't look away. I don't want to.
 {name}'s stillness is doing something to you. Don't fight it.
