@@ -247,6 +247,8 @@ String SleepRecognitionLoadStatus = ""
 Int RECOGNITION_NAME_PROMPT_AT = 3
 ; Loaded from ModConfig.txt — files-only, no baked mirror.
 String RenamePromptFemaleNPC = ""
+String BedGiftWakeToast = "" ; Slice G optional wake toast
+Float BedGiftCooldownDays = -1.0 ; Slice G from ModConfig; -1 = missing/invalid
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
 String ModConfigLoadStatus = ""
@@ -2597,7 +2599,6 @@ Function LoadLineBanks()
 	LoadRecognitionLines()
 	LoadSleepRecognitionLines()
 	LoadIntimacyNamedLines()
-	LoadBedGiftLines()
 	LoadModConfig()
 	LoadTargetOverrides()
 EndFunction
@@ -2606,6 +2607,8 @@ EndFunction
 ; E4/E5: intimacy toast+audio live in necromantic/Intimacy_*_Named.txt / *_Audio.txt.
 Function LoadModConfig()
 	RenamePromptFemaleNPC = ""
+	BedGiftWakeToast = ""
+	BedGiftCooldownDays = -1.0
 	NamedKillToast = ""
 	NamedKillAudio = ""
 	String fileName = "ModConfig.txt"
@@ -2646,6 +2649,15 @@ Function LoadModConfig()
 				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
 				If key == "renamePromptFemaleNPC"
 					RenamePromptFemaleNPC = val
+				ElseIf key == "bedGiftWakeToast"
+					BedGiftWakeToast = val
+				ElseIf key == "bedGiftCooldownDays"
+					If val && GardenOfEden.StrLength(val) > 0
+						Float days = val as Float
+						If days > 0.0
+							BedGiftCooldownDays = days
+						EndIf
+					EndIf
 				ElseIf key == "namedKillToast"
 					NamedKillToast = val
 				ElseIf key == "namedKillAudio"
@@ -2654,9 +2666,18 @@ Function LoadModConfig()
 			EndIf
 		EndIf
 	EndWhile
+	If BedGiftCooldownDays <= 0.0
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftCooldownDays missing or <=0")
+	EndIf
 	String status = ""
 	If RenamePromptFemaleNPC
 		status += "rename "
+	EndIf
+	If BedGiftWakeToast
+		status += "bedGift "
+	EndIf
+	If BedGiftCooldownDays > 0.0
+		status += "bedCooldown "
 	EndIf
 	If NamedKillToast
 		status += "namedKill "
@@ -2668,6 +2689,16 @@ Function LoadModConfig()
 		ModConfigLoadStatus = "no known keys"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
 	EndIf
+EndFunction
+
+; Exposed for BedGiftScript wake toast (ModConfig bedGiftWakeToast).
+String Function GetBedGiftWakeToast()
+	Return BedGiftWakeToast
+EndFunction
+
+; Exposed for BedGiftScript cooldown (ModConfig bedGiftCooldownDays). <=0 = missing/invalid.
+Float Function GetBedGiftCooldownDays()
+	Return BedGiftCooldownDays
 EndFunction
 
 ; E4/E5 — named intimacy toast + audio maps (files-only under config/necromantic/).
@@ -2805,16 +2836,6 @@ EndFunction
 PickmansWhisperBedGiftScript Function BedGift()
 	; Caprica forbids Self-as-sibling; Quest intermediate is the FO4 co-script cast.
 	Return (Self as Quest) as PickmansWhisperBedGiftScript
-EndFunction
-
-Function LoadBedGiftLines()
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.LoadBedGiftLines()
-	Else
-		Debug.Trace("PickmansWhisper: ERROR BedGift script missing on Main quest")
-		Debug.Notification("Pickman's Whisper: BedGift script missing — reinstall ESP")
-	EndIf
 EndFunction
 
 Function MaybeWarmBedGiftBody()

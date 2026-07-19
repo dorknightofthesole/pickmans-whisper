@@ -17,16 +17,11 @@ Bool BedPresentedThisSleep = False
 Bool BedCorpseWarmed = False
 Bool BedSpawnBusy = False
 Float LastBedGiftGameTime = -999.0
-Float BED_GIFT_COOLDOWN_DAYS = 0.5
 Float BED_DESPAWN_SECONDS = 6.0
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
 Float BED_SPAWN_OFFSET_Z = 36.0
 Float BED_WARM_PARK_Z = -2000.0
-String[] BedGiftLines
-Int BedGiftLineCount = 0
-String LastBedGiftLine = ""
-String BedGiftLoadStatus = ""
 String Property LastBedGiftStatus = "" Auto
 
 PickmansWhisperMainQuestScript Function Main()
@@ -72,11 +67,19 @@ Bool Function BedGiftCooldownReady()
 	If IsBedGiftEverySleep()
 		Return True
 	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Return False
+	EndIf
+	Float cooldownDays = m.GetBedGiftCooldownDays()
+	If cooldownDays <= 0.0
+		Return False
+	EndIf
 	Float now = Utility.GetCurrentGameTime()
 	If LastBedGiftGameTime < 0.0
 		Return True
 	EndIf
-	Return (now - LastBedGiftGameTime) >= BED_GIFT_COOLDOWN_DAYS
+	Return (now - LastBedGiftGameTime) >= cooldownDays
 EndFunction
 
 Bool Function HasLiveBedCorpse()
@@ -86,37 +89,7 @@ Bool Function HasLiveBedCorpse()
 	Return True
 EndFunction
 
-Function LoadBedGiftLines()
-	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		BedGiftLoadStatus = "ERROR: Main script missing"
-		Debug.Trace("PickmansWhisper: ERROR BedGiftLines — Main cast failed")
-		Return
-	EndIf
-	BedGiftLines = new String[64]
-	BedGiftLineCount = m.LoadStageBank("BedGiftLines.txt", BedGiftLines)
-	BedGiftLoadStatus = m.GetLastStageLoadStatus()
-	If BedGiftLineCount <= 0
-		Debug.Trace("PickmansWhisper: BedGiftLines.txt — " + BedGiftLoadStatus + " (wake toast skipped)")
-	Else
-		Debug.Trace("PickmansWhisper: bed gift lines ready (" + BedGiftLineCount + ")")
-	EndIf
-EndFunction
-
-String Function PickBedGiftLine()
-	If BedGiftLineCount <= 0 || !BedGiftLines
-		Return ""
-	EndIf
-	String raw = BedGiftLines[Utility.RandomInt(0, BedGiftLineCount - 1)]
-	Int tries = 0
-	While tries < 8 && BedGiftLineCount > 1 && raw == LastBedGiftLine
-		raw = BedGiftLines[Utility.RandomInt(0, BedGiftLineCount - 1)]
-		tries += 1
-	EndWhile
-	LastBedGiftLine = raw
-	Return raw
-EndFunction
-
+; Wake toast from ModConfig.txt → bedGiftWakeToast (files-only; empty = skip).
 Function MaybeSpeakBedGiftWakeToast()
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
@@ -128,7 +101,7 @@ Function MaybeSpeakBedGiftWakeToast()
 	If !m.IsVoiceWeaponReady()
 		Return
 	EndIf
-	String line = PickBedGiftLine()
+	String line = m.GetBedGiftWakeToast()
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return
 	EndIf

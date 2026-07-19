@@ -3,6 +3,8 @@
 # Blank and # lines ignored. Values are everything after the first '='.
 #
 # renamePromptFemaleNPC — toast after 3+ recognition looks while she is still unnamed.
+# bedGiftWakeToast — Slice G: optional wake toast after bed corpse present (voice + blade).
+# bedGiftCooldownDays — Slice G: game-days between bed gifts (0.5 ≈ 12h). Required; <=0 fails load.
 # namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
 #   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
 #   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
@@ -14,5 +16,7 @@
 # Retired: namedIntimacyToast / namedIntimacyEndToast / namedIntimacyAudio (E5 banks).
 
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
+bedGiftWakeToast=A gift for when you close your eyes.
+bedGiftCooldownDays=0.5
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm

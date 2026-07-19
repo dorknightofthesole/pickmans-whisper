@@ -28,7 +28,7 @@ PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestS
 BED_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBedGiftScript.psc"
 ALIAS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
 SCRIPT_STUB = ROOT / "tools" / "stubs" / "ScriptObject.psc"
-BED_LINES = ROOT / "Data" / "PickmansWhisper" / "config" / "BedGiftLines.txt"
+MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 MCM = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
 DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
@@ -135,7 +135,6 @@ def test_main_facade(main: str) -> None:
     if "as Quest" not in bed_fn:
         fail("Main BedGift() must cast via Quest (Caprica sibling-script rule)")
     for name in (
-        "LoadBedGiftLines",
         "MaybeWarmBedGiftBody",
         "HandlePlayerSleepStart",
         "HandlePlayerSleepStop",
@@ -150,11 +149,22 @@ def test_main_facade(main: str) -> None:
     if "MaybeWarmBedGiftBody()" not in main:
         fail("killscan must call MaybeWarmBedGiftBody")
     load = extract_function(main, "LoadLineBanks")
-    if "LoadBedGiftLines()" not in load:
-        fail("LoadLineBanks must LoadBedGiftLines")
-    if "GetLastStageLoadStatus" not in main:
-        fail("Main must expose GetLastStageLoadStatus for BedGift LoadStageBank")
-    ok("Main bed gift façades + killscan/LoadLineBanks hooks")
+    if "LoadModConfig()" not in load:
+        fail("LoadLineBanks must LoadModConfig (bedGiftWakeToast)")
+    if "LoadBedGiftLines" in main:
+        fail("LoadBedGiftLines retired — wake toast is ModConfig bedGiftWakeToast")
+    load_mod = extract_function(main, "LoadModConfig")
+    if "bedGiftWakeToast" not in load_mod:
+        fail("LoadModConfig must parse bedGiftWakeToast")
+    if "bedGiftCooldownDays" not in load_mod:
+        fail("LoadModConfig must parse bedGiftCooldownDays")
+    if "BedGiftCooldownDays = -1.0" not in load_mod:
+        fail("LoadModConfig must reset BedGiftCooldownDays to sentinel -1.0")
+    if "GetBedGiftWakeToast" not in main:
+        fail("Main must expose GetBedGiftWakeToast for BedGift")
+    if "GetBedGiftCooldownDays" not in main:
+        fail("Main must expose GetBedGiftCooldownDays for BedGift")
+    ok("Main bed gift façades + ModConfig wake toast + cooldown")
 
 
 def test_bed_script(bed: str) -> None:
@@ -214,11 +224,18 @@ def test_bed_script(bed: str) -> None:
         fail("PresentBedCorpseOnWake must not PlaceAtMe")
     if "TIMER_BED_DESPAWN" not in present:
         fail("PresentBedCorpseOnWake must StartTimer TIMER_BED_DESPAWN")
+    if "MaybeSpeakBedGiftWakeToast" not in present:
+        fail("PresentBedCorpseOnWake must MaybeSpeakBedGiftWakeToast")
+    wake = extract_function(bed, "MaybeSpeakBedGiftWakeToast")
+    if "GetBedGiftWakeToast" not in wake:
+        fail("MaybeSpeakBedGiftWakeToast must use ModConfig via GetBedGiftWakeToast")
+    if "BedGiftLines" in bed or "LoadBedGiftLines" in bed:
+        fail("BedGiftLines bank retired — use ModConfig bedGiftWakeToast")
     if "0x000D39F5" not in bed:
         fail("BedGift must declare FID_BED_SPAWN_LVLN = 0x000D39F5")
     extract_function(bed, "DebugForceBedGift")
     extract_function(bed, "DebugClearBedGift")
-    ok("BedGift SnapIntoInteraction + KillSilent + single warm spawn")
+    ok("BedGift SnapIntoInteraction + KillSilent + ModConfig wake toast")
 
 
 def test_esm(esm: Path | None) -> None:
@@ -234,8 +251,15 @@ def test_esm(esm: Path | None) -> None:
 
 
 def test_config_mcm_deploy() -> None:
-    if not BED_LINES.is_file():
-        fail(f"missing {BED_LINES}")
+    if not MOD_CONFIG.is_file():
+        fail(f"missing {MOD_CONFIG}")
+    mod = MOD_CONFIG.read_text(encoding="utf-8")
+    if "bedGiftWakeToast=" not in mod:
+        fail("ModConfig.txt must ship bedGiftWakeToast=")
+    if "bedGiftCooldownDays=" not in mod:
+        fail("ModConfig.txt must ship bedGiftCooldownDays=")
+    if (ROOT / "Data" / "PickmansWhisper" / "config" / "BedGiftLines.txt").is_file():
+        fail("BedGiftLines.txt retired — wake toast lives in ModConfig.txt")
     mcm = MCM.read_text(encoding="utf-8")
     if "bBedGift:Voice" not in mcm or "DebugForceBedGift" not in mcm:
         fail("MCM must have bed gift voice + debug force")
@@ -243,9 +267,13 @@ def test_config_mcm_deploy() -> None:
     if "bBedGiftEverySleep=1" not in settings:
         fail("settings.ini must default bBedGiftEverySleep=1 for testing")
     bed = BED_PSC.read_text(encoding="utf-8", errors="replace")
+    if "BED_GIFT_COOLDOWN_DAYS" in bed:
+        fail("BedGift must not hardcode BED_GIFT_COOLDOWN_DAYS — use ModConfig")
     m = re.search(r"Bool Function BedGiftCooldownReady\(\)(.*?)EndFunction", bed, re.S)
     if not m or "IsBedGiftEverySleep" not in m.group(1):
         fail("BedGiftCooldownReady must honor IsBedGiftEverySleep")
+    if "GetBedGiftCooldownDays" not in m.group(1):
+        fail("BedGiftCooldownReady must use GetBedGiftCooldownDays from ModConfig")
     deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
     if "test_bed_hallucination.py" not in deploy:
         fail("build-deploy-local.ps1 must run test_bed_hallucination.py")
@@ -256,7 +284,7 @@ def test_config_mcm_deploy() -> None:
         fail("build_hunger_spell_esp.py must attach BedGift script to Main quest")
     if "build_vmad_scripts" not in esp:
         fail("ESP builder must support multi-script VMAD")
-    ok("BedGiftLines + MCM + ESP/deploy BedGift attach")
+    ok("ModConfig bedGiftWakeToast + cooldown + MCM + ESP/deploy BedGift attach")
 
 
 def main() -> None:
