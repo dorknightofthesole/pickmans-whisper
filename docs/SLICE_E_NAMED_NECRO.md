@@ -69,7 +69,7 @@ flowchart TD
 - Randomized named-kill banks (later)
 - Mastering Necromantic / AAF
 - Changing valid kill targets
-- Slow hunger (Slice I)
+- Slow hunger (Slice J)
 
 ## Verify
 

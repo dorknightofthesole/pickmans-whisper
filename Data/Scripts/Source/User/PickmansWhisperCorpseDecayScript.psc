@@ -43,6 +43,73 @@ PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
+PickmansWhisperWorldScanScript Function WorldScan()
+	Return (Self as Quest) as PickmansWhisperWorldScanScript
+EndFunction
+
+Float LastOverlaySyncReal = 0.0
+Float OVERLAY_SYNC_MIN_SECONDS = 8.0
+
+; Kicked via WorldScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
+; Consumes WorldScan.ScanDead — never FindActors here.
+Function SyncOverlaysFromWorldScanSnapshot()
+	If Utility.IsInMenuMode()
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.BondStarted
+		Return
+	EndIf
+	Float now = Utility.GetCurrentRealTime()
+	If now < m.DecaySyncBackoffUntil
+		Return
+	EndIf
+	If (now - LastOverlaySyncReal) < OVERLAY_SYNC_MIN_SECONDS
+		Return
+	EndIf
+	LastOverlaySyncReal = now
+
+	PickmansWhisperWorldScanScript scan = WorldScan()
+	If !scan
+		Return
+	EndIf
+	Actor[] dead = scan.ScanDead
+	Int deadCount = scan.ScanDeadCount
+	If !dead || deadCount <= 0
+		Return
+	EndIf
+	Actor player = Game.GetPlayer()
+	Int n = deadCount
+	If n > 16
+		n = 16
+	EndIf
+	Int i = 0
+	Bool anyFail = False
+	While i < n
+		Actor ak = dead[i]
+		If ak && ak != player && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
+			Int id = ak.GetFormID()
+			If m.FindDecayKillSlot(id) < 0
+				m.EnsureDecayForTrackedVictim(ak, False)
+			EndIf
+			If m.FindDecayKillSlot(id) >= 0
+				Int want = m.ResolveDecayStageForKill(id)
+				Int before = m.GetDecayKillLastStage(id)
+				SyncDecayForKnifeCorpse(ak)
+				Int after = m.GetDecayKillLastStage(id)
+				If want >= 0 && before != want && after != want
+					anyFail = True
+				EndIf
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	If anyFail
+		m.DecaySyncBackoffUntil = now + 30.0
+		Debug.Trace("PickmansWhisper: decay overlay sync backoff 30s (LooksMenu apply failed — voice path stays free)")
+	EndIf
+EndFunction
+
 Function SetCorpseDecayStatus(String reason)
 	LastCorpseDecayStatus = reason
 	PickmansWhisperMainQuestScript m = Main()
@@ -704,15 +771,15 @@ Bool Function IsScarSkinTemplate(String templateId)
 EndFunction
 
 ; ModConfig decayStageN SkinTextures (+ scars if flagged) at stage RGBA. Soft deps; fail loud.
-Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
+Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 	If !akCorpse
 		SetCorpseDecayStatus("skip: no corpse")
-		Return
+		Return False
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
 		SetCorpseDecayStatus("ERROR: Main script missing — cannot apply decay stage")
-		Return
+		Return False
 	EndIf
 	If !m.DecayStagesReady()
 		m.LoadModConfig()
@@ -721,17 +788,17 @@ Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
 		Debug.Notification("Pickman's Whisper: decay stages not loaded — check ModConfig.txt")
 		Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — " + LastCorpseDecayStatus)
-		Return
+		Return False
 	EndIf
 	If aiStage < 0 || aiStage >= 5
 		SetCorpseDecayStatus("ERROR: decay stage index " + aiStage)
-		Return
+		Return False
 	EndIf
 	If !EnsureSkinBank()
-		Return
+		Return False
 	EndIf
 	If !SoftSkinDepsReady()
-		Return
+		Return False
 	EndIf
 	Float tintR = m.GetDecayStageTintR(aiStage)
 	Float tintG = m.GetDecayStageTintG(aiStage)
@@ -767,10 +834,46 @@ Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 		SetCorpseDecayStatus("ERROR: empty stage bank for " + stageName)
 		Debug.Notification("Pickman's Whisper: empty decay stage bank — " + stageName)
 		Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — " + LastCorpseDecayStatus)
-		Return
+		Return False
 	EndIf
 	ApplyTintedAllSkinTemplatesKeepExisting(akCorpse, stageBank, n, 1, tintR, tintG, tintB, tintA)
 	SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " a=" + tintA + " | " + LastCorpseDecayStatus)
+	Return True
+EndFunction
+
+; Slice H P2 — re-apply ModConfig stage if stamped knife kill advanced. Trace only.
+Function SyncDecayForKnifeCorpse(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Return
+	EndIf
+	Int formId = akCorpse.GetFormID()
+	If formId == 0 || m.FindDecayKillSlot(formId) < 0
+		Return
+	EndIf
+	If !m.DecayStagesReady()
+		m.LoadModConfig()
+	EndIf
+	If !m.DecayStagesReady()
+		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
+		Debug.Trace("PickmansWhisper: ERROR SyncDecayForKnifeCorpse — " + LastCorpseDecayStatus)
+		Return
+	EndIf
+	Int stage = m.ResolveDecayStageForKill(formId)
+	If stage < 0
+		Return
+	EndIf
+	Int last = m.GetDecayKillLastStage(formId)
+	If stage == last
+		Return
+	EndIf
+	If ApplyDecayStageOverlays(akCorpse, stage)
+		m.SetDecayKillLastStage(formId, stage)
+		SetCorpseDecayStatus("knife sync stage " + stage + " " + m.GetDecayStageName(stage) + " | " + LastCorpseDecayStatus)
+	EndIf
 EndFunction
 
 ; Bed gift present (deferred timer): darkened DeathMarks then Black Putrefaction stage.

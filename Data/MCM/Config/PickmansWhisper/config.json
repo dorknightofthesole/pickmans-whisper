@@ -121,7 +121,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "ShowHungerInfo"
+						"function": "ShowHungerInfo",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -130,7 +131,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "ForceHungerAddictedTest"
+						"function": "ForceHungerAddictedTest",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -140,7 +142,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugSatiateHunger"
+						"function": "DebugSatiateHunger",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -245,7 +248,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestTrustLine"
+						"function": "DebugTestTrustLine",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -255,7 +259,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestNoticeLine"
+						"function": "DebugTestNoticeLine",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -264,7 +269,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestPraiseLine"
+						"function": "DebugTestPraiseLine",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -274,7 +280,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugReloadLines"
+						"function": "DebugReloadLines",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -288,6 +295,19 @@
 			"pageDisplayName": "Victims",
 			"content": [
 				{
+					"text": "!!! MCM PING (MessageBox) !!!",
+					"type": "button",
+					"help": "CallGlobalFunction Debug.MessageBox — proves MCM buttons work even if quest CallFunction is broken.",
+					"action": {
+						"type": "CallGlobalFunction",
+						"script": "Debug",
+						"function": "MessageBox",
+						"params": [
+							"Pickman's Whisper MCM PING\n\nIf you see this, MCM buttons work.\nNext: try Refresh aimed / list."
+						]
+					}
+				},
+				{
 					"text": "Look at someone, type a name, then <b>Name aimed NPC</b>. That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
 					"type": "text",
 					"html": true
@@ -296,7 +316,16 @@
 					"id": "sVictimAimed:Victims",
 					"text": "Aimed now",
 					"type": "textinput",
-					"help": "Look at her in the world (blade drawn for fixation helps), then open MCM or hit Refresh. Uses last look while the menu is open.",
+					"help": "Face someone in-world for ~2s (killscan caches them), then open this page. Refresh does not re-scan the world — it only re-pushes the cache.",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "sDecayStage:Victims",
+					"text": "Decay stage",
+					"type": "textinput",
+					"help": "Decay for the cached body. Named victims without a clock start Freshly Deceased (overlays apply after you close MCM). Blade kills stamp automatically.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
@@ -317,17 +346,19 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "MCMNameAimedVictim"
+						"function": "MCMNameAimedVictim",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
 					"text": "Refresh aimed / list",
 					"type": "button",
-					"help": "Re-read last look aim + named list. Look in-world first — camera target is empty while MCM is open.",
+					"help": "Re-push Aimed / Decay / named list from cache. Opens a MessageBox so you can confirm the button fired. Face the body in-world before opening MCM.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "MCMRefreshVictimsPanel"
+						"function": "MCMRefreshVictimsPanel",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -356,6 +387,41 @@
 		{
 			"pageDisplayName": "Debug",
 			"content": [
+				{
+					"text": "!!! MCM PING (global MessageBox) !!!",
+					"type": "button",
+					"help": "CallGlobalFunction Debug.MessageBox — no quest required.",
+					"action": {
+						"type": "CallGlobalFunction",
+						"script": "Debug",
+						"function": "MessageBox",
+						"params": [
+							"Pickman's Whisper MCM PING (global)\n\nMCM CallGlobalFunction works."
+						]
+					}
+				},
+				{
+					"text": "!!! QUEST PING (CallFunction) !!!",
+					"type": "button",
+					"help": "CallFunction on Main quest with scriptName — must MessageBox if quest wiring is OK.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"scriptName": "PickmansWhisperMainQuestScript",
+						"function": "MCMQuestPing"
+					}
+				},
+				{
+					"text": "!!! VOICE PATH DUMP !!!",
+					"type": "button",
+					"help": "MessageBox: bond, blade, WorldScan/VoiceScan casts, scan tick, last dispatch, notice/fixation status, hunger cooldown. Use this before guessing why whispers are silent.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"scriptName": "PickmansWhisperMainQuestScript",
+						"function": "DebugVoicePathDump"
+					}
+				},
 				{
 					"id": "bKillDebugToasts:Debug",
 					"text": "Kill / scan debug toasts",
@@ -509,6 +575,15 @@
 					}
 				},
 				{
+					"id": "sVoiceDispatch:Debug",
+					"text": "Voice dispatch (WorldScan)",
+					"type": "textinput",
+					"help": "Updates every ~2s when WorldScan reaches VoiceScan. If stuck on (none yet), voice never got the call.",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
 					"id": "sFixation:Debug",
 					"text": "Look fixation (C5)",
 					"type": "textinput",
@@ -575,7 +650,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "RefreshDebugStatus"
+						"function": "RefreshDebugStatus",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -585,7 +661,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugScanNearbyNpcs"
+						"function": "DebugScanNearbyNpcs",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -595,7 +672,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugVerifyBladeDetect"
+						"function": "DebugVerifyBladeDetect",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -605,7 +683,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestNoticeFiles"
+						"function": "DebugTestNoticeFiles",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -614,7 +693,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugForceBond"
+						"function": "DebugForceBond",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -624,7 +704,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugPlayTestWhisper"
+						"function": "DebugPlayTestWhisper",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -634,7 +715,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugForceBedGift"
+						"function": "DebugForceBedGift",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -644,17 +726,19 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugClearBedGift"
+						"function": "DebugClearBedGift",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
 					"text": "Force corpse decay overlays",
 					"type": "button",
-					"help": "Slice H P1: apply ROF DeadOverlays wound templates (LooksMenu) on aimed / last-look corpse. Needs LooksMenu + INVB_OverlayFramework_DeadOverlays.esp. Quit FO4 to desktop after deploy so MCM reloads.",
+					"help": "Slice H: apply bed-gift decay path (darkened DeathMarks + Black Putrefaction) on aimed / last-look corpse. Needs LooksMenu + DeadOverlays + porcOverlays.esl. Quit FO4 to desktop after deploy so MCM reloads. Decay stage status lives on the Victims page.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugForceCorpseDecayOverlays"
+						"function": "DebugForceCorpseDecayOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -668,7 +752,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugOpenButcherMenu"
+						"function": "DebugOpenButcherMenu",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -678,7 +763,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestSeverAimedHead"
+						"function": "DebugTestSeverAimedHead",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				}
 			]
@@ -718,7 +804,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyDecayStageLab"
+						"function": "DebugApplyDecayStageLab",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -728,7 +815,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugSpawnWoundLabCorpse"
+						"function": "DebugSpawnWoundLabCorpse",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -738,7 +826,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugClearWoundLabCorpse"
+						"function": "DebugClearWoundLabCorpse",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -881,7 +970,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyWoundLabOverlays"
+						"function": "DebugApplyWoundLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -891,7 +981,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllWoundLabOverlays"
+						"function": "DebugApplyAllWoundLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -1013,7 +1104,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplySkinLabOverlays"
+						"function": "DebugApplySkinLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -1023,7 +1115,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllSkinLabOverlays"
+						"function": "DebugApplyAllSkinLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -1033,7 +1126,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllScarLabOverlays"
+						"function": "DebugApplyAllScarLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -1087,7 +1181,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyFaceLabOverlays"
+						"function": "DebugApplyFaceLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				},
 				{
@@ -1097,7 +1192,8 @@
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllFaceLabOverlays"
+						"function": "DebugApplyAllFaceLabOverlays",
+						"scriptName": "PickmansWhisperMainQuestScript"
 					}
 				}
 			]

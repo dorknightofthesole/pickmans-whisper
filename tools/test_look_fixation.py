@@ -165,35 +165,36 @@ def test_psc_contracts(text: str) -> None:
         fail("TickLookFixation must not use FIXATION_TOAST_COOLDOWN")
     ok("TickLookFixation aim + P2 voice + isolated from ambient")
 
-    # Killscan: fixation BEFORE hunger (order lock)
-    scan = extract_function(text, "RunKillScanTick")
-    i_ambient = scan.find('MaybeSpeakNoticeLine("killscan")')
-    i_fix = scan.find("TickLookFixation()")
-    if i_ambient < 0:
-        fail("RunKillScanTick missing MaybeSpeakNoticeLine(killscan)")
-    if i_fix < 0:
-        fail("RunKillScanTick missing TickLookFixation()")
-    if i_fix > i_ambient:
-        fail("TickLookFixation must run BEFORE ambient MaybeSpeakNoticeLine in killscan")
-    ok("killscan order: TickLookFixation then ambient")
-
-    # OnTimer must re-arm before RunKillScanTick so a mid-tick abort cannot silence ambient
-    on_timer = extract_function_event(text, "OnTimer")
-    kill_block_m = re.search(
-        r"TIMER_KILL_SCAN(.*?)(?:ElseIf|EndIf)",
-        on_timer,
-        re.S,
+    # VoiceScan HandleWorldScanVoice: fixation BEFORE hunger (order lock)
+    voice = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceScanScript.psc").read_text(
+        encoding="utf-8", errors="replace"
     )
-    if not kill_block_m:
-        fail("OnTimer missing TIMER_KILL_SCAN branch")
-    kill_block = kill_block_m.group(1)
-    i_arm = kill_block.find("StartKillScanLoop()")
-    i_run = kill_block.find("RunKillScanTick()")
+    if "Function HandleWorldScanVoice" not in voice:
+        fail("VoiceScan must expose HandleWorldScanVoice (direct WorldScan dispatch)")
+    if "TickLookFixation()" not in voice or 'MaybeSpeakNoticeLine("killscan")' not in voice:
+        fail("VoiceScan must TickLookFixation + MaybeSpeakNoticeLine(killscan)")
+    i_ambient = voice.find('MaybeSpeakNoticeLine("killscan")')
+    i_fix = voice.find("TickLookFixation()")
+    if i_fix > i_ambient:
+        fail("TickLookFixation must run BEFORE ambient MaybeSpeakNoticeLine in VoiceScan")
+    if "ProcessKnifeCreditFromWorldScan" in voice:
+        fail("VoiceScan must not own knife credit")
+    if "RegisterForCustomEvent" in voice:
+        fail("VoiceScan must not use CustomEvent (same-quest delivery was silent)")
+    ok("VoiceScan order: TickLookFixation then ambient")
+
+    # WorldScan OnTimer must re-arm before RunWorldScanTick (silence guard)
+    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperWorldScanScript.psc").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    on_timer = extract_function_event(world, "OnTimer")
+    i_arm = on_timer.find("StartWorldScanLoop()")
+    i_run = on_timer.find("RunWorldScanTick()")
     if i_arm < 0 or i_run < 0:
-        fail("OnTimer killscan must call StartKillScanLoop and RunKillScanTick")
+        fail("WorldScan OnTimer must call StartWorldScanLoop and RunWorldScanTick")
     if i_arm > i_run:
-        fail("OnTimer must StartKillScanLoop BEFORE RunKillScanTick (silence guard)")
-    ok("OnTimer re-arms killscan before tick body")
+        fail("WorldScan OnTimer must StartWorldScanLoop BEFORE RunWorldScanTick (silence guard)")
+    ok("WorldScan OnTimer re-arms before tick body")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "TickLookFixation" in notice or "FixationIds" in notice:

@@ -1,6 +1,6 @@
 # Slice H — corpse decay / consume + victim places
 
-Soft ties to **J** (preserve), **K** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
+Soft ties to **I** (decay head armor), **K** (preserve), **L** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
 
 ## Visual path status
 
@@ -28,10 +28,10 @@ Soft ties to **J** (preserve), **K** (Cannibal / butcher), **G** (bed gift POC),
 
 ## Phases
 
-- [ ] **P0.1** — MCM Debug wound lab: sticky bed corpse (no auto-despawn), wound template menu, tint R/G/B/A sliders, apply count, Apply. Separate `PickmansWhisperDecayWoundLabScript` (fork of bed spawn; does not refactor BedGift).
-- [ ] **P0.2** — Wound Lab Porcupine skin: Scars + SkinTexture stepper + apply/all from `DecaySkinOverlays.txt` (soft `porcOverlays.esl`). Stacks with DeathMarks. Face lab uses Scripted Face Tints Damage/Boxer set (`DecayFaceOverlays.txt`, soft `SFT.esp`).
-- [ ] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Soft-fail loud if LooksMenu or DeadOverlays missing.
-- [ ] **P2** — Stamp game-time on Pickman’s Blade kills and deepen overlays at day thresholds through the **locked stage tint ramp** below (stages 0–4).
+- [x] **P0.1** — MCM Debug wound lab: sticky bed corpse (no auto-despawn), wound template menu, tint R/G/B/A sliders, apply count, Apply. Separate `PickmansWhisperDecayWoundLabScript` (fork of bed spawn; does not refactor BedGift).
+- [x] **P0.2** — Wound Lab Porcupine skin: Scars + SkinTexture stepper + apply/all from `DecaySkinOverlays.txt` (soft `porcOverlays.esl`). Stacks with DeathMarks. Face lab uses Scripted Face Tints Damage/Boxer set (`DecayFaceOverlays.txt`, soft `SFT.esp`).
+- [x] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Soft-fail loud if LooksMenu or DeadOverlays missing. Verified in-game.
+- [ ] **P2** — Stamp game-time on Pickman’s Blade kills; deepen overlays via ModConfig **startHours** thresholds + locked stage tint/skins; tracked victims without a stamp start at Freshly Deceased (coded — verify in-game).
 - [ ] **P3** — At max stage (4 / Black Putrefaction), toast (and optional audio) urging the player to eat her before she is too ripe.
 - [ ] **P4** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
 
@@ -44,33 +44,40 @@ Mark each phase Done only after in-game confirm.
 Format (semicolon fields — not comma; names have spaces):
 
 ```text
-decayStageN=name;r;g;b;a;skins[+skin...];scars?
+decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 ```
 
 - `a` — LooksMenu opacity (0–1), fourth numeric after blue
+- `startHours` — game-hours after credited blade kill when this stage begins (stay until next start; Black forever after)
 - `skins` — one or more Porcupine SkinTexture ids joined with `+`
 - trailing `scars` — apply all `Scars_*` from `DecaySkinOverlays.txt`
 
-| Stage | Name | R | G | B | A | Skins | Scars |
-|------:|------|--:|--:|--:|--:|-------|:-----:|
-| 0 | Freshly Deceased | 0.650 | 0.520 | 0.480 | 1.0 | `SkinTexture_07` | — |
-| 1 | Pallor Mortis | 0.350 | 0.680 | 0.650 | 1.0 | `SkinTexture_07` | — |
-| 2 | Livor Mortis | 0.400 | 0.176 | 0.267 | 1.0 | `SkinTexture_07` | — |
-| 3 | Putrefaction | 0.369 | 0.451 | 0.318 | 1.0 | `17`+`18` | all |
-| 4 | Black Putrefaction | 0.149 | 0.118 | 0.102 | 1.0 | `03`+`18` | all |
+| Stage | Name | R | G | B | A | Start (h) | Skins | Scars |
+|------:|------|--:|--:|--:|--:|----------:|-------|:-----:|
+| 0 | Freshly Deceased | 0.650 | 0.520 | 0.480 | 1.0 | 0 | `SkinTexture_07` | — |
+| 1 | Pallor Mortis | 0.350 | 0.680 | 0.650 | 1.0 | 0.25 (15 min) | `SkinTexture_07` | — |
+| 2 | Livor Mortis | 0.400 | 0.176 | 0.267 | 1.0 | 2 | `SkinTexture_07` | — |
+| 3 | Putrefaction | 0.369 | 0.451 | 0.318 | 1.0 | 48 (2 d) | `17`+`18` | all |
+| 4 | Black Putrefaction | 0.149 | 0.118 | 0.102 | 1.0 | 240 (10 d) | `03`+`18` | all |
 
-Scripts must not bake a mirror of these RGBA/skin lists. Missing/incomplete keys fail loud. Wound Lab **Decay stage** stepper names must match ModConfig order; **Apply stage** reads ModConfig (reload via MCM Voice → Reload line banks). Wound Lab Tint A still tunes manual wound/skin/face Applies only.
+**Kill path:** `ProcessKnifeKill` → `StampDecayKill` (FormID + kill game-time) → `SyncDecayForKnifeCorpse`. Killscan dead pass re-syncs when stage advances. Bed gift stays forced stage 4 (not in kill registry).
+
+**Tracked victims:** if she is in the Potential Victims FormID table and dead with no decay stamp, WorldScan → `CallFunctionNoWait("SyncOverlaysFromWorldScanSnapshot")` stamps **Freshly Deceased** without LooksMenu on the voice stack, then applies stage overlays from the WorldScan `ScanDead` snapshot (no second `FindActors`). Backoff 30s on apply failure. Never inside `ProcessKnifeKill` / VoiceScan (LooksMenu `Utility.Wait` starved Notice + Recognition). MCM copy says `no decay clock (Name her, then Refresh)` only for untracked corpses.
+
+**WorldScan bus:** `PickmansWhisperWorldScanScript` is the sole neighborhood `FindActors` producer. After snapshot it **directly** calls `VoiceScan.HandleWorldScanVoice` (sync; same-quest CustomEvent was silent), then `CallFunctionNoWait` Main knife/aim and CorpseDecay overlays.
+
+Scripts must not bake a mirror of these RGBA/hours/skin lists. Missing/incomplete/unordered `startHours` fail loud. Wound Lab **Decay stage** stepper names must match ModConfig order; **Apply stage** reads ModConfig (reload via MCM Voice → Reload line banks). Wound Lab Tint A still tunes manual wound/skin/face Applies only.
 
 ## Locked face bruises (P2) — SFT Damage / Boxer
 
-On each staged corpse (and Wound Lab “apply all face”), apply **all** SFT Damage Boxer headparts from `DecayFaceOverlays.txt`:
+Wound Lab “apply all face” applies **all** SFT Damage Boxer headparts from `DecayFaceOverlays.txt`:
 
 - Boxer - 12 Rounds
 - Boxer - Broken Nose
 - Boxer - Black Eye
 - Boxer - Fat Lip
 
-**Tint parity with body:** ideal = same stage RGB as body overlays / SkinTexture tint. **Constraint:** SFT Boxer HDPTs use baked materials, not LooksMenu `Overlays` tint channels — body tint may not transfer 1:1. Plan: try to match visually (material/tint hooks if any exist); if impossible, document loud and keep body stage tint on overlays only. Soft dep `SFT.esp`.
+**Not on knife-kill sync in P2** — lab `Resurrect`/`ChangeHeadPart` is unsafe on world corpses (lab-only). Soft dep `SFT.esp`.
 
 ## P0.2 in-game notes — Porcupine SkinTexture shortlist (lab browse)
 

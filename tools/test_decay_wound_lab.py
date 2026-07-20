@@ -243,30 +243,31 @@ def test_lab_script(lab: str) -> None:
             fail(f"{fn_name} must skip Utility.Wait while MCM/menu is open")
     mod_cfg = (ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt").read_text(encoding="utf-8")
     expected_stages = [
-        ("decayStage0", "Freshly Deceased", "0.650", "0.520", "0.480", "1.0", "SkinTexture_07", False),
-        ("decayStage1", "Pallor Mortis", "0.350", "0.680", "0.650", "1.0", "SkinTexture_07", False),
-        ("decayStage2", "Livor Mortis", "0.400", "0.176", "0.267", "1.0", "SkinTexture_07", False),
-        ("decayStage3", "Putrefaction", "0.369", "0.451", "0.318", "1.0", "SkinTexture_17+SkinTexture_18", True),
-        ("decayStage4", "Black Putrefaction", "0.149", "0.118", "0.102", "1.0", "SkinTexture_03+SkinTexture_18", True),
+        ("decayStage0", "Freshly Deceased", "0.650", "0.520", "0.480", "1.0", "0", "SkinTexture_07", False),
+        ("decayStage1", "Pallor Mortis", "0.350", "0.680", "0.650", "1.0", "0.25", "SkinTexture_07", False),
+        ("decayStage2", "Livor Mortis", "0.400", "0.176", "0.267", "1.0", "2", "SkinTexture_07", False),
+        ("decayStage3", "Putrefaction", "0.369", "0.451", "0.318", "1.0", "48", "SkinTexture_17+SkinTexture_18", True),
+        ("decayStage4", "Black Putrefaction", "0.149", "0.118", "0.102", "1.0", "240", "SkinTexture_03+SkinTexture_18", True),
     ]
-    for key, name, r, g, b, a, skins, scars in expected_stages:
+    for key, name, r, g, b, a, start_h, skins, scars in expected_stages:
         line = next((ln for ln in mod_cfg.splitlines() if ln.startswith(key + "=")), "")
         if not line:
             fail(f"ModConfig missing {key}=")
         val = line.split("=", 1)[1]
         parts = val.split(";")
-        if len(parts) < 6:
-            fail(f"{key} must be name;r;g;b;a;skins[;scars] — got {val!r}")
+        if len(parts) < 7:
+            fail(f"{key} must be name;r;g;b;a;startHours;skins[;scars] — got {val!r}")
         if (
             parts[0] != name
             or parts[1] != r
             or parts[2] != g
             or parts[3] != b
             or parts[4] != a
-            or parts[5] != skins
+            or parts[5] != start_h
+            or parts[6] != skins
         ):
             fail(f"{key} value mismatch: {val!r}")
-        has_scars = len(parts) >= 7 and parts[6] == "scars"
+        has_scars = len(parts) >= 8 and parts[7] == "scars"
         if has_scars != scars:
             fail(f"{key} scars flag expected {scars}, got {has_scars}")
     main_txt = MAIN.read_text(encoding="utf-8", errors="replace")
@@ -280,8 +281,8 @@ def test_lab_script(lab: str) -> None:
     slice_h = SLICE_H.read_text(encoding="utf-8")
     if "ModConfig.txt" not in slice_h or "decayStage0" not in slice_h:
         fail("SLICE_H must document ModConfig decayStage0..4 as source of truth")
-    if "name;r;g;b;a;skins" not in slice_h:
-        fail("SLICE_H must document name;r;g;b;a;skins format")
+    if "name;r;g;b;a;startHours;skins" not in slice_h and "startHours" not in slice_h:
+        fail("SLICE_H must document name;r;g;b;a;startHours;skins format")
     for name in ("Freshly Deceased", "Pallor Mortis", "Livor Mortis", "Putrefaction", "Black Putrefaction"):
         if name not in slice_h or name not in mod_cfg:
             fail(f"stage name {name!r} must appear in SLICE_H and ModConfig")

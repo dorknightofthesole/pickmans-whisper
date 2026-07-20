@@ -1,0 +1,52 @@
+---
+description: On in-game failures, read Papyrus logs first; never silent-return when work did not happen
+alwaysApply: true
+---
+
+# Debug from Papyrus logs — no guessing, no silent failure
+
+When the user reports that something in-game is broken, missing, or "did nothing":
+
+1. **Read the logs before proposing a fix.** Do not refactor architecture or invent
+   causes from code reading alone until you have checked runtime evidence.
+2. **Primary log path (FO4) — resolve My Documents first** (this machine is OneDrive):
+   `$docs = [Environment]::GetFolderPath('MyDocuments')`
+   → `$docs\My Games\Fallout4\Logs\Script\Papyrus.0.log`
+   Currently: `C:\Users\edwar\OneDrive\Documents\My Games\Fallout4\Logs\Script\Papyrus.0.log`
+   Do **not** assume `C:\Users\edwar\Documents\...` — that path had no Script logs here.
+3. If the `Script` folder or `Papyrus*.log` is missing, logging is off or the game
+   has not been relaunched since enabling it. Fix logging (MO2 active profile
+   `fallout4.ini` / `fallout4custom.ini` `[Papyrus]` → `bEnableLogging=1`,
+   `bEnableTrace=1`, `bLoadDebugInformation=1`), tell the user to quit→relaunch,
+   then read the log. Do not keep guessing meanwhile.
+4. Also check in-mod diagnostics already written for this: MCM Debug fields
+   (`sNotice`, `sVoiceDispatch`, `sFixation`, etc.) and **VOICE PATH DUMP**.
+
+## No silent Returns when the task failed
+
+- If a function is supposed to perform work (speak, dispatch, apply overlay, load
+  a bank) and it **bails without doing that work**, it must leave evidence:
+  `Debug.Trace("PickmansWhisper: …")` and preferably MCM/status (`LastNoticeStatus`
+  or equivalent).
+- Expected idle skips that fire every tick (e.g. same fixation FormID, pre-bond)
+  may avoid spam, but **error / misconfig / missing script / blade gate / empty
+  bank / dispatch failure** must never be silent.
+- Do not treat "compile green" or "contract tests green" as proof the in-game path
+  ran. Logs and MCM heartbeats prove it.
+
+## Example
+
+```papyrus
+; BAD — caller thinks voice ran; nothing did
+If !IsVoiceWeaponReady()
+	Return
+EndIf
+
+; GOOD — failure is visible in Papyrus.0.log + MCM
+If !IsVoiceWeaponReady()
+	LastNoticeStatus = "skip: blade not drawn"
+	WriteNoticeStatusToMcm()
+	Debug.Trace("PickmansWhisper: notice skip | blade not drawn")
+	Return
+EndIf
+```

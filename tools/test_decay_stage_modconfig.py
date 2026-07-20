@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Contracts for Slice H P2 ModConfig decayStage0..4 parse.
+"""Contracts for Slice H P2 ModConfig decayStage0..4 parse + hour thresholds.
 
-Proves the shipped ModConfig strings parse to name/RGBA/skins/scars the same way
-Papyrus SplitByChar + ParseDecayStageValue do (semicolon fields; + layered skins).
+Proves the shipped ModConfig strings parse to name/RGBA/startHours/skins/scars the
+same way Papyrus SplitByChar + ParseDecayStageValue do, and that stage resolve
+from elapsed hours matches ResolveDecayStageFromElapsedHours.
 
 Usage:
   python tools/test_decay_stage_modconfig.py
@@ -17,6 +18,10 @@ ROOT = Path(__file__).resolve().parents[1]
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 LAB = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperDecayWoundLabScript.psc"
+DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
+
+# Locked start-hour thresholds (game hours after kill).
+SHIPPED_START_HOURS = (0.0, 0.25, 2.0, 48.0, 240.0)
 
 
 def fail(msg: str) -> None:
@@ -60,15 +65,18 @@ def split_by_char(s: str, sep: str) -> list[str]:
 
 
 def parse_decay_stage_value(val: str) -> dict:
-    """Mirror ParseDecayStageValue: name;r;g;b;a;skins[+…];scars?"""
+    """Mirror ParseDecayStageValue: name;r;g;b;a;startHours;skins[+…];scars?"""
     fields = split_by_char(val, ";")
-    if len(fields) < 6:
-        raise ValueError(f"need name;r;g;b;a;skins — got {len(fields)} fields: {val!r}")
+    if len(fields) < 7:
+        raise ValueError(f"need name;r;g;b;a;startHours;skins — got {len(fields)} fields: {val!r}")
     name = fields[0]
-    skins = fields[5]
+    skins = fields[6]
     if not name or not skins:
         raise ValueError(f"empty name or skins: {val!r}")
-    scars = len(fields) >= 7 and fields[6] == "scars"
+    start_h = float(fields[5])
+    if start_h < 0.0:
+        raise ValueError(f"startHours must be >= 0: {val!r}")
+    scars = len(fields) >= 8 and fields[7] == "scars"
     skin_list = [p for p in split_by_char(skins, "+") if p]
     return {
         "name": name,
@@ -76,10 +84,21 @@ def parse_decay_stage_value(val: str) -> dict:
         "g": float(fields[2]),
         "b": float(fields[3]),
         "a": float(fields[4]),
+        "start_hours": start_h,
         "skins": skin_list,
         "skins_raw": skins,
         "scars": scars,
     }
+
+
+def resolve_decay_stage(elapsed_hours: float, starts: list[float] | tuple[float, ...]) -> int:
+    """Mirror ResolveDecayStageFromElapsedHours — highest i with elapsed >= starts[i]."""
+    elapsed = max(0.0, float(elapsed_hours))
+    stage = 0
+    for i, start in enumerate(starts):
+        if elapsed >= start:
+            stage = i
+    return stage
 
 
 def load_modconfig_decay_stages() -> dict[int, dict]:
@@ -105,15 +124,16 @@ def test_parse_shipped_modconfig() -> None:
         fail(f"expected decayStage0..4, got {sorted(stages.keys())}")
 
     expected = {
-        0: ("Freshly Deceased", 0.650, 0.520, 0.480, 1.0, ["SkinTexture_07"], False),
-        1: ("Pallor Mortis", 0.350, 0.680, 0.650, 1.0, ["SkinTexture_07"], False),
-        2: ("Livor Mortis", 0.400, 0.176, 0.267, 1.0, ["SkinTexture_07"], False),
+        0: ("Freshly Deceased", 0.650, 0.520, 0.480, 1.0, 0.0, ["SkinTexture_07"], False),
+        1: ("Pallor Mortis", 0.350, 0.680, 0.650, 1.0, 0.25, ["SkinTexture_07"], False),
+        2: ("Livor Mortis", 0.400, 0.176, 0.267, 1.0, 2.0, ["SkinTexture_07"], False),
         3: (
             "Putrefaction",
             0.369,
             0.451,
             0.318,
             1.0,
+            48.0,
             ["SkinTexture_17", "SkinTexture_18"],
             True,
         ),
@@ -123,11 +143,12 @@ def test_parse_shipped_modconfig() -> None:
             0.118,
             0.102,
             1.0,
+            240.0,
             ["SkinTexture_03", "SkinTexture_18"],
             True,
         ),
     }
-    for idx, (name, r, g, b, a, skins, scars) in expected.items():
+    for idx, (name, r, g, b, a, start_h, skins, scars) in expected.items():
         got = stages[idx]
         if got["name"] != name:
             fail(f"stage {idx} name: {got['name']!r} != {name!r}")
@@ -136,6 +157,7 @@ def test_parse_shipped_modconfig() -> None:
             ("g", g, got["g"]),
             ("b", b, got["b"]),
             ("a", a, got["a"]),
+            ("start_hours", start_h, got["start_hours"]),
         ):
             if abs(want - have) > 1e-6:
                 fail(f"stage {idx} {label}: {have} != {want}")
@@ -143,65 +165,98 @@ def test_parse_shipped_modconfig() -> None:
             fail(f"stage {idx} skins: {got['skins']} != {skins}")
         if got["scars"] != scars:
             fail(f"stage {idx} scars: {got['scars']} != {scars}")
-    ok("parse shipped ModConfig decayStage0..4 (name/RGBA/skins/scars)")
+    starts = [stages[i]["start_hours"] for i in range(5)]
+    if starts != list(SHIPPED_START_HOURS):
+        fail(f"startHours {starts} != locked {list(SHIPPED_START_HOURS)}")
+    for i in range(1, 5):
+        if starts[i] < starts[i - 1]:
+            fail(f"startHours not nondecreasing at {i}: {starts}")
+    ok("parse shipped ModConfig decayStage0..4 (name/RGBA/startHours/skins/scars)")
+
+
+def test_resolve_decay_stage() -> None:
+    starts = SHIPPED_START_HOURS
+    cases = (
+        (0.0, 0),
+        (0.24, 0),
+        (0.25, 1),
+        (1.9, 1),
+        (2.0, 2),
+        (47.9, 2),  # gap before Putrefaction stays Livor
+        (48.0, 3),
+        (239.9, 3),
+        (240.0, 4),
+        (9999.0, 4),  # Black forever
+    )
+    for elapsed, want in cases:
+        got = resolve_decay_stage(elapsed, starts)
+        if got != want:
+            fail(f"resolve({elapsed}) = {got}, want {want}")
+    ok("resolve_decay_stage thresholds (gaps keep prior; Black forever)")
 
 
 def test_parse_edge_cases() -> None:
-    # Spaces around fields / layered skins.
     p = parse_decay_stage_value(
-        "  Freshly Deceased ; 0.650 ; 0.520 ; 0.480 ; 1.0 ; SkinTexture_07 "
+        "  Freshly Deceased ; 0.650 ; 0.520 ; 0.480 ; 1.0 ; 0 ; SkinTexture_07 "
     )
-    if p["name"] != "Freshly Deceased" or p["a"] != 1.0 or p["skins"] != ["SkinTexture_07"]:
+    if (
+        p["name"] != "Freshly Deceased"
+        or p["a"] != 1.0
+        or p["start_hours"] != 0.0
+        or p["skins"] != ["SkinTexture_07"]
+    ):
         fail(f"trim/spaces parse failed: {p}")
     p2 = parse_decay_stage_value(
-        "Putrefaction;0.369;0.451;0.318;0.75;SkinTexture_17+SkinTexture_18;scars"
+        "Putrefaction;0.369;0.451;0.318;0.75;48;SkinTexture_17+SkinTexture_18;scars"
     )
-    if p2["a"] != 0.75 or p2["skins"] != ["SkinTexture_17", "SkinTexture_18"] or not p2["scars"]:
-        fail(f"alpha+scars+layers parse failed: {p2}")
+    if (
+        p2["a"] != 0.75
+        or p2["start_hours"] != 48.0
+        or p2["skins"] != ["SkinTexture_17", "SkinTexture_18"]
+        or not p2["scars"]
+    ):
+        fail(f"alpha+hours+scars+layers parse failed: {p2}")
     try:
-        parse_decay_stage_value("Freshly Deceased;0.650;0.520;0.480;SkinTexture_07")
-        fail("old 5-field (no alpha) line must fail")
+        parse_decay_stage_value("Freshly Deceased;0.650;0.520;0.480;1.0;SkinTexture_07")
+        fail("old 6-field (no startHours) line must fail")
     except ValueError:
         pass
-    ok("parse edge cases (trim, alpha, +skins, scars; reject missing alpha)")
+    ok("parse edge cases (trim, startHours, +skins, scars; reject missing hours)")
 
 
 def test_papyrus_wiring() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
     parse = extract_function(main, "ParseDecayStageValue")
-    if "n < 6" not in parse and "n<6" not in parse.replace(" ", ""):
-        fail("ParseDecayStageValue must require >= 6 fields (name;r;g;b;a;skins)")
-    if "fields[4]" not in parse or "fields[5]" not in parse:
-        fail("ParseDecayStageValue must read a=fields[4] skins=fields[5]")
-    if "DecayStageTintA" not in parse:
-        fail("ParseDecayStageValue must store DecayStageTintA")
-    if "GetDecayStageTintA" not in main:
-        fail("Main must expose GetDecayStageTintA")
+    if "n < 7" not in parse and "n<7" not in parse.replace(" ", ""):
+        fail("ParseDecayStageValue must require >= 7 fields (name;r;g;b;a;startHours;skins)")
+    if "fields[5]" not in parse or "fields[6]" not in parse:
+        fail("ParseDecayStageValue must read startHours=fields[5] skins=fields[6]")
+    if "DecayStageStartHours" not in parse:
+        fail("ParseDecayStageValue must store DecayStageStartHours")
+    if "GetDecayStageStartHours" not in main:
+        fail("Main must expose GetDecayStageStartHours")
+    if "ResolveDecayStageFromElapsedHours" not in main:
+        fail("Main must ResolveDecayStageFromElapsedHours")
+    if "DecayStageHoursOrdered" not in main:
+        fail("Main must DecayStageHoursOrdered for load gate")
     lab = LAB.read_text(encoding="utf-8", errors="replace")
     apply = extract_function(lab, "DebugApplyDecayStageLab")
-    if "GetDecayStageTintA" not in apply:
-        fail("DebugApplyDecayStageLab must read GetDecayStageTintA from ModConfig")
     if "ApplyDecayStageOverlays" not in apply:
         fail("DebugApplyDecayStageLab must ApplyDecayStageOverlays (shared bed/lab path)")
-    if "tintA = 1.0" in apply or "tintA=1.0" in apply.replace(" ", ""):
-        fail("DebugApplyDecayStageLab must not hardcode tintA = 1.0")
-    decay = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc").read_text(
-        encoding="utf-8", errors="replace"
-    )
+    decay = DECAY.read_text(encoding="utf-8", errors="replace")
     bed_apply = extract_function(decay, "ApplyBedGiftDecayOverlays")
-    if "BED_GIFT_DECAY_STAGE" not in bed_apply and "ApplyDecayStageOverlays" not in bed_apply:
-        fail("ApplyBedGiftDecayOverlays must apply a ModConfig decay stage")
     if "ApplyDecayStageOverlays" not in bed_apply:
         fail("ApplyBedGiftDecayOverlays must call ApplyDecayStageOverlays")
     if "GetBedGiftWoundAlpha" not in bed_apply:
         fail("ApplyBedGiftDecayOverlays must use bedGiftWoundAlpha for wound opacity")
-    ok("Papyrus parse + Apply stage use ModConfig alpha; bed gift shares stage apply")
+    ok("Papyrus parse + startHours + shared stage apply")
 
 
 def main() -> int:
     if not MOD_CONFIG.is_file():
         fail(f"missing {MOD_CONFIG}")
     test_parse_shipped_modconfig()
+    test_resolve_decay_stage()
     test_parse_edge_cases()
     test_papyrus_wiring()
     print("All decay-stage ModConfig parse contracts passed.")

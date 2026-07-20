@@ -161,13 +161,65 @@ def test_psc(text: str) -> None:
         fail("RefreshVictimsPanel must PushVictimsPanelStrings")
     if "MCM.RefreshMenu()" not in refresh:
         fail("RefreshVictimsPanel may RefreshMenu")
-    # After RefreshMenu, must re-push (settings.ini wipe) — WriteVictimsAimedToMcm after RefreshMenu
+    # After RefreshMenu, must re-push (settings.ini wipe)
     after = refresh.split("MCM.RefreshMenu()", 1)
-    if len(after) < 2 or "WriteVictimsAimedToMcm" not in after[1]:
+    if len(after) < 2 or "PushVictimsPanelStrings" not in after[1]:
         fail("RefreshVictimsPanel must re-push aimed strings AFTER RefreshMenu")
-    tick = extract_function(text, "TickLookFixation")
-    if "NoteVictimsAimActor" not in tick:
-        fail("TickLookFixation must NoteVictimsAimActor for MCM cache")
+    cache = extract_function(text, "TickVictimsAimCache")
+    if "GetCameraTargetReference" not in cache:
+        fail("TickVictimsAimCache must use camera target for living aim")
+    if "GetLastActivateTargetRef" in cache:
+        fail("TickVictimsAimCache must not sticky-activate (stale talk target overwrote corpses)")
+    if "IsFixationEligible" in cache:
+        fail("TickVictimsAimCache must not gate on IsFixationEligible (corpses are rejected there)")
+    resolve = extract_function(text, "ResolveVictimsAimActor")
+    if "GetFacedSeverCorpse(" in resolve or "FindActors(" in resolve:
+        fail("ResolveVictimsAimActor must not call FindActors/GetFacedSeverCorpse (MCM Refresh hitch)")
+    if "ResolveSeverCorpseAim(" in resolve:
+        fail("ResolveVictimsAimActor must not call ResolveSeverCorpseAim (leave butcher path alone)")
+    if "GetLookAimActor" not in resolve or "LastVictimsAimActor" not in resolve:
+        fail("ResolveVictimsAimActor must use GetLookAimActor + LastVictimsAimActor cache only")
+    aim = extract_function(text, "OnWorldScanVictimsAim")
+    if "NoteVictimsAimActor" not in aim:
+        fail("OnWorldScanVictimsAim must NoteVictimsAimActor")
+    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperWorldScanScript.psc").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    faced = extract_function(world, "ResolveFacedDead")
+    if "GetHeadingAngle" not in faced:
+        fail("WorldScan ResolveFacedDead must facing-cone for FacedDead snapshot")
+    knife_fn = extract_function(text, "HandleWorldScanKnifeAimWarm")
+    if "OnWorldScanVictimsAim" not in knife_fn:
+        fail("HandleWorldScanKnifeAimWarm must OnWorldScanVictimsAim")
+    if "TickLookFixation" in knife_fn or "MaybeSpeakNoticeLine" in knife_fn:
+        fail("HandleWorldScanKnifeAimWarm must not own voice (VoiceScanScript does)")
+
+    knife = extract_function(text, "ProcessKnifeKill")
+    if "NoteVictimsAimActor" not in knife:
+        fail("ProcessKnifeKill must NoteVictimsAimActor for Victims/decay MCM")
+    if "SyncDecayForKnifeCorpse" in knife:
+        fail("ProcessKnifeKill must not SyncDecay (Utility.Wait starved voice)")
+    refresh_fn = extract_function(text, "RefreshVictimsPanel")
+    if refresh_fn.count("PushVictimsPanelStrings") < 1:
+        fail("RefreshVictimsPanel must PushVictimsPanelStrings")
+    after_rm = refresh_fn.split("MCM.RefreshMenu()", 1)
+    if len(after_rm) < 2 or "PushVictimsPanelStrings" not in after_rm[1]:
+        fail("RefreshVictimsPanel must PushVictimsPanelStrings AFTER RefreshMenu")
+    mcm_refresh = extract_function(text, "MCMRefreshVictimsPanel")
+    if "MessageBox" not in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must MessageBox (Refresh looked like a no-op)")
+    if "Debug.Notification" not in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must Notification immediately (prove CallFunction)")
+    call_i = mcm_refresh.find("\tRefreshVictimsPanel(")
+    note_i = mcm_refresh.find("Debug.Notification")
+    if call_i < 0 or note_i < 0 or note_i > call_i:
+        fail("MCMRefreshVictimsPanel must Notification before RefreshVictimsPanel call")
+    if "GetFacedSeverCorpse(" in mcm_refresh or "FindActors(" in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must not FindActors")
+    dbg = extract_function(text, "RefreshDebugStatus")
+    after_dbg = dbg.split("MCM.RefreshMenu()", 1)
+    if len(after_dbg) < 2 or "PushVictimsPanelStrings" not in after_dbg[-1]:
+        fail("RefreshDebugStatus must PushVictimsPanelStrings AFTER RefreshMenu (Victims wipe)")
     ok("Victims MCM aim cache + RefreshMenu re-push")
 
 
@@ -181,11 +233,33 @@ def test_mcm() -> None:
         '"id": "sVictimsSummary:Victims"',
         '"function": "MCMNameAimedVictim"',
         '"function": "MCMRefreshVictimsPanel"',
+        '"scriptName": "PickmansWhisperMainQuestScript"',
+        "CallGlobalFunction",
+        "MCM PING",
     ):
         if needle not in cfg:
             fail(f"Victims MCM missing {needle}")
     if '"function": "RefreshVictimsPanel"' in cfg:
         fail("MCM button must call MCMRefreshVictimsPanel (not RefreshVictimsPanel with Bool)")
+    # Multi-script quest: every CallFunction on Main must name the script.
+    import json
+
+    data = json.loads(cfg)
+    missing = 0
+    for page in data.get("pages", []):
+        for item in page.get("content", []):
+            action = item.get("action") if isinstance(item, dict) else None
+            if not action or action.get("type") != "CallFunction":
+                continue
+            if action.get("form") != "PickmansWhisper.esp|800":
+                continue
+            if action.get("scriptName") != "PickmansWhisperMainQuestScript":
+                missing += 1
+    if missing:
+        fail(f"{missing} CallFunction actions missing scriptName (multi-script quest)")
+    main = PSC.read_text(encoding="utf-8", errors="replace")
+    if "Function MCMQuestPing(" not in main:
+        fail("Main must MCMQuestPing for Debug quest CallFunction test")
     ok("MCM Victims page")
     ini = MCM_SETTINGS.read_text(encoding="utf-8")
     if "[Victims]" not in ini or "sVictimName=" not in ini:

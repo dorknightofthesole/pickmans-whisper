@@ -41,6 +41,7 @@
 
 ## Later
 
+- [ ] **WorldScan → true event bus** — revisit main scan dispatch. Today: sync `VoiceScan.HandleWorldScanVoice`, then `CallFunctionNoWait` knife/overlays (same-quest CustomEvent was unreliable). Goal: scanner publishes once; listeners subscribe without blocking the scan timer. Prove delivery in-game + Papyrus log before ripping out direct calls. See ROADMAP Slice C WorldScan note.
 - [ ] **H** Corpse decay / consume + victim places — see docs/SLICE_H_CORPSE_DECAY.md
 - [ ] **I** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
 - [ ] Corpse hold sync with Necromantic (J)

@@ -2,7 +2,7 @@ Scriptname PickmansWhisperBedGiftScript extends Quest
 {Slice G — bed corpse hallucination. Attached to PickmansWhisperMain alongside MainQuestScript.}
 
 ; Sleep events register on PlayerAlias; alias → Main façades → this script.
-; ONE PlaceAtMe site for gameplay: MaybeWarmBedGiftBody (killscan while awake).
+; ONE PlaceAtMe site for gameplay: MaybeWarmBedGiftBody (OnWorldScan CallFunctionNoWait while awake).
 ; SleepStart/Stop never spawn — Start saves bed, Stop Presents or skips. No retries.
 
 Int TIMER_BED_DESPAWN = 8

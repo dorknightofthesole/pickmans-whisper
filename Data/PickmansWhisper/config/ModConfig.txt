@@ -17,11 +17,12 @@
 # Nameless VO banks (not yet wired): Intimacy_Start.txt / Intimacy_End.txt
 # Retired: namedIntimacyToast / namedIntimacyEndToast / namedIntimacyAudio (E5 banks).
 #
-# Decay stages (Slice H P2) — Wound Lab Apply stage + future kill-day ramp.
+# Decay stages (Slice H P2) — Wound Lab Apply stage + knife-kill hour ramp.
 # Five keys decayStage0..decayStage4. Semicolon fields (not comma — names have spaces):
-#   name;r;g;b;a;skins[+skin...];scars?
-# a = LooksMenu opacity 0–1. Trailing "scars" means apply all Scars_* from DecaySkinOverlays.txt.
-# Order must match MCM Wound Lab Decay stage stepper. Single source — do not bake RGBA/skins in scripts.
+#   name;r;g;b;a;startHours;skins[+skin...];scars?
+# a = LooksMenu opacity 0–1. startHours = game-hours after kill when this stage begins
+#   (stay until next start; Black forever after). Trailing "scars" = all Scars_* from DecaySkinOverlays.txt.
+# Order must match MCM Wound Lab Decay stage stepper. Single source — do not bake RGBA/hours/skins in scripts.
 
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
 bedGiftWakeToast=A gift for when you close your eyes.
@@ -30,8 +31,8 @@ bedGiftWoundAlpha=0.40
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
 
-decayStage0=Freshly Deceased;0.650;0.520;0.480;1.0;SkinTexture_07
-decayStage1=Pallor Mortis;0.350;0.680;0.650;1.0;SkinTexture_07
-decayStage2=Livor Mortis;0.400;0.176;0.267;1.0;SkinTexture_07
-decayStage3=Putrefaction;0.369;0.451;0.318;1.0;SkinTexture_17+SkinTexture_18;scars
-decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;SkinTexture_03+SkinTexture_18;scars
+decayStage0=Freshly Deceased;0.650;0.520;0.480;1.0;0;SkinTexture_07
+decayStage1=Pallor Mortis;0.350;0.680;0.650;1.0;0.25;SkinTexture_07
+decayStage2=Livor Mortis;0.400;0.176;0.267;1.0;2;SkinTexture_07
+decayStage3=Putrefaction;0.369;0.451;0.318;1.0;48;SkinTexture_17+SkinTexture_18;scars
+decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;240;SkinTexture_03+SkinTexture_18;scars
