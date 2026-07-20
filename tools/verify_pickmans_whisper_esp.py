@@ -69,6 +69,9 @@ def main() -> int:
     if b"PickmansWhisperBedGiftScript" not in data:
         print("FAIL BedGift script name missing from Main quest VMAD")
         return 7
+    if b"PickmansWhisperCorpseDecayScript" not in data:
+        print("FAIL CorpseDecay script name missing from Main quest VMAD")
+        return 7
     if b"PickmansWhisperPlayerCombat\x00" not in data:
         print("FAIL PlayerCombat EDID missing")
         return 8
@@ -78,7 +81,7 @@ def main() -> int:
     if b"PW_SeverLimbMenu\x00" not in data:
         print("FAIL PW_SeverLimbMenu EDID missing")
         return 10
-    print(f"OK size={len(data)} SPEL+Main+BedGift+PlayerCombat+PlayerAlias+SeverMSG present")
+    print(f"OK size={len(data)} SPEL+Main+BedGift+CorpseDecay+PlayerCombat+PlayerAlias+SeverMSG present")
     return 0
 
 

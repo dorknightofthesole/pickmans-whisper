@@ -1,5 +1,5 @@
 # Rebuild PickmansWhisper.esp with:
-#   QUST 0x01000800 PickmansWhisperMain (MainQuest + BedGift scripts)
+#   QUST 0x01000800 PickmansWhisperMain (MainQuest + BedGift + CorpseDecay + DecayWoundLab)
 #   QUST 0x01000805 PickmansWhisperPlayerCombat (Player UniqueActor alias —
 #     VMAD mirrors DialogueGenericPlayer: 0 quest scripts + alias script)
 #   GLOB / MGEF / SPEL Knife Hunger
@@ -180,6 +180,8 @@ def build_main_quest_payload() -> bytes:
             [
                 "PickmansWhisperMainQuestScript",
                 "PickmansWhisperBedGiftScript",
+                "PickmansWhisperCorpseDecayScript",
+                "PickmansWhisperDecayWoundLabScript",
             ]
         ),
     )

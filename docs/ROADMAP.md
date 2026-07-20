@@ -11,7 +11,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **E** | Named-victim kill voice + soft Necromantic intimacy hooks | **Done** — E1–E5 |
 | **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`) | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md)) |
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn) | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
-| **H** | Corpse decay / consume + victim places | Planned — design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
+| **H** | Corpse decay (LooksMenu + ROF DeadOverlays → eat urge → reward) | P1 POC coded — verify in-game — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
 | **I** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
 | **J** | Corpse preserve sync with Necromantic | Planned |
 | **K** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
@@ -80,7 +80,7 @@ Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (veri
 
 Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contract: `tools/test_bed_hallucination.py`.
 
-- [x] **G1** — Pre-warm living `LCharRaiderFemale`; wake `SnapIntoInteraction` + `KillSilent` (ragdoll fallback); timed despawn; bond + MCM + cooldown. Optional `ModConfig.txt` `bedGiftWakeToast`. Logic on `PickmansWhisperBedGiftScript` (Main façades).
+- [x] **G1** — Pre-warm living `DiamondCityResidentF01NoodleMarket` (unnamed Resident); wake `SnapIntoInteraction` + `KillSilent` (ragdoll fallback); timed despawn; bond + MCM + cooldown. Optional `ModConfig.txt` `bedGiftWakeToast`. Logic on `PickmansWhisperBedGiftScript` (Main façades).
 - On sleep start: spawn disabled vanilla female Actor at bed, silent `Kill()`, place on/beside bed.
 - On wake: player finds the corpse; no visible place→ragdoll if timed during sleep fade.
 - Track presence via script ref; FO4 Direct LOS (not Skyrim `HasLOS`).
@@ -89,14 +89,18 @@ Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contrac
 
 ## Slice H — corpse decay / consume + victim places
 
-Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
+Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Soft with J (preserve) and K (Cannibal). Cap aligns with Victims (32).
 
-Bodies and Victims list should not be immortal. After enough game-days, corpses **decay** (static/gore swap or soft despawn). Optionally **incentivize eating** the corpse (Cannibal / blade action) so the player clears her deliberately — that path **removes her from Potential Victims**.
+**Visual:** LooksMenu overlays + **ROF DeadOverlays** DeathMarks (`DecayWoundOverlays.txt`). `PlayImpactEffect` **retired**. Soft deps — no ROF/LooksMenu ESP master. SPID not required.
 
-Tangential foundation: stamp each victim with a **last-known place** (cell + optional coords / MCM label) on name, kill, or butcher, so finding her again (and resolving unloaded refs for decay/eat) is tractable.
+- [ ] **P0.1** — MCM Debug wound lab (sticky corpse + template/tint/count apply). Verify in-game.
+- [ ] **P0.2** — Wound Lab: Porcupine Scars/SkinTexture stepper + apply/all (stacks with DeathMarks). Soft dep `porcOverlays.esl`. Face lab: Scripted Face Tints Damage/Boxer bruises (`DecayFaceOverlays.txt`, soft `SFT.esp`).
+- [ ] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Verify in-game.
+- [ ] **P2** — Stamp game-time on Pickman’s Blade kills; deepen overlays + locked stage tint ramp + SkinTexture map (7 @0–2; 17+18 @3; 3+18 @4) + all SFT Boxer face bruises (tint-match body if possible). See [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
+- [ ] **P3** — At max stage (4), toast (and optional audio) urging the player to eat her before she is too ripe.
+- [ ] **P4** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
 
-- Soft with J (preserve pauses decay) and K (Cannibal stretch).
-- Cap stays aligned with Victims (32) unless J raises holds.
+Victim **places** (last-known cell/label) remain a tangential foundation for unloaded refs / MCM — not required for P1–P4 visuals.
 
 ## Slice I — slow hunger + peak wait rewards
 

@@ -1,0 +1,45 @@
+# Slice H P0.2 — Porcupine Skin Overlays (porcOverlays.esl) for Wound Lab.
+# Appropriate for corpse/decay look: Scars + SkinTexture only.
+# Excluded: Pimples (acne), Moles (cosmetic). Soft dep — no ESP master.
+# Order must match MCM iSkinLabTemplate:WoundLab stepper.
+# iSkinLabTemplate2:WoundLab is the same list with a leading "(none)" skip slot.
+Scars_01
+Scars_02
+Scars_03
+Scars_04
+Scars_05
+Scars_06
+Scars_07
+Scars_08
+Scars_09
+Scars_10
+Scars_11
+Scars_12
+Scars_13
+Scars_14
+Scars_15
+Scars_16
+Scars_17
+Scars_18
+Scars_19
+Scars_20
+SkinTexture_01
+SkinTexture_02
+SkinTexture_03
+SkinTexture_04
+SkinTexture_05
+SkinTexture_06
+SkinTexture_07
+SkinTexture_08
+SkinTexture_09
+SkinTexture_10
+SkinTexture_11
+SkinTexture_12
+SkinTexture_13
+SkinTexture_14
+SkinTexture_15
+SkinTexture_16
+SkinTexture_17
+SkinTexture_18
+SkinTexture_19
+SkinTexture_20

@@ -47,6 +47,8 @@ $Src = Join-Path $Root "Data\Scripts\Source\User"
 $PexOut = Join-Path $Root "Data\Scripts"
 $Psc = "PickmansWhisperMainQuestScript.psc"
 $PscBed = "PickmansWhisperBedGiftScript.psc"
+$PscDecay = "PickmansWhisperCorpseDecayScript.psc"
+$PscWoundLab = "PickmansWhisperDecayWoundLabScript.psc"
 $PscAlias = "PickmansWhisperPlayerAliasScript.psc"
 
 Write-Host "==> Pickman's Whisper local build + deploy"
@@ -142,6 +144,24 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_bed_hallucination.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Corpse decay (Slice H ROF/LooksMenu) contract test"
+& python (Join-Path $Root "tools\test_corpse_decay.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_corpse_decay.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Decay wound lab (Slice H P0.1) contract test"
+& python (Join-Path $Root "tools\test_decay_wound_lab.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_decay_wound_lab.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Decay stage ModConfig parse contract test"
+& python (Join-Path $Root "tools\test_decay_stage_modconfig.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_decay_stage_modconfig.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> TargetOverrides filter contract test"
 & python (Join-Path $Root "tools\test_target_overrides.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
@@ -160,10 +180,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscBed + $PscAlias"
+Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscAlias"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscBed, $PscAlias)) {
+  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscAlias)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -177,9 +197,13 @@ try {
 
 $Pex = Join-Path $PexOut "PickmansWhisperMainQuestScript.pex"
 $PexBed = Join-Path $PexOut "PickmansWhisperBedGiftScript.pex"
+$PexDecay = Join-Path $PexOut "PickmansWhisperCorpseDecayScript.pex"
+$PexWoundLab = Join-Path $PexOut "PickmansWhisperDecayWoundLabScript.pex"
 $PexAlias = Join-Path $PexOut "PickmansWhisperPlayerAliasScript.pex"
 if (-not (Test-Path $Pex)) { throw "compile produced no main .pex" }
 if (-not (Test-Path $PexBed)) { throw "compile produced no BedGift .pex" }
+if (-not (Test-Path $PexDecay)) { throw "compile produced no CorpseDecay .pex" }
+if (-not (Test-Path $PexWoundLab)) { throw "compile produced no DecayWoundLab .pex" }
 if (-not (Test-Path $PexAlias)) { throw "compile produced no PlayerAlias .pex" }
 
 Write-Host "==> Deploying to $Deploy"
@@ -196,9 +220,13 @@ Write-Host "==> Deploying to $Deploy"
 
 Copy-Item -Force $Pex (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexBed (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexDecay (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexWoundLab (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexAlias (Join-Path $Deploy "Scripts\")
 Copy-Item -Force (Join-Path $Src $Psc) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscBed) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscDecay) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscWoundLab) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscAlias) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\config.json") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")

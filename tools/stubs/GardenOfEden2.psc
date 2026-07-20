@@ -11,6 +11,8 @@ String[] Function GetLinesFromFile(String asFileName, String asFilePath = "") Na
 Int Function CountLinesOfFile(String asFileName, String asFilePath = "") Native Global
 ; Splits on whitespace (drops edge/control whitespace). Used for TrimString — FO4 has no StringUtil.
 String[] Function GetWordsInStringAsArray(String asString) Native Global
+; Real GoE2 native — same lookup SFT uses for Damage/Boxer FULL names (face lab).
+HeadPart[] Function GetHeadPartsByFullName(String asFullName) Native Global
 
 Int Function GetModelNodeCount(ObjectReference akReference) Native Global
 String[] Function GetModelNodes(ObjectReference akReference) Native Global

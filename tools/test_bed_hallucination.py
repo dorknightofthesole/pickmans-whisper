@@ -4,9 +4,9 @@
 Locks:
   - FO4 sleep stubs; PlayerAlias owns RegisterForPlayerSleep
   - Logic on PickmansWhisperBedGiftScript; Main keeps thin façades
-  - Single gameplay PlaceAtMe: MaybeWarmBedGiftBody → LCharRaiderFemale
+  - Single gameplay PlaceAtMe: MaybeWarmBedGiftBody → DiamondCityResidentF01NoodleMarket
   - SnapIntoInteraction + KillSilent; SleepStart/Stop never spawn
-  - FID_BED_SPAWN_LVLN matches Fallout4.esm LCharRaiderFemale
+  - FID_BED_SPAWN_NPC matches Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
   - ESP attaches both Main + BedGift scripts; Caprica/deploy compile BedGift
 
 Usage:
@@ -34,8 +34,9 @@ SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
 DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
 ESP_BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
 
-FID_BED_SPAWN = 0x000D39F5
-EDID_BED_SPAWN = b"LCharRaiderFemale"
+FID_BED_SPAWN = 0x00004DEC
+EDID_BED_SPAWN = b"DiamondCityResidentF01NoodleMarket"
+BED_SPAWN_SIG = b"NPC_"
 
 
 def fail(msg: str) -> None:
@@ -158,12 +159,18 @@ def test_main_facade(main: str) -> None:
         fail("LoadModConfig must parse bedGiftWakeToast")
     if "bedGiftCooldownDays" not in load_mod:
         fail("LoadModConfig must parse bedGiftCooldownDays")
+    if "bedGiftWoundAlpha" not in load_mod:
+        fail("LoadModConfig must parse bedGiftWoundAlpha")
     if "BedGiftCooldownDays = -1.0" not in load_mod:
         fail("LoadModConfig must reset BedGiftCooldownDays to sentinel -1.0")
+    if "BedGiftWoundAlpha = -1.0" not in load_mod:
+        fail("LoadModConfig must reset BedGiftWoundAlpha to sentinel -1.0")
     if "GetBedGiftWakeToast" not in main:
         fail("Main must expose GetBedGiftWakeToast for BedGift")
     if "GetBedGiftCooldownDays" not in main:
         fail("Main must expose GetBedGiftCooldownDays for BedGift")
+    if "GetBedGiftWoundAlpha" not in main:
+        fail("Main must expose GetBedGiftWoundAlpha for CorpseDecay bed path")
     ok("Main bed gift façades + ModConfig wake toast + cooldown")
 
 
@@ -172,26 +179,58 @@ def test_bed_script(bed: str) -> None:
         fail("BedGift must extend Quest")
     if "Event OnTimer" not in bed or "TIMER_BED_DESPAWN" not in bed:
         fail("BedGift must own OnTimer TIMER_BED_DESPAWN")
+    if "TIMER_BED_OVERLAYS" not in bed:
+        fail("BedGift must declare TIMER_BED_OVERLAYS (deferred decay apply)")
     if "Actor BedCorpse" not in bed:
         fail("BedCorpse must be Actor on BedGift")
     create = extract_function(bed, "CreateBedCorpseAt")
-    if "FID_BED_SPAWN_LVLN" not in create or "PlaceAtMe" not in create:
-        fail("CreateBedCorpseAt must PlaceAtMe LCharRaiderFemale")
-    if ".Kill(" in create or "KillSilent" in create:
+    if "FID_BED_SPAWN_NPC" not in create or "PlaceAtMe" not in create:
+        fail("CreateBedCorpseAt must PlaceAtMe DiamondCityResidentF01NoodleMarket")
+    # Warm path must not kill inline; death happens in PoseBedCorpseInFurniture (wake/debug).
+    if re.search(r"\bKillSilent\s*\(", create) or re.search(r"\bKillBedCorpse\s*\(", create):
         fail("CreateBedCorpseAt warm path must keep NPC alive until Present pose")
     if "ParkWarmedBedCorpse" not in create or "PoseBedCorpseInFurniture" not in create:
         fail("CreateBedCorpseAt must park (warm) or PoseBedCorpseInFurniture (debug)")
     if not re.search(r"PlaceAtMe\([^)]*False\s*\)", create):
         fail("CreateBedCorpseAt PlaceAtMe should use InitiallyDisabled=False")
+    assign_at = create.find("BedCorpse = corpse")
+    pose_at = create.find("PoseBedCorpseInFurniture")
+    park_at = create.find("ParkWarmedBedCorpse")
+    if assign_at < 0 or (pose_at >= 0 and assign_at > pose_at) or (park_at >= 0 and assign_at > park_at):
+        fail("CreateBedCorpseAt must assign BedCorpse before park/pose")
     if re.search(r"\bSetSilent\s*\(", bed):
         fail("PSC must not call SetSilent — not a FO4 native")
     if "MuteBedCorpseVoice" in bed or "SetOverrideVoiceType" in bed:
         fail("bed gift mute path retired — no MuteBedCorpseVoice / SetOverrideVoiceType")
     pose = extract_function(bed, "PoseBedCorpseInFurniture")
-    if "SnapIntoInteraction" not in pose or "KillSilent" not in pose:
-        fail("PoseBedCorpseInFurniture must SnapIntoInteraction + KillSilent")
+    if "SnapIntoInteraction" not in pose or "KillBedCorpse" not in pose:
+        fail("PoseBedCorpseInFurniture must SnapIntoInteraction + KillBedCorpse")
+    kill = extract_function(bed, "KillBedCorpse")
+    if "GetPlayer" not in kill or "KillSilent" not in kill:
+        fail("KillBedCorpse must KillSilent with player killer (Protected ActorBases)")
+    if "SetKnifeKillCreditSuppressed" not in kill:
+        fail("KillBedCorpse must suppress knife-kill credit (no hunger satiation)")
+    if "NoteBackgroundDead" not in kill:
+        fail("KillBedCorpse must NoteBackgroundDead so dead-scan ignores the body")
+    if "Function IsBedGiftCorpse" not in bed:
+        fail("BedGift must expose IsBedGiftCorpse for Main killscan ignore")
+    main_txt = PSC.read_text(encoding="utf-8", errors="replace")
+    if "IsNonGameplayCorpse" not in main_txt:
+        fail("Main must expose IsNonGameplayCorpse for bed/lab ignore")
+    handle = extract_function(main_txt, "HandlePotentialKnifeKill")
+    if "KnifeKillCreditSuppressed" not in handle or "IsNonGameplayCorpse" not in handle:
+        fail("HandlePotentialKnifeKill must skip bed gift / wound lab corpses")
+    if "SatiateHunger" in handle:
+        fail("HandlePotentialKnifeKill must not call SatiateHunger directly (ProcessKnifeKill does)")
+    track = extract_function(main_txt, "TrackLivingNear")
+    if "IsNonGameplayCorpse" not in track:
+        fail("TrackLivingNear must skip bed gift / wound lab corpses")
+    if re.search(r"\bSetProtected\s*\(", bed):
+        fail("must not SetProtected on shared ActorBase")
     if "Utility.Wait" not in pose:
         fail("PoseBedCorpseInFurniture must Wait briefly after snap")
+    if "IsInMenuMode" not in pose:
+        fail("PoseBedCorpseInFurniture must skip Wait while MCM/menu is open")
     if "SnapBedCorpseToAnchor" not in pose:
         fail("PoseBedCorpseInFurniture must ragdoll-fallback if snap fails")
     if "Debug.Notification" not in pose or "SnapIntoInteraction FAILED" not in pose:
@@ -224,6 +263,16 @@ def test_bed_script(bed: str) -> None:
         fail("PresentBedCorpseOnWake must not PlaceAtMe")
     if "TIMER_BED_DESPAWN" not in present:
         fail("PresentBedCorpseOnWake must StartTimer TIMER_BED_DESPAWN")
+    if "ScheduleBedGiftDecayOverlays" not in present:
+        fail("PresentBedCorpseOnWake must ScheduleBedGiftDecayOverlays fallback if not pre-applied")
+    if "MaybeApplyBedGiftDecayOverlays()" in present:
+        fail("PresentBedCorpseOnWake must not sync-apply decay overlays")
+    warm = extract_function(bed, "MaybeWarmBedGiftBody")
+    if "ScheduleBedGiftDecayOverlays" not in warm:
+        fail("MaybeWarmBedGiftBody must schedule decay while parked/disabled")
+    sleep_start = extract_function(bed, "HandlePlayerSleepStart")
+    if "MaybeApplyBedGiftDecayOverlays" not in sleep_start:
+        fail("HandlePlayerSleepStart must finish pending decay before wake Enable")
     if "MaybeSpeakBedGiftWakeToast" not in present:
         fail("PresentBedCorpseOnWake must MaybeSpeakBedGiftWakeToast")
     wake = extract_function(bed, "MaybeSpeakBedGiftWakeToast")
@@ -231,23 +280,57 @@ def test_bed_script(bed: str) -> None:
         fail("MaybeSpeakBedGiftWakeToast must use ModConfig via GetBedGiftWakeToast")
     if "BedGiftLines" in bed or "LoadBedGiftLines" in bed:
         fail("BedGiftLines bank retired — use ModConfig bedGiftWakeToast")
-    if "0x000D39F5" not in bed:
-        fail("BedGift must declare FID_BED_SPAWN_LVLN = 0x000D39F5")
+    if "0x00004DEC" not in bed:
+        fail("BedGift must declare FID_BED_SPAWN_NPC = 0x00004DEC")
+    if "LCharRaiderFemale" in bed or "0x000D39F5" in bed:
+        fail("Bed gift spawn retired LCharRaiderFemale — use DiamondCityResidentF01NoodleMarket")
+    if "EncWorkshopNPCFemaleFarmer02" in bed or "0x00113347" in bed:
+        fail("Bed gift spawn retired EncWorkshopNPCFemaleFarmer02 — use DiamondCityResidentF01NoodleMarket")
     extract_function(bed, "DebugForceBedGift")
     extract_function(bed, "DebugClearBedGift")
     ok("BedGift SnapIntoInteraction + KillSilent + ModConfig wake toast")
+
+
+def get_record_edid_zlib(data: bytes, sig: bytes, fid: int) -> bytes | None:
+    """FO4 NPC_ records are often zlib-compressed; EDID lives in decompressed payload."""
+    import zlib
+
+    target = fid.to_bytes(4, "little")
+    start = 0
+    while True:
+        i = data.find(sig, start)
+        if i < 0 or i + 24 > len(data):
+            return None
+        if data[i + 12 : i + 16] != target:
+            start = i + 4
+            continue
+        size = int.from_bytes(data[i + 4 : i + 8], "little")
+        flags = int.from_bytes(data[i + 8 : i + 12], "little")
+        payload = data[i + 24 : i + 24 + size]
+        if flags & 0x00040000:
+            try:
+                payload = zlib.decompress(payload[4:])
+            except Exception:
+                return None
+        k = payload.find(b"EDID")
+        if k < 0 or k + 6 > len(payload):
+            return None
+        esz = int.from_bytes(payload[k + 4 : k + 6], "little")
+        return payload[k + 6 : k + 6 + esz].split(b"\x00", 1)[0]
 
 
 def test_esm(esm: Path | None) -> None:
     if not esm:
         fail("Fallout4.esm not found — set FALLOUT4_ESM or pass --esm")
     data = esm.read_bytes()
-    edid = get_record_edid(data, b"LVLN", FID_BED_SPAWN)
+    edid = get_record_edid_zlib(data, BED_SPAWN_SIG, FID_BED_SPAWN)
     if edid is None:
-        fail(f"LVLN {hex(FID_BED_SPAWN)} not found in {esm}")
+        edid = get_record_edid(data, BED_SPAWN_SIG, FID_BED_SPAWN)
+    if edid is None:
+        fail(f"NPC_ {hex(FID_BED_SPAWN)} not found in {esm}")
     if edid != EDID_BED_SPAWN:
         fail(f"FID {hex(FID_BED_SPAWN)} EDID {edid!r} != {EDID_BED_SPAWN!r}")
-    ok(f"FID_BED_SPAWN_LVLN = LCharRaiderFemale ({esm.name})")
+    ok(f"FID_BED_SPAWN_NPC = DiamondCityResidentF01NoodleMarket ({esm.name})")
 
 
 def test_config_mcm_deploy() -> None:
@@ -258,6 +341,8 @@ def test_config_mcm_deploy() -> None:
         fail("ModConfig.txt must ship bedGiftWakeToast=")
     if "bedGiftCooldownDays=" not in mod:
         fail("ModConfig.txt must ship bedGiftCooldownDays=")
+    if "bedGiftWoundAlpha=" not in mod:
+        fail("ModConfig.txt must ship bedGiftWoundAlpha=")
     if (ROOT / "Data" / "PickmansWhisper" / "config" / "BedGiftLines.txt").is_file():
         fail("BedGiftLines.txt retired — wake toast lives in ModConfig.txt")
     mcm = MCM.read_text(encoding="utf-8")

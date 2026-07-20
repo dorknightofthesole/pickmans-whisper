@@ -249,9 +249,20 @@ Int RECOGNITION_NAME_PROMPT_AT = 3
 String RenamePromptFemaleNPC = ""
 String BedGiftWakeToast = "" ; Slice G optional wake toast
 Float BedGiftCooldownDays = -1.0 ; Slice G from ModConfig; -1 = missing/invalid
+Float BedGiftWoundAlpha = -1.0 ; Slice H bed DeathMarks opacity; -1 = missing/invalid
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
-String ModConfigLoadStatus = ""
+String Property ModConfigLoadStatus = "" Auto
+; Slice H P2 — decayStage0..4 from ModConfig (name;r;g;b;a;skins[+…];scars?).
+Int DECAY_STAGE_COUNT = 5
+String[] DecayStageNames
+Float[] DecayStageTintR
+Float[] DecayStageTintG
+Float[] DecayStageTintB
+Float[] DecayStageTintA
+String[] DecayStageSkinsRaw ; e.g. SkinTexture_07 or SkinTexture_17+SkinTexture_18
+Bool[] DecayStageAllScars
+Int DecayStagesLoadedCount = 0
 
 ; Slice E2–E5 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
 ; E4/E5: Named toast banks + parallel Intimacy_*_Audio.txt (same-index delivery).
@@ -280,6 +291,10 @@ Int WHISPER_SNDR_MAX = 128 ; Desperate + Necromantic intimacy maps
 
 ; Slice G — logic on PickmansWhisperBedGiftScript (same quest). Façade syncs status here.
 String Property LastBedGiftStatus = "" Auto ; MCM / Trace — mirrored from BedGiftScript
+; Slice H — mirrored from CorpseDecayScript (ROF DeadOverlays / LooksMenu).
+String Property LastCorpseDecayStatus = "" Auto
+; Slice H P0.1 — mirrored from DecayWoundLabScript.
+String Property LastWoundLabStatus = "" Auto
 
 ; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
@@ -2603,14 +2618,179 @@ Function LoadLineBanks()
 	LoadTargetOverrides()
 EndFunction
 
+; Split s on single-char sep into out[]; returns field count (capped at out.Length).
+Int Function SplitByChar(String s, String sep, String[] out)
+	If !out || !sep || GardenOfEden.StrLength(sep) != 1
+		Return 0
+	EndIf
+	Int outMax = out.Length
+	If outMax <= 0
+		Return 0
+	EndIf
+	If !s
+		Return 0
+	EndIf
+	Int n = 0
+	Int start = 0
+	Int len = GardenOfEden.StrLength(s)
+	Int i = 0
+	While i <= len && n < outMax
+		Bool atEnd = (i == len)
+		Bool isSep = False
+		If !atEnd
+			If GardenOfEden.SubStr(s, i, 1) == sep
+				isSep = True
+			EndIf
+		EndIf
+		If atEnd || isSep
+			Int flen = i - start
+			If flen < 0
+				flen = 0
+			EndIf
+			out[n] = TrimString(GardenOfEden.SubStr(s, start, flen))
+			n += 1
+			start = i + 1
+		EndIf
+		i += 1
+	EndWhile
+	Return n
+EndFunction
+
+Function EnsureDecayStageArrays()
+	If !DecayStageNames || DecayStageNames.Length != DECAY_STAGE_COUNT
+		DecayStageNames = new String[5]
+		DecayStageTintR = new Float[5]
+		DecayStageTintG = new Float[5]
+		DecayStageTintB = new Float[5]
+		DecayStageTintA = new Float[5]
+		DecayStageSkinsRaw = new String[5]
+		DecayStageAllScars = new Bool[5]
+	EndIf
+EndFunction
+
+Function ClearDecayStages()
+	EnsureDecayStageArrays()
+	DecayStagesLoadedCount = 0
+	Int i = 0
+	While i < DECAY_STAGE_COUNT
+		DecayStageNames[i] = ""
+		DecayStageTintR[i] = 0.0
+		DecayStageTintG[i] = 0.0
+		DecayStageTintB[i] = 0.0
+		DecayStageTintA[i] = 0.0
+		DecayStageSkinsRaw[i] = ""
+		DecayStageAllScars[i] = False
+		i += 1
+	EndWhile
+EndFunction
+
+; Parse name;r;g;b;a;skins[+…];scars? — returns True if stored at aiStage.
+Bool Function ParseDecayStageValue(Int aiStage, String val)
+	If aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return False
+	EndIf
+	If !val || val == ""
+		Return False
+	EndIf
+	EnsureDecayStageArrays()
+	String[] fields = new String[8]
+	Int n = SplitByChar(val, ";", fields)
+	If n < 6
+		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " needs name;r;g;b;a;skins — got " + n + " fields")
+		Return False
+	EndIf
+	String name = fields[0]
+	String skins = fields[5]
+	If !name || name == "" || !skins || skins == ""
+		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " empty name or skins")
+		Return False
+	EndIf
+	Float r = fields[1] as Float
+	Float g = fields[2] as Float
+	Float b = fields[3] as Float
+	Float a = fields[4] as Float
+	Bool scars = False
+	If n >= 7 && fields[6] == "scars"
+		scars = True
+	EndIf
+	DecayStageNames[aiStage] = name
+	DecayStageTintR[aiStage] = r
+	DecayStageTintG[aiStage] = g
+	DecayStageTintB[aiStage] = b
+	DecayStageTintA[aiStage] = a
+	DecayStageSkinsRaw[aiStage] = skins
+	DecayStageAllScars[aiStage] = scars
+	Return True
+EndFunction
+
+Bool Function DecayStagesReady()
+	Return DecayStagesLoadedCount == DECAY_STAGE_COUNT
+EndFunction
+
+String Function GetDecayStageName(Int aiStage)
+	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return ""
+	EndIf
+	Return DecayStageNames[aiStage]
+EndFunction
+
+Float Function GetDecayStageTintR(Int aiStage)
+	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return 0.0
+	EndIf
+	Return DecayStageTintR[aiStage]
+EndFunction
+
+Float Function GetDecayStageTintG(Int aiStage)
+	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return 0.0
+	EndIf
+	Return DecayStageTintG[aiStage]
+EndFunction
+
+Float Function GetDecayStageTintB(Int aiStage)
+	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return 0.0
+	EndIf
+	Return DecayStageTintB[aiStage]
+EndFunction
+
+Float Function GetDecayStageTintA(Int aiStage)
+	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return 0.0
+	EndIf
+	Return DecayStageTintA[aiStage]
+EndFunction
+
+Bool Function GetDecayStageAllScars(Int aiStage)
+	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return False
+	EndIf
+	Return DecayStageAllScars[aiStage]
+EndFunction
+
+; Expand skins[+skin…] into outTemplates; returns count.
+Int Function FillDecayStageSkins(Int aiStage, String[] outTemplates)
+	If !outTemplates || !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return 0
+	EndIf
+	String raw = DecayStageSkinsRaw[aiStage]
+	If !raw || raw == ""
+		Return 0
+	EndIf
+	Return SplitByChar(raw, "+", outTemplates)
+EndFunction
+
 ; ModConfig.txt — key=value prompts / toggles. Files-only (no baked mirror).
 ; E4/E5: intimacy toast+audio live in necromantic/Intimacy_*_Named.txt / *_Audio.txt.
 Function LoadModConfig()
 	RenamePromptFemaleNPC = ""
 	BedGiftWakeToast = ""
 	BedGiftCooldownDays = -1.0
+	BedGiftWoundAlpha = -1.0
 	NamedKillToast = ""
 	NamedKillAudio = ""
+	ClearDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
 	ModConfigLoadStatus = "READ FAILED (GoE2 missing?)"
@@ -2658,16 +2838,50 @@ Function LoadModConfig()
 							BedGiftCooldownDays = days
 						EndIf
 					EndIf
+				ElseIf key == "bedGiftWoundAlpha"
+					If val && GardenOfEden.StrLength(val) > 0
+						Float a = val as Float
+						If a >= 0.0 && a <= 1.0
+							BedGiftWoundAlpha = a
+						EndIf
+					EndIf
 				ElseIf key == "namedKillToast"
 					NamedKillToast = val
 				ElseIf key == "namedKillAudio"
 					NamedKillAudio = val
+				ElseIf key == "decayStage0"
+					ParseDecayStageValue(0, val)
+				ElseIf key == "decayStage1"
+					ParseDecayStageValue(1, val)
+				ElseIf key == "decayStage2"
+					ParseDecayStageValue(2, val)
+				ElseIf key == "decayStage3"
+					ParseDecayStageValue(3, val)
+				ElseIf key == "decayStage4"
+					ParseDecayStageValue(4, val)
 				EndIf
 			EndIf
 		EndIf
 	EndWhile
 	If BedGiftCooldownDays <= 0.0
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftCooldownDays missing or <=0")
+	EndIf
+	If BedGiftWoundAlpha < 0.0
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftWoundAlpha missing or out of 0..1")
+	EndIf
+	Int filled = 0
+	Int si = 0
+	While si < DECAY_STAGE_COUNT
+		If DecayStageNames[si] != "" && DecayStageSkinsRaw[si] != ""
+			filled += 1
+		EndIf
+		si += 1
+	EndWhile
+	If filled == DECAY_STAGE_COUNT
+		DecayStagesLoadedCount = DECAY_STAGE_COUNT
+	Else
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage0..4 incomplete (" + filled + "/" + DECAY_STAGE_COUNT + ")")
+		DecayStagesLoadedCount = 0
 	EndIf
 	String status = ""
 	If RenamePromptFemaleNPC
@@ -2679,8 +2893,14 @@ Function LoadModConfig()
 	If BedGiftCooldownDays > 0.0
 		status += "bedCooldown "
 	EndIf
+	If BedGiftWoundAlpha >= 0.0
+		status += "bedWoundA "
+	EndIf
 	If NamedKillToast
 		status += "namedKill "
+	EndIf
+	If DecayStagesReady()
+		status += "decayStages "
 	EndIf
 	If status != ""
 		ModConfigLoadStatus = TrimString(status) + "ok"
@@ -2699,6 +2919,11 @@ EndFunction
 ; Exposed for BedGiftScript cooldown (ModConfig bedGiftCooldownDays). <=0 = missing/invalid.
 Float Function GetBedGiftCooldownDays()
 	Return BedGiftCooldownDays
+EndFunction
+
+; Exposed for CorpseDecay bed wounds (ModConfig bedGiftWoundAlpha). <0 = missing/invalid.
+Float Function GetBedGiftWoundAlpha()
+	Return BedGiftWoundAlpha
 EndFunction
 
 ; E4/E5 — named intimacy toast + audio maps (files-only under config/necromantic/).
@@ -2874,6 +3099,117 @@ Function DebugClearBedGift()
 		bed.DebugClearBedGift()
 	Else
 		Debug.MessageBox("Pickman's Whisper\n\nBedGift script missing on Main quest.")
+	EndIf
+EndFunction
+
+; --- Slice H — corpse decay overlays (façade) ----------------------------------
+
+PickmansWhisperCorpseDecayScript Function CorpseDecay()
+	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
+EndFunction
+
+Function DebugForceCorpseDecayOverlays()
+	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+	If decay
+		decay.DebugForceCorpseDecayOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
+	EndIf
+EndFunction
+
+; --- Slice H P0.1 — decay wound lab (façade) ------------------------------------
+
+PickmansWhisperDecayWoundLabScript Function DecayWoundLab()
+	Return (Self as Quest) as PickmansWhisperDecayWoundLabScript
+EndFunction
+
+Function DebugSpawnWoundLabCorpse()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugSpawnWoundLabCorpse()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
+	EndIf
+EndFunction
+
+Function DebugClearWoundLabCorpse()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugClearWoundLabCorpse()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyWoundLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyWoundLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyAllWoundLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyAllWoundLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplySkinLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplySkinLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyAllSkinLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyAllSkinLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyAllScarLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyAllScarLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyDecayStageLab()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyDecayStageLab()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyFaceLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyFaceLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyAllFaceLabOverlays()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyAllFaceLabOverlays()
+	Else
+		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -4396,6 +4732,10 @@ Function TrackLivingNear(Actor ak)
 	If !ak || ak == PlayerRef || ak.IsDead() || ak.IsDisabled()
 		Return
 	EndIf
+	; Bed hallucination / wound lab PlaceAtMe bodies must never enter kill-watch.
+	If IsNonGameplayCorpse(ak)
+		Return
+	EndIf
 	If IsChildNpc(ak) && !IsChildTargetAllowed()
 		Return
 	EndIf
@@ -5003,12 +5343,43 @@ Bool Function IsValidKnifeKillVictim(Actor ak, Bool abRequireAlive = True)
 	Return True
 EndFunction
 
+; Slice G / H — KillSilent(player) on PlaceAtMe bodies must never satiate hunger.
+; Set during KillBedCorpse / KillLabCorpse (BedCorpse/LabCorpse assigned after kill).
+Bool KnifeKillCreditSuppressed = False
+
+Function SetKnifeKillCreditSuppressed(Bool abSuppressed)
+	KnifeKillCreditSuppressed = abSuppressed
+EndFunction
+
+; True for bed-hallucination / wound-lab actors (after they are assigned).
+Bool Function IsNonGameplayCorpse(Actor ak)
+	If !ak
+		Return False
+	EndIf
+	PickmansWhisperBedGiftScript bed = BedGift()
+	If bed && bed.IsBedGiftCorpse(ak)
+		Return True
+	EndIf
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab && lab.IsWoundLabCorpse(ak)
+		Return True
+	EndIf
+	Return False
+EndFunction
+
 Function HandlePotentialKnifeKill(Actor victim, Actor akKiller)
 	If !victim
 		Return
 	EndIf
 	Int vid = victim.GetFormID()
 	If vid == LastHandledKillId
+		Return
+	EndIf
+	; Bed gift / wound lab KillSilent(player) must not clear hunger (docs: no satiation).
+	If KnifeKillCreditSuppressed || IsNonGameplayCorpse(victim)
+		LastKillIgnoreReason = "non-gameplay corpse (bed/lab)"
+		Debug.Trace("PickmansWhisper: kill ignored — bed gift / wound lab id=" + vid)
+		NoteBackgroundDead(vid)
 		Return
 	EndIf
 	If akKiller && akKiller != PlayerRef
@@ -5289,6 +5660,11 @@ Function OnMCMSettingChange(String modName, String id)
 		RefreshHungerPanel(True)
 	ElseIf id == "bVoiceToasts:Voice"
 		ArmRuntimeLoops()
+	ElseIf id == "iWoundLabTintPreset:WoundLab"
+		PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+		If lab
+			lab.ApplyWoundLabTintPreset()
+		EndIf
 	EndIf
 EndFunction
 

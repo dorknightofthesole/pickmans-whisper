@@ -648,6 +648,20 @@
 					}
 				},
 				{
+					"text": "Force corpse decay overlays",
+					"type": "button",
+					"help": "Slice H P1: apply ROF DeadOverlays wound templates (LooksMenu) on aimed / last-look corpse. Needs LooksMenu + INVB_OverlayFramework_DeadOverlays.esp. Quit FO4 to desktop after deploy so MCM reloads.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugForceCorpseDecayOverlays"
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
 					"text": "Open butcher menu",
 					"type": "button",
 					"help": "Slice F: open the butcher limb menu on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. Works from MCM.",
@@ -665,6 +679,425 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugTestSeverAimedHead"
+					}
+				}
+			]
+		},
+		{
+			"pageDisplayName": "Wound Lab",
+			"content": [
+				{
+					"text": "Decay stage (P2)",
+					"type": "section"
+				},
+				{
+					"text": "Locked tint ramp + Porcupine SkinTexture map. Apply clears Porcupine overlays first. Stages Putrefaction / Black Putrefaction also add all scars.",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "iDecayLabStage:WoundLab",
+					"text": "Decay stage",
+					"type": "stepper",
+					"help": "Locked P2 stage names from SLICE_H. Left/right to change, then Apply stage.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Freshly Deceased",
+							"Pallor Mortis",
+							"Livor Mortis",
+							"Putrefaction",
+							"Black Putrefaction"
+						]
+					}
+				},
+				{
+					"text": "Apply stage",
+					"type": "button",
+					"help": "Clear all Porcupine Scars/SkinTexture on the lab corpse, then apply the locked stage SkinTextures + tint. Stages Putrefaction and Black Putrefaction also apply all scars. Keeps DeathMarks wounds.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyDecayStageLab"
+					}
+				},
+				{
+					"text": "Spawn wound lab corpse",
+					"type": "button",
+					"help": "Same as Force bed gift spawn, sticky (no 6s despawn). Clear wound lab corpse removes it. Prefers nearby bed; else player.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugSpawnWoundLabCorpse"
+					}
+				},
+				{
+					"text": "Clear wound lab corpse",
+					"type": "button",
+					"help": "Despawn the sticky wound-lab corpse.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugClearWoundLabCorpse"
+					}
+				},
+				{
+					"text": "Lab tools",
+					"type": "section"
+				},
+				{
+					"text": "<b>Slice H P0.1 / P0.2</b> — sticky corpse; DeathMarks wounds + Porcupine skin + SFT face bruises. Tint shared for overlays. Banks stack (each Apply clears only its bank).",
+					"type": "text",
+					"html": true
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"id": "iWoundLabTemplate:WoundLab",
+					"text": "Wound template",
+					"type": "stepper",
+					"help": "Female DeathMarks from DecayWoundOverlays.txt. Left/right to change.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Female_Arm_Wound",
+							"Female_Back_Wound_1",
+							"Female_Back_Wound_2",
+							"Female_Back_Wound_3",
+							"Female_Back_Wound_4",
+							"Female_Back_Wound_5",
+							"Female_Front_Wound_1",
+							"Female_Front_Wound_2",
+							"Female_Front_Wound_3",
+							"Female_Front_Wound_4",
+							"Female_Front_Wound_5"
+						]
+					}
+				},
+				{
+					"id": "iWoundLabCount:WoundLab",
+					"text": "Apply count",
+					"type": "stepper",
+					"help": "Apply the selected wound this many times.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"1",
+							"2",
+							"3",
+							"4",
+							"5",
+							"6",
+							"7",
+							"8",
+							"9",
+							"10",
+							"11",
+							"12",
+							"13",
+							"14",
+							"15",
+							"16"
+						]
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"id": "iWoundLabTintPreset:WoundLab",
+					"text": "Tint preset",
+					"type": "menu",
+					"help": "Sets Tint R/G/B (alpha unchanged). P1 pale = locked wound look; green / red / ashen for decay experiments.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"P1 pale",
+							"Death decay green",
+							"Body decay red",
+							"Ashen gray"
+						]
+					}
+				},
+				{
+					"id": "fWoundLabTintR:WoundLab",
+					"text": "Tint R",
+					"type": "slider",
+					"help": "LooksMenu overlay red (0-1).",
+					"valueOptions": {
+						"min": 0,
+						"max": 1,
+						"step": 0.05,
+						"sourceType": "ModSettingFloat"
+					}
+				},
+				{
+					"id": "fWoundLabTintG:WoundLab",
+					"text": "Tint G",
+					"type": "slider",
+					"help": "LooksMenu overlay green (0-1).",
+					"valueOptions": {
+						"min": 0,
+						"max": 1,
+						"step": 0.05,
+						"sourceType": "ModSettingFloat"
+					}
+				},
+				{
+					"id": "fWoundLabTintB:WoundLab",
+					"text": "Tint B",
+					"type": "slider",
+					"help": "LooksMenu overlay blue (0-1).",
+					"valueOptions": {
+						"min": 0,
+						"max": 1,
+						"step": 0.05,
+						"sourceType": "ModSettingFloat"
+					}
+				},
+				{
+					"id": "fWoundLabTintA:WoundLab",
+					"text": "Tint A",
+					"type": "slider",
+					"help": "LooksMenu overlay alpha (0-1) for manual wound/skin/face Apply. Decay stage Apply always uses 1.0 (100%).",
+					"valueOptions": {
+						"min": 0,
+						"max": 1,
+						"step": 0.05,
+						"sourceType": "ModSettingFloat"
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"text": "Apply wound lab overlays",
+					"type": "button",
+					"help": "Clear wound-bank overlays only, then apply selected DeathMarks template N times. Keeps Porcupine skin overlays.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyWoundLabOverlays"
+					}
+				},
+				{
+					"text": "Apply all wounds",
+					"type": "button",
+					"help": "Clear wound-bank only, then apply every DecayWoundOverlays.txt template (count = times each). Keeps skin overlays.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyAllWoundLabOverlays"
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"text": "<b>P0.2 — Porcupine skin</b> (Scars + SkinTexture from DecaySkinOverlays.txt; needs porcOverlays.esl)",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "iSkinLabTemplate:WoundLab",
+					"text": "Skin template",
+					"type": "stepper",
+					"help": "Porcupine Scars_01-20 then SkinTexture_01-20. Left/right to change.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Scars_01",
+							"Scars_02",
+							"Scars_03",
+							"Scars_04",
+							"Scars_05",
+							"Scars_06",
+							"Scars_07",
+							"Scars_08",
+							"Scars_09",
+							"Scars_10",
+							"Scars_11",
+							"Scars_12",
+							"Scars_13",
+							"Scars_14",
+							"Scars_15",
+							"Scars_16",
+							"Scars_17",
+							"Scars_18",
+							"Scars_19",
+							"Scars_20",
+							"SkinTexture_01",
+							"SkinTexture_02",
+							"SkinTexture_03",
+							"SkinTexture_04",
+							"SkinTexture_05",
+							"SkinTexture_06",
+							"SkinTexture_07",
+							"SkinTexture_08",
+							"SkinTexture_09",
+							"SkinTexture_10",
+							"SkinTexture_11",
+							"SkinTexture_12",
+							"SkinTexture_13",
+							"SkinTexture_14",
+							"SkinTexture_15",
+							"SkinTexture_16",
+							"SkinTexture_17",
+							"SkinTexture_18",
+							"SkinTexture_19",
+							"SkinTexture_20"
+						]
+					}
+				},
+				{
+					"id": "iSkinLabTemplate2:WoundLab",
+					"text": "Skin template 2",
+					"type": "stepper",
+					"help": "Optional second Porcupine overlay layered with Skin template. First option (none) skips.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"(none)",
+							"Scars_01",
+							"Scars_02",
+							"Scars_03",
+							"Scars_04",
+							"Scars_05",
+							"Scars_06",
+							"Scars_07",
+							"Scars_08",
+							"Scars_09",
+							"Scars_10",
+							"Scars_11",
+							"Scars_12",
+							"Scars_13",
+							"Scars_14",
+							"Scars_15",
+							"Scars_16",
+							"Scars_17",
+							"Scars_18",
+							"Scars_19",
+							"Scars_20",
+							"SkinTexture_01",
+							"SkinTexture_02",
+							"SkinTexture_03",
+							"SkinTexture_04",
+							"SkinTexture_05",
+							"SkinTexture_06",
+							"SkinTexture_07",
+							"SkinTexture_08",
+							"SkinTexture_09",
+							"SkinTexture_10",
+							"SkinTexture_11",
+							"SkinTexture_12",
+							"SkinTexture_13",
+							"SkinTexture_14",
+							"SkinTexture_15",
+							"SkinTexture_16",
+							"SkinTexture_17",
+							"SkinTexture_18",
+							"SkinTexture_19",
+							"SkinTexture_20"
+						]
+					}
+				},
+				{
+					"text": "Apply skin overlays",
+					"type": "button",
+					"help": "Clear skin-bank only, then apply Skin template (+ Skin template 2 if not none) N times each. Keeps DeathMarks wounds.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplySkinLabOverlays"
+					}
+				},
+				{
+					"text": "Apply all skin overlays",
+					"type": "button",
+					"help": "Clear skin-bank only, then apply every DecaySkinOverlays.txt template (count = times each). Keeps wounds.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyAllSkinLabOverlays"
+					}
+				},
+				{
+					"text": "Apply all scars",
+					"type": "button",
+					"help": "Add every Scars_01-20 on top of existing Porcupine SkinTexture layers (does not clear SkinTexture or wounds). Count = times each.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyAllScarLabOverlays"
+					}
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"type": "spacer",
+					"numLines": 1
+				},
+				{
+					"text": "<b>Face - Scripted Face Tints</b> (SFT Damage / Boxer bruises; soft dep SFT.esp; not LooksMenu overlays)",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "iFaceLabTemplate:WoundLab",
+					"text": "Face template",
+					"type": "stepper",
+					"help": "SFT Damage headparts from DecayFaceOverlays.txt (Boxer bruises). Needs SFT.esp. Left/right to change.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Boxer - 12 Rounds",
+							"Boxer - Broken Nose",
+							"Boxer - Black Eye",
+							"Boxer - Fat Lip"
+						]
+					}
+				},
+				{
+					"id": "iFaceLabTemplate2:WoundLab",
+					"text": "Face template 2",
+					"type": "stepper",
+					"help": "Optional second SFT Damage headpart. First option (none) skips.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"(none)",
+							"Boxer - 12 Rounds",
+							"Boxer - Broken Nose",
+							"Boxer - Black Eye",
+							"Boxer - Fat Lip"
+						]
+					}
+				},
+				{
+					"text": "Apply face overlays",
+					"type": "button",
+					"help": "Clear SFT Damage category, then apply Face template (+ template 2 if not none). Keeps wounds/skin.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyFaceLabOverlays"
+					}
+				},
+				{
+					"text": "Apply all face overlays",
+					"type": "button",
+					"help": "Clear SFT Damage category, then apply every DecayFaceOverlays.txt tint. Keeps wounds/skin.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugApplyAllFaceLabOverlays"
 					}
 				}
 			]

@@ -23,6 +23,8 @@ Function Enable(Bool abFadeIn = False) Native
 Bool Function IsDisabled() Native
 Function Delete() Native
 Function ApplyHavokImpulse(Float afX, Float afY, Float afZ, Float afMagnitude) Native
+; FO4 native — blood/debris decals via ImpactDataSet (pick from node along direction).
+Bool Function PlayImpactEffect(ImpactDataSet akImpactEffect, String asNodeName = "", Float afPickDirX = 0.0, Float afPickDirY = 0.0, Float afPickDirZ = -1.0, Float afPickLength = 512.0, Bool abApplyNodeRotation = False, Bool abUseNodeLocalRotation = False) Native
 Function ForceAddRagdollToWorld() Native
 Function ForceRemoveRagdollFromWorld() Native
 Function PushActorAway(Actor akActorToPush, Float aiKnockbackForce) Native

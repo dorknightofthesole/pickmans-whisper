@@ -13,6 +13,11 @@ Function SendCustomEvent(CustomEventName asEvent, Var[] akArgs = None) Native
 Function RegisterForExternalEvent(String asEventName, String asCallbackName) Native
 Function UnregisterForExternalEvent(String asEventName) Native
 
+; FO4 inter-mod soft deps — no typed script dependency (typed casts hard-require the other .pex).
+ScriptObject Function CastAs(String asScriptName) Native
+Var Function CallFunction(String asFuncName, Var[] aParams) Native
+Function CallFunctionNoWait(String asFuncName, Var[] aParams) Native
+
 ; FO4 hit events — registration is consumed after one matching hit; must re-register.
 Function RegisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilter = None, Form akSourceFilter = None, Form akProjectileFilter = None, Int aiPowerFilter = -1, Int aiSneakFilter = -1, Int aiBashFilter = -1, Int aiBlockFilter = -1, Bool abMatch = True) Native
 Function UnregisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilter = None, Form akSourceFilter = None, Form akProjectileFilter = None, Int aiPowerFilter = -1, Int aiSneakFilter = -1, Int aiBashFilter = -1, Int aiBlockFilter = -1, Bool abMatch = True) Native

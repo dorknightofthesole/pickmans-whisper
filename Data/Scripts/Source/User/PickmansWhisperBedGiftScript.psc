@@ -6,7 +6,9 @@ Scriptname PickmansWhisperBedGiftScript extends Quest
 ; SleepStart/Stop never spawn — Start saves bed, Stop Presents or skips. No retries.
 
 Int TIMER_BED_DESPAWN = 8
-Int FID_BED_SPAWN_LVLN = 0x000D39F5 ; Fallout4.esm LCharRaiderFemale
+; Deferred decay apply after warm (while disabled) — never sync in killscan / Present / MCM Force.
+Int TIMER_BED_OVERLAYS = 9
+Int FID_BED_SPAWN_NPC = 0x00004DEC ; Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
 Int FID_KYWD_ANIM_FURN_BED = 0x000BC262 ; AnimFurnBedAnims
 Int FID_KYWD_ANIM_FURN_FLOOR_BED = 0x0003ADA2 ; AnimFurnFloorBedAnims
 String MOD_NAME = "PickmansWhisper"
@@ -16,8 +18,10 @@ ObjectReference BedAnchor = None
 Bool BedPresentedThisSleep = False
 Bool BedCorpseWarmed = False
 Bool BedSpawnBusy = False
+Bool BedOverlaysApplied = False ; True once Black Putrefaction path ran (pre-Enable when possible)
 Float LastBedGiftGameTime = -999.0
 Float BED_DESPAWN_SECONDS = 6.0
+Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe; keeps killscan snappy
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
 Float BED_SPAWN_OFFSET_Z = 36.0
@@ -35,8 +39,17 @@ Event OnTimer(Int aiTimerID)
 		BedAnchor = None
 		BedPresentedThisSleep = False
 		SetBedGiftStatus("despawned (timer)")
+	ElseIf aiTimerID == TIMER_BED_OVERLAYS
+		If HasLiveBedCorpse()
+			MaybeApplyBedGiftDecayOverlays()
+		EndIf
 	EndIf
 EndEvent
+
+Function ScheduleBedGiftDecayOverlays()
+	CancelTimer(TIMER_BED_OVERLAYS)
+	StartTimer(BED_OVERLAY_DELAY, TIMER_BED_OVERLAYS)
+EndFunction
 
 Function SetBedGiftStatus(String reason)
 	LastBedGiftStatus = reason
@@ -188,6 +201,33 @@ Function SnapBedCorpseToAnchor(Actor corpse, ObjectReference akAnchor)
 	GardenOfEden3.DisableCollision(corpse, False)
 EndFunction
 
+Bool Function IsBedGiftCorpse(Actor ak)
+	Return ak && ak == BedCorpse
+EndFunction
+
+; Some ActorBases are Protected — KillSilent() with no killer can leave them alive.
+; Pass the player as killer; never clear Protected on the shared ActorBase.
+; Suppress knife-kill credit — hallucination must not satiate hunger.
+Function KillBedCorpse(Actor corpse)
+	If !corpse || corpse.IsDead()
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If m
+		m.SetKnifeKillCreditSuppressed(True)
+	EndIf
+	Actor player = Game.GetPlayer()
+	If player
+		corpse.KillSilent(player)
+	Else
+		corpse.KillSilent()
+	EndIf
+	If m
+		m.SetKnifeKillCreditSuppressed(False)
+		m.NoteBackgroundDead(corpse.GetFormID())
+	EndIf
+EndFunction
+
 Bool Function PoseBedCorpseInFurniture(Actor corpse, ObjectReference akBed)
 	If !corpse || !akBed
 		Return False
@@ -199,15 +239,18 @@ Bool Function PoseBedCorpseInFurniture(Actor corpse, ObjectReference akBed)
 	StripBedCorpse(corpse)
 	Bool snapped = corpse.SnapIntoInteraction(akBed)
 	If snapped
-		Utility.Wait(0.5)
-		corpse.KillSilent()
+		; Utility.Wait freezes while MCM is open — skip settle delay in menus.
+		If !Utility.IsInMenuMode()
+			Utility.Wait(0.5)
+		EndIf
+		KillBedCorpse(corpse)
 		StripBedCorpse(corpse)
 		SetBedGiftStatus("posed via SnapIntoInteraction + KillSilent")
 		Return True
 	EndIf
 	Debug.Notification("Pickman's Whisper: bed SnapIntoInteraction FAILED — ragdoll fallback")
 	Debug.Trace("PickmansWhisper: ERROR bed SnapIntoInteraction failed — ragdoll fallback")
-	corpse.KillSilent()
+	KillBedCorpse(corpse)
 	StripBedCorpse(corpse)
 	SnapBedCorpseToAnchor(corpse, akBed)
 	SetBedGiftStatus("ERROR: SnapIntoInteraction failed — ragdoll fallback")
@@ -230,10 +273,10 @@ Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer
 	If !player
 		Return False
 	EndIf
-	Form spawnForm = Game.GetFormFromFile(FID_BED_SPAWN_LVLN, "Fallout4.esm")
+	Form spawnForm = Game.GetFormFromFile(FID_BED_SPAWN_NPC, "Fallout4.esm")
 	If !spawnForm
-		SetBedGiftStatus("ERROR: LCharRaiderFemale missing")
-		Debug.Notification("Pickman's Whisper: bed gift spawn form missing (LCharRaiderFemale)")
+		SetBedGiftStatus("ERROR: DiamondCityResidentF01NoodleMarket missing")
+		Debug.Notification("Pickman's Whisper: bed gift spawn form missing (DiamondCityResidentF01NoodleMarket)")
 		Return False
 	EndIf
 	BedSpawnBusy = True
@@ -248,6 +291,9 @@ Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer
 		Debug.Notification("Pickman's Whisper: bed gift PlaceAtMe failed")
 		Return False
 	EndIf
+	; Assign before park/pose so killscan never tracks or satiates on this body.
+	BedCorpse = corpse
+	BedOverlaysApplied = False
 	If abParkUnderPlayer
 		ParkWarmedBedCorpse(corpse)
 	Else
@@ -256,7 +302,6 @@ Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer
 			corpse.Disable(False)
 		EndIf
 	EndIf
-	BedCorpse = corpse
 	BedCorpseWarmed = True
 	BedSpawnBusy = False
 	Return True
@@ -275,7 +320,9 @@ Function MaybeWarmBedGiftBody()
 		Return
 	EndIf
 	If CreateBedCorpseAt(player, True)
-		SetBedGiftStatus("warmed (awaiting sleep)")
+		; Decay while parked/disabled so Enable on wake is already Black Putrefaction.
+		ScheduleBedGiftDecayOverlays()
+		SetBedGiftStatus("warmed (awaiting sleep); decay scheduled")
 		Debug.Trace("PickmansWhisper: bed gift body pre-warmed while awake")
 	EndIf
 EndFunction
@@ -308,21 +355,23 @@ Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
 		Return False
 	EndIf
 	BedAnchor = akAnchor
-	SetBedGiftStatus("spawned (debug force)")
+	; Disabled after pose — schedule decay before Present Enable when possible.
+	ScheduleBedGiftDecayOverlays()
+	SetBedGiftStatus("spawned (debug force); decay scheduled")
 	Return True
 EndFunction
 
 Function ClearBedCorpse(Bool abStampCooldown = False)
 	CancelTimer(TIMER_BED_DESPAWN)
+	CancelTimer(TIMER_BED_OVERLAYS)
 	BedCorpseWarmed = False
 	BedSpawnBusy = False
+	BedOverlaysApplied = False
 	If BedCorpse
 		Actor c = BedCorpse
 		BedCorpse = None
 		If c
-			If !c.IsDead()
-				c.KillSilent()
-			EndIf
+			KillBedCorpse(c)
 			If !c.IsDisabled()
 				c.Disable(False)
 			EndIf
@@ -345,6 +394,8 @@ Function PresentBedCorpseOnWake()
 	EndIf
 	BedPresentedThisSleep = True
 	BedCorpseWarmed = False
+	; Prefer decay already applied while disabled (warm / SleepStart). Cancel pending warm timer.
+	CancelTimer(TIMER_BED_OVERLAYS)
 	If BedCorpse.IsDisabled()
 		BedCorpse.Enable(False)
 	EndIf
@@ -353,16 +404,43 @@ Function PresentBedCorpseOnWake()
 	ElseIf BedAnchor && BedCorpse.IsDead()
 		StripBedCorpse(BedCorpse)
 	ElseIf !BedCorpse.IsDead()
-		BedCorpse.KillSilent()
+		KillBedCorpse(BedCorpse)
 		StripBedCorpse(BedCorpse)
 	Else
 		StripBedCorpse(BedCorpse)
 	EndIf
 	LastBedGiftGameTime = Utility.GetCurrentGameTime()
+	; Fallback only — never sync-apply here (stalls SleepStop / MCM Force).
+	If !BedOverlaysApplied
+		ScheduleBedGiftDecayOverlays()
+	EndIf
 	MaybeSpeakBedGiftWakeToast()
 	CancelTimer(TIMER_BED_DESPAWN)
 	StartTimer(BED_DESPAWN_SECONDS, TIMER_BED_DESPAWN)
 	SetBedGiftStatus("presented; despawn timer " + BED_DESPAWN_SECONDS + "s | " + LastBedGiftStatus)
+EndFunction
+
+; Slice H — DeathMarks + Black Putrefaction. Prefer while disabled (pre-Enable).
+Function MaybeApplyBedGiftDecayOverlays()
+	If !BedCorpse || BedOverlaysApplied
+		Return
+	EndIf
+	PickmansWhisperCorpseDecayScript decay = (Self as Quest) as PickmansWhisperCorpseDecayScript
+	If !decay
+		Debug.Trace("PickmansWhisper: ERROR CorpseDecay script missing — bed overlays skipped")
+		Return
+	EndIf
+	; LooksMenu Prepare may Enable — restore park/disable so the player never sees a fresh body.
+	Bool keepParked = BedCorpseWarmed && !BedPresentedThisSleep
+	Bool keepDisabled = BedCorpse.IsDisabled() && !BedPresentedThisSleep
+	decay.ApplyBedGiftDecayOverlays(BedCorpse)
+	BedOverlaysApplied = True
+	If keepParked
+		ParkWarmedBedCorpse(BedCorpse)
+	ElseIf keepDisabled && BedCorpse && !BedCorpse.IsDisabled()
+		BedCorpse.Disable(False)
+	EndIf
+	SetBedGiftStatus("decay applied pre-present | " + decay.LastCorpseDecayStatus)
 EndFunction
 
 Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
@@ -371,7 +449,12 @@ Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndT
 	If anchor
 		BedAnchor = anchor
 		If HasLiveBedCorpse()
-			SetBedGiftStatus("sleep start — bed saved; warmed body ready")
+			; Sleep fade — finish decay while still disabled if warm timer has not fired yet.
+			If !BedOverlaysApplied
+				CancelTimer(TIMER_BED_OVERLAYS)
+				MaybeApplyBedGiftDecayOverlays()
+			EndIf
+			SetBedGiftStatus("sleep start — bed saved; overlays=" + BedOverlaysApplied + " | " + LastBedGiftStatus)
 		Else
 			SetBedGiftStatus("sleep start — bed saved; no warmed body")
 		EndIf

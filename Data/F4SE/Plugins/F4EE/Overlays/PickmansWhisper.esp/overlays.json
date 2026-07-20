@@ -1,0 +1,464 @@
+[
+  {
+    "id": "Bruising01",
+    "name": "$PW Face Bruising01",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Bruising01.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 0,
+    "gender": 1
+  },
+  {
+    "id": "Bruising02",
+    "name": "$PW Face Bruising02",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Bruising02.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 1,
+    "gender": 1
+  },
+  {
+    "id": "Bruising03",
+    "name": "$PW Face Bruising03",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Bruising03.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 2,
+    "gender": 1
+  },
+  {
+    "id": "Bruising04",
+    "name": "$PW Face Bruising04",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Bruising04.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 3,
+    "gender": 1
+  },
+  {
+    "id": "Sores01",
+    "name": "$PW Face Sores01",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Sores01.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 4,
+    "gender": 1
+  },
+  {
+    "id": "Sores02",
+    "name": "$PW Face Sores02",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Sores02.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 5,
+    "gender": 1
+  },
+  {
+    "id": "Sores03",
+    "name": "$PW Face Sores03",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Sores03.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 6,
+    "gender": 1
+  },
+  {
+    "id": "Sores04",
+    "name": "$PW Face Sores04",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Sores04.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 7,
+    "gender": 1
+  },
+  {
+    "id": "Splochy2",
+    "name": "$PW Face Splochy2",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Splochy2.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 8,
+    "gender": 1
+  },
+  {
+    "id": "Splochy3",
+    "name": "$PW Face Splochy3",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Splochy3.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 9,
+    "gender": 1
+  },
+  {
+    "id": "Splochy5",
+    "name": "$PW Face Splochy5",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Splochy5.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 10,
+    "gender": 1
+  },
+  {
+    "id": "Splochy7",
+    "name": "$PW Face Splochy7",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Splochy7.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 11,
+    "gender": 1
+  },
+  {
+    "id": "DarkEyeSockets",
+    "name": "$PW Face DarkEyeSockets",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\DarkEyeSockets.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 12,
+    "gender": 1
+  },
+  {
+    "id": "EyeGaunt",
+    "name": "$PW Face EyeGaunt",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\EyeGaunt.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 13,
+    "gender": 1
+  },
+  {
+    "id": "CheekSunkenFemale",
+    "name": "$PW Face CheekSunkenFemale",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\CheekSunkenFemale.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 14,
+    "gender": 1
+  },
+  {
+    "id": "GhoulFemaleSplotchy1",
+    "name": "$PW Face GhoulFemaleSplotchy1",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\GhoulFemaleSplotchy1.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 15,
+    "gender": 1
+  },
+  {
+    "id": "GhoulFemaleSplotchy2",
+    "name": "$PW Face GhoulFemaleSplotchy2",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\GhoulFemaleSplotchy2.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 16,
+    "gender": 1
+  },
+  {
+    "id": "GhoulFemaleSplotchy3",
+    "name": "$PW Face GhoulFemaleSplotchy3",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\GhoulFemaleSplotchy3.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 17,
+    "gender": 1
+  },
+  {
+    "id": "CraterFace1",
+    "name": "$PW Face CraterFace1",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\CraterFace1.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 18,
+    "gender": 1
+  },
+  {
+    "id": "Pocks1",
+    "name": "$PW Face Pocks1",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Pocks1.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 19,
+    "gender": 1
+  },
+  {
+    "id": "Pocks2",
+    "name": "$PW Face Pocks2",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Pocks2.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 20,
+    "gender": 1
+  },
+  {
+    "id": "Scar1",
+    "name": "$PW Face Scar1",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar1.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 21,
+    "gender": 1
+  },
+  {
+    "id": "Scar2",
+    "name": "$PW Face Scar2",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar2.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 22,
+    "gender": 1
+  },
+  {
+    "id": "Scar3",
+    "name": "$PW Face Scar3",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar3.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 23,
+    "gender": 1
+  },
+  {
+    "id": "Scar5",
+    "name": "$PW Face Scar5",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar5.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 24,
+    "gender": 1
+  },
+  {
+    "id": "Scar8",
+    "name": "$PW Face Scar8",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar8.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 25,
+    "gender": 1
+  },
+  {
+    "id": "Scar10",
+    "name": "$PW Face Scar10",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar10.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 26,
+    "gender": 1
+  },
+  {
+    "id": "Scar12",
+    "name": "$PW Face Scar12",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar12.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 27,
+    "gender": 1
+  },
+  {
+    "id": "Scar15",
+    "name": "$PW Face Scar15",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Scar15.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 28,
+    "gender": 1
+  },
+  {
+    "id": "EyeScar1",
+    "name": "$PW Face EyeScar1",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\EyeScar1.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 29,
+    "gender": 1
+  },
+  {
+    "id": "Stitches01",
+    "name": "$PW Face Stitches01",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Stitches01.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 30,
+    "gender": 1
+  },
+  {
+    "id": "Stitches02",
+    "name": "$PW Face Stitches02",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Stitches02.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 31,
+    "gender": 1
+  },
+  {
+    "id": "Stitches03",
+    "name": "$PW Face Stitches03",
+    "slots": [
+      {
+        "slot": 2,
+        "material": "overlays\\PickmansWhisper\\Stitches03.bgem"
+      }
+    ],
+    "playable": true,
+    "transformable": true,
+    "sort": 32,
+    "gender": 1
+  }
+]

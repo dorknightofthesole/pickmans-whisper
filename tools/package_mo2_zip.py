@@ -79,6 +79,8 @@ def stage() -> None:
     for script_stem in (
         "PickmansWhisperMainQuestScript",
         "PickmansWhisperBedGiftScript",
+        "PickmansWhisperCorpseDecayScript",
+        "PickmansWhisperDecayWoundLabScript",
         "PickmansWhisperPlayerAliasScript",
     ):
         pex = ROOT / "Data" / "Scripts" / f"{script_stem}.pex"

@@ -1,0 +1,9 @@
+# Slice H — Scripted Face Tints (SFT.esp) Damage headparts for Wound Lab.
+# Soft dep — no ESP master. Values are SFT FULL names (ApplyHeadPart "Damage", name).
+# On-theme only: Boxer bruises (= vanilla Bruising01-04). No SlaveTattoo / sexual tints.
+# Order must match MCM iFaceLabTemplate:WoundLab stepper.
+# iFaceLabTemplate2:WoundLab is the same list with a leading "(none)" skip slot.
+Boxer - 12 Rounds
+Boxer - Broken Nose
+Boxer - Black Eye
+Boxer - Fat Lip

@@ -103,6 +103,21 @@ REQUIRED_NATIVES = [
         r"Bool\s+Function\s+SnapIntoInteraction\s*\(",
         "SnapIntoInteraction",
     ),
+    (
+        "ObjectReference.psc",
+        r"Bool\s+Function\s+PlayImpactEffect\s*\(",
+        "PlayImpactEffect",
+    ),
+    (
+        "Overlays.psc",
+        r"Function\s+AddEntry\s*\(\s*Actor\s+akActor\s*,\s*bool\s+isFemale\s*,\s*int\s+priority\s*,\s*string\s+template\s*\)\s*global",
+        "Overlays.AddEntry",
+    ),
+    (
+        "Overlays.psc",
+        r"Function\s+Update\s*\(\s*Actor\s+akActor\s*\)\s*global\s+native",
+        "Overlays.Update",
+    ),
 ]
 
 # Fake APIs that must never appear as Native stubs.

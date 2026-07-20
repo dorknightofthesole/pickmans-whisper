@@ -1,0 +1,14 @@
+# Slice H P1 — LooksMenu overlay template ids from ROF DeadOverlays
+# (INVB_OverlayFramework_DeadOverlays.esp). Female DeathMarks only.
+# Soft dep: LooksMenu + that esp. Edit this list; do not hardcode elsewhere.
+Female_Arm_Wound
+Female_Back_Wound_1
+Female_Back_Wound_2
+Female_Back_Wound_3
+Female_Back_Wound_4
+Female_Back_Wound_5
+Female_Front_Wound_1
+Female_Front_Wound_2
+Female_Front_Wound_3
+Female_Front_Wound_4
+Female_Front_Wound_5

@@ -29,6 +29,10 @@ Function Resurrect() Native
 Function Kill(Actor akKiller = None) Native
 ; FO4 native — kill without OnDeath kill-event attribution noise.
 Function KillSilent(Actor akKiller = None) Native
+; FO4 native — add/remove HeadPart (SFT face bruises). Often needs QueueUpdate; weak on frozen corpses.
+Function ChangeHeadPart(HeadPart apHeadPart, Bool abRemovePart = False, Bool abRemoveExtraParts = False) Native
+; F4SE native — rebuild actor 3D. First arg is facegen (wiki); flags=0 is full/expensive.
+Function QueueUpdate(Bool bFacegen = False, Int flags = 0) Native
 ; FO4 native — near-instantly enter furniture/mount (fails if seat occupied / no 3D).
 Bool Function SnapIntoInteraction(ObjectReference akTarget) Native
 Function Disable(Bool abFadeOut = False) Native

@@ -5,6 +5,8 @@
 # renamePromptFemaleNPC — toast after 3+ recognition looks while she is still unnamed.
 # bedGiftWakeToast — Slice G: optional wake toast after bed corpse present (voice + blade).
 # bedGiftCooldownDays — Slice G: game-days between bed gifts (0.5 ≈ 12h). Required; <=0 fails load.
+# bedGiftWoundAlpha — Slice H: LooksMenu opacity for DeathMarks wounds on bed gift (0–1).
+#   Wound RGB comes from decayStage4 (Black Putrefaction); then stage skins/scars apply.
 # namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
 #   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
 #   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
@@ -14,9 +16,22 @@
 #   Voice delivery (iVoiceDelivery) picks toast/audio same-index like notice D1.
 # Nameless VO banks (not yet wired): Intimacy_Start.txt / Intimacy_End.txt
 # Retired: namedIntimacyToast / namedIntimacyEndToast / namedIntimacyAudio (E5 banks).
+#
+# Decay stages (Slice H P2) — Wound Lab Apply stage + future kill-day ramp.
+# Five keys decayStage0..decayStage4. Semicolon fields (not comma — names have spaces):
+#   name;r;g;b;a;skins[+skin...];scars?
+# a = LooksMenu opacity 0–1. Trailing "scars" means apply all Scars_* from DecaySkinOverlays.txt.
+# Order must match MCM Wound Lab Decay stage stepper. Single source — do not bake RGBA/skins in scripts.
 
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
 bedGiftWakeToast=A gift for when you close your eyes.
 bedGiftCooldownDays=0.5
+bedGiftWoundAlpha=0.40
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
+
+decayStage0=Freshly Deceased;0.650;0.520;0.480;1.0;SkinTexture_07
+decayStage1=Pallor Mortis;0.350;0.680;0.650;1.0;SkinTexture_07
+decayStage2=Livor Mortis;0.400;0.176;0.267;1.0;SkinTexture_07
+decayStage3=Putrefaction;0.369;0.451;0.318;1.0;SkinTexture_17+SkinTexture_18;scars
+decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;SkinTexture_03+SkinTexture_18;scars

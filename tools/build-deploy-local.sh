@@ -56,6 +56,8 @@ SRC="$ROOT/Data/Scripts/Source/User"
 PEX_OUT="$ROOT/Data/Scripts"
 PSC="PickmansWhisperMainQuestScript.psc"
 PSC_BED="PickmansWhisperBedGiftScript.psc"
+PSC_DECAY="PickmansWhisperCorpseDecayScript.psc"
+PSC_WOUND_LAB="PickmansWhisperDecayWoundLabScript.psc"
 PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 
 to_win_path() {
@@ -125,13 +127,22 @@ python "$ROOT/tools/test_target_overrides.py" || exit 1
 echo "==> Env loader / no-hardcoded-path test"
 python "$ROOT/tools/test_env_loader.py" || exit 1
 
+echo "==> Corpse decay (Slice H ROF/LooksMenu) contract test"
+python "$ROOT/tools/test_corpse_decay.py" || exit 1
+
+echo "==> Decay wound lab (Slice H P0.1) contract test"
+python "$ROOT/tools/test_decay_wound_lab.py" || exit 1
+
+echo "==> Decay stage ModConfig parse contract test"
+python "$ROOT/tools/test_decay_stage_modconfig.py" || exit 1
+
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_ALIAS"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_ALIAS"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_ALIAS"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_ALIAS"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -154,6 +165,14 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" ]]; then
   echo "ERROR: compile produced no BedGift .pex" >&2
   exit 1
 fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperCorpseDecayScript.pex" ]]; then
+  echo "ERROR: compile produced no CorpseDecay .pex" >&2
+  exit 1
+fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" ]]; then
+  echo "ERROR: compile produced no DecayWoundLab .pex" >&2
+  exit 1
+fi
 if [[ ! -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" ]]; then
   echo "ERROR: compile produced no PlayerAlias .pex" >&2
   exit 1
@@ -170,9 +189,13 @@ mkdir -p \
 
 cp -f "$PEX_OUT/PickmansWhisperMainQuestScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperCorpseDecayScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperDecayWoundLabScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
