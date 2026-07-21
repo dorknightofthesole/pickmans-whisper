@@ -1,0 +1,20 @@
+---
+description: Never wipe parent folders when cleaning unused assets; delete only named unused paths
+alwaysApply: true
+---
+
+# No broad asset deletes
+
+When the user asks to clean up unused files:
+
+1. **Delete only the exact unused paths named in the audit** (e.g. one
+   `overlays.json`, or specific unused filenames). Do **not**
+   `Remove-Item -Recurse` a whole parent like `Data/Materials` or `Data/F4SE`
+   if that tree may hold WIP or unrelated subdirs.
+2. **PowerShell `Remove-Item` permanently deletes** — it does **not** go to the
+   Recycle Bin. Prefer moving WIP aside, or deleting leaf files only after
+   listing the full tree and confirming with the user when anything else is present.
+3. If a folder contains both unused and WIP content, remove **only** the unused
+   leaves. Leave sibling subdirs (e.g. `Materials/PickmansWhisper/Decay`) alone.
+4. After any cleanup, verify with `Get-ChildItem -Recurse` that surviving WIP
+   paths still exist before ending the turn.
