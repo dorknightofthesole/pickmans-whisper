@@ -31,8 +31,11 @@ bedGiftWoundAlpha=0.40
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
 
-decayStage0=Freshly Deceased;0.650;0.520;0.480;1.0;0;SkinTexture_07
-decayStage1=Pallor Mortis;0.350;0.680;0.650;1.0;0.25;SkinTexture_07
-decayStage2=Livor Mortis;0.400;0.176;0.267;1.0;2;SkinTexture_07
+# skins=none → no body LooksMenu overlays (default body). Face masks: DecayFaceStages.txt.
+# Stages 0–1: no body change, no face mask (face stages also none).
+decayStage0=Freshly Deceased;0.650;0.520;0.480;1.0;0;none
+decayStage1=Pallor Mortis;0.300;0.750;0.720;1.0;0.25;none
+# Stage 2: first body change (veins + keeper layer) + Red face mask. Pallor is body none, so this must read clearly.
+decayStage2=Livor Mortis;0.480;0.140;0.300;1.0;2;SkinTexture_15+SkinTexture_09
 decayStage3=Putrefaction;0.369;0.451;0.318;1.0;48;SkinTexture_17+SkinTexture_18;scars
 decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;240;SkinTexture_03+SkinTexture_18;scars

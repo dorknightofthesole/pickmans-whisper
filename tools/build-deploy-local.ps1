@@ -171,6 +171,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_decay_kill_p2.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Decay MCM kill-clock (reset/apply) contract test"
+& python (Join-Path $Root "tools\test_decay_mcm_clock.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_decay_mcm_clock.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> WorldScan event bus contract test"
 & python (Join-Path $Root "tools\test_world_scan_bus.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

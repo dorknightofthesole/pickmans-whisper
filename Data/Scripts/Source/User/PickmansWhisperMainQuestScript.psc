@@ -2101,17 +2101,55 @@ Function WriteVictimsStatusToMcm()
 	EndIf
 EndFunction
 
+; How many slots share this exact name (FormID table — same label on different NPCs).
+Int Function CountVictimNameOccurrences(String name)
+	If !name
+		Return 0
+	EndIf
+	EnsureVictimLists()
+	Int c = 0
+	Int i = 0
+	While i < VictimSlotCount
+		If VictimNames[i] == name
+			c += 1
+		EndIf
+		i += 1
+	EndWhile
+	Return c
+EndFunction
+
+; True if an earlier slot already listed this name (for unique summary rows).
+Bool Function VictimNameAlreadyListed(String name, Int beforeIndex)
+	If !name || beforeIndex <= 0
+		Return False
+	EndIf
+	Int j = 0
+	While j < beforeIndex
+		If VictimNames[j] == name
+			Return True
+		EndIf
+		j += 1
+	EndWhile
+	Return False
+EndFunction
+
+; MCM list: unique names; "Leslie x2" when two different FormIDs share a label.
 Function WriteVictimsSummaryToMcm()
 	EnsureVictimLists()
 	String s = ""
 	Int i = 0
 	Int shown = 0
 	While i < VictimSlotCount && shown < 8
-		If VictimNames[i]
+		If VictimNames[i] && !VictimNameAlreadyListed(VictimNames[i], i)
 			If s != ""
 				s += "; "
 			EndIf
-			s += VictimNames[i]
+			Int copies = CountVictimNameOccurrences(VictimNames[i])
+			If copies > 1
+				s += VictimNames[i] + " x" + copies
+			Else
+				s += VictimNames[i]
+			EndIf
 			shown += 1
 		EndIf
 		i += 1
@@ -2151,26 +2189,31 @@ String Function FormatNoAimVictimsAimLine()
 EndFunction
 
 ; Decay row without re-entering Victims.Resolve (avoids lock deadlock from Push).
-Function WriteDecayStageStatusToMcmForActor(Actor ak)
+; abSyncStepper=False during Set/Reset so Pick stage is not clobbered mid-button race.
+Function WriteDecayStageStatusToMcmForActor(Actor ak, Bool abSyncStepper = True)
 	If !MCM.IsInstalled()
 		Return
 	EndIf
 	If ak
 		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForActor(ak))
-		SyncVictimDecayStageStepper(ak.GetFormID())
+		If abSyncStepper
+			SyncVictimDecayStageStepper(ak.GetFormID())
+		EndIf
 		Return
 	EndIf
 	EnsureDecayKillLists()
 	If DecayKillSlotCount > 0
 		Int lastId = DecayKillIds[DecayKillSlotCount - 1]
 		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForFormId(lastId, "last kill") + " (no aim)")
-		SyncVictimDecayStageStepper(lastId)
+		If abSyncStepper
+			SyncVictimDecayStageStepper(lastId)
+		EndIf
 		Return
 	EndIf
 	MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", "(no aim / no knife kills tracked)")
 EndFunction
 
-; Keep Victims "Set decay stage" stepper aligned with the aimed / last-kill clock.
+; Keep Victims "Pick stage" stepper aligned with the aimed / last-kill clock.
 ; Prefer resolved clock stage (what WorldScan / ForceDecay want) over LastStage-1, so a queued
 ; apply does not snap the stepper backward before overlays land.
 Function SyncVictimDecayStageStepper(Int formId)
@@ -2306,7 +2349,8 @@ Function MCMRefreshVictimsPanel()
 	EndIf
 EndFunction
 
-; Backdate kill clock so ResolveDecayStageForKill returns aiStage (and not the next).
+; Backdate kill clock by ModConfig startHours so ResolveDecayStageForKill == aiStage.
+; killTime = now - (startHours / 24). Stage 0 => now (0 hours).
 Bool Function ForceDecayKillClockToStage(Int formId, Int aiStage)
 	If formId == 0 || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
 		Return False
@@ -2325,19 +2369,11 @@ Bool Function ForceDecayKillClockToStage(Int formId, Int aiStage)
 	If needH < 0.0
 		Return False
 	EndIf
-	; Sit just at this stage's threshold; stay below the next stage's start when possible.
+	; Subtract startHours from now. Tiny pad when > 0 so Float round-trip still
+	; lands at/above the threshold (ResolveDecayStage uses elapsed >= startHours).
 	Float elapsedH = needH
-	If aiStage + 1 < DECAY_STAGE_COUNT
-		Float nextH = GetDecayStageStartHours(aiStage + 1)
-		If nextH > needH
-			Float mid = (needH + nextH) * 0.5
-			If mid > needH
-				elapsedH = mid
-			EndIf
-		EndIf
-	Else
-		; Black — keep past its startHours.
-		elapsedH = needH + 1.0
+	If needH > 0.0
+		elapsedH = needH + 0.001
 	EndIf
 	DecayKillGameTime[slot] = Utility.GetCurrentGameTime() - (elapsedH / 24.0)
 	Return True
@@ -2388,6 +2424,17 @@ Function MCMApplyAimedDecayStage()
 	EndIf
 EndFunction
 
+Function MCMResetAimedDecayKillClock()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.MCMResetAimedDecayKillClock()
+	Else
+		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR MCMResetAimedDecayKillClock — VictimsScript missing")
+		Debug.MessageBox("Pickman's Whisper — Reset decay stage\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+	EndIf
+EndFunction
+
 Function MCMAdvanceAimedDecayStage()
 	PickmansWhisperVictimsScript v = Victims()
 	If v
@@ -2406,7 +2453,7 @@ Function MCMNameAimedVictim()
 	Else
 		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR MCMNameAimedVictim — VictimsScript missing")
-		Debug.MessageBox("Pickman's Whisper — Name aimed\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+		Debug.MessageBox("Pickman's Whisper — Apply name\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -3180,6 +3227,7 @@ Function ClearDecayStages()
 EndFunction
 
 ; Parse name;r;g;b;a;startHours;skins[+…];scars? — returns True if stored at aiStage.
+; skins=none means no body overlays (default body; face still applies).
 Bool Function ParseDecayStageValue(Int aiStage, String val)
 	If aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
 		Return False
@@ -3197,7 +3245,7 @@ Bool Function ParseDecayStageValue(Int aiStage, String val)
 	String name = fields[0]
 	String skins = fields[6]
 	If !name || name == "" || !skins || skins == ""
-		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " empty name or skins")
+		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " empty name or skins (use none for no body)")
 		Return False
 	EndIf
 	Float r = fields[1] as Float
@@ -3212,6 +3260,13 @@ Bool Function ParseDecayStageValue(Int aiStage, String val)
 	Bool scars = False
 	If n >= 8 && fields[7] == "scars"
 		scars = True
+	EndIf
+	; none = intentional empty body bank (still a valid ModConfig field).
+	If skins == "none"
+		If scars
+			Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " skins=none cannot use scars")
+			Return False
+		EndIf
 	EndIf
 	DecayStageNames[aiStage] = name
 	DecayStageTintR[aiStage] = r
@@ -3318,7 +3373,7 @@ Int Function FillDecayStageSkins(Int aiStage, String[] outTemplates)
 		Return 0
 	EndIf
 	String raw = DecayStageSkinsRaw[aiStage]
-	If !raw || raw == ""
+	If !raw || raw == "" || raw == "none"
 		Return 0
 	EndIf
 	Return SplitByChar(raw, "+", outTemplates)
@@ -3560,6 +3615,11 @@ Function LoadModConfig()
 	Else
 		ModConfigLoadStatus = "no known keys"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+	EndIf
+	; DecayFaceStages / armor id cache must re-read after ModConfig deploy/hot-reload.
+	PickmansWhisperCorpseDecayScript decay = (Self as Quest) as PickmansWhisperCorpseDecayScript
+	If decay
+		decay.InvalidateDecayFaceArmorBanks()
 	EndIf
 EndFunction
 

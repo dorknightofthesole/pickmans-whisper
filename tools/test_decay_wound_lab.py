@@ -253,9 +253,9 @@ def test_lab_script(lab: str) -> None:
             fail(f"{fn_name} must skip Utility.Wait while MCM/menu is open")
     mod_cfg = (ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt").read_text(encoding="utf-8")
     expected_stages = [
-        ("decayStage0", "Freshly Deceased", "0.650", "0.520", "0.480", "1.0", "0", "SkinTexture_07", False),
-        ("decayStage1", "Pallor Mortis", "0.350", "0.680", "0.650", "1.0", "0.25", "SkinTexture_07", False),
-        ("decayStage2", "Livor Mortis", "0.400", "0.176", "0.267", "1.0", "2", "SkinTexture_07", False),
+        ("decayStage0", "Freshly Deceased", "0.650", "0.520", "0.480", "1.0", "0", "none", False),
+        ("decayStage1", "Pallor Mortis", "0.300", "0.750", "0.720", "1.0", "0.25", "none", False),
+        ("decayStage2", "Livor Mortis", "0.480", "0.140", "0.300", "1.0", "2", "SkinTexture_15+SkinTexture_09", False),
         ("decayStage3", "Putrefaction", "0.369", "0.451", "0.318", "1.0", "48", "SkinTexture_17+SkinTexture_18", True),
         ("decayStage4", "Black Putrefaction", "0.149", "0.118", "0.102", "1.0", "240", "SkinTexture_03+SkinTexture_18", True),
     ]
@@ -452,8 +452,12 @@ def test_face_sft() -> None:
     if not (ROOT / "tools" / "stubs" / "FormList.psc").is_file():
         fail("missing tools/stubs/FormList.psc")
     slice_h = SLICE_H.read_text(encoding="utf-8")
-    if "SkinTexture_07" not in slice_h or "SkinTexture_17" not in slice_h or "SkinTexture_03" not in slice_h:
-        fail("SLICE_H must lock stage SkinTexture map (7 / 17+18 / 3+18)")
+    if "SkinTexture_15" not in slice_h:
+        fail("SLICE_H must document SkinTexture_15 (Livor / first body change)")
+    if "SkinTexture_17" not in slice_h or "SkinTexture_03" not in slice_h:
+        fail("SLICE_H must lock late-stage SkinTexture map (17+18 / 3+18)")
+    if "none" not in slice_h.lower() and "`none`" not in slice_h:
+        fail("SLICE_H must document skins=none for Freshly Deceased body")
     if "Boxer - Black Eye" not in slice_h or "all" not in slice_h.lower():
         fail("SLICE_H must lock applying all SFT Boxer face bruises")
     load_dotenv()

@@ -49,14 +49,15 @@ decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 
 - `a` — LooksMenu opacity (0–1), fourth numeric after blue
 - `startHours` — game-hours after credited blade kill when this stage begins (stay until next start; Black forever after)
-- `skins` — one or more Porcupine SkinTexture ids joined with `+`
-- trailing `scars` — apply all `Scars_*` from `DecaySkinOverlays.txt`
+- `skins` — one or more Porcupine SkinTexture ids joined with `+`, or `none` for **no body overlays** (default body)
+- trailing `scars` — apply all `Scars_*` from `DecaySkinOverlays.txt` (not valid with `skins=none`)
+- Face masks: `DecayFaceStages.txt` (`none` = strip PW face ARMO). Stages **0–1** are `none` (no mask); masks begin at stage **2** (Red).
 
 | Stage | Name | R | G | B | A | Start (h) | Skins | Scars |
 |------:|------|--:|--:|--:|--:|----------:|-------|:-----:|
-| 0 | Freshly Deceased | 0.650 | 0.520 | 0.480 | 1.0 | 0 | `SkinTexture_07` | — |
-| 1 | Pallor Mortis | 0.350 | 0.680 | 0.650 | 1.0 | 0.25 (15 min) | `SkinTexture_07` | — |
-| 2 | Livor Mortis | 0.400 | 0.176 | 0.267 | 1.0 | 2 | `SkinTexture_07` | — |
+| 0 | Freshly Deceased | 0.650 | 0.520 | 0.480 | 1.0 | 0 | `none` (default body) | — |
+| 1 | Pallor Mortis | 0.300 | 0.750 | 0.720 | 1.0 | 0.25 (15 min) | `none` (default body) | — |
+| 2 | Livor Mortis | 0.480 | 0.140 | 0.300 | 1.0 | 2 | `15`+`09` | — |
 | 3 | Putrefaction | 0.369 | 0.451 | 0.318 | 1.0 | 48 (2 d) | `17`+`18` | all |
 | 4 | Black Putrefaction | 0.149 | 0.118 | 0.102 | 1.0 | 240 (10 d) | `03`+`18` | all |
 
@@ -88,11 +89,11 @@ Wound Lab look-test keepers (superset of the locked stage map above):
 | SkinTexture_01 | Really good |
 | SkinTexture_03 | Keeper — **stage 4** (with 18) |
 | SkinTexture_04 | Keeper |
-| SkinTexture_07 | Keeper — **stages 0–2** |
+| SkinTexture_07 | Keeper (lab) — not on locked 0–2 map anymore |
 | SkinTexture_09 | Keeper |
 | SkinTexture_13 | Keeper |
-| SkinTexture_15 | Has veins — use **earlier** in decay ramp |
-| SkinTexture_16 | Good **early** texture |
+| SkinTexture_15 | Has veins — **stage 2** Livor (with 09; first body change; 0–1 are body `none`) |
+| SkinTexture_16 | Good **early** texture (lab; not on locked 0–1 map) |
 | SkinTexture_17 | Good **late** texture — **stage 3** (with 18) |
 | SkinTexture_18 | Really good — **stages 3 and 4** (layered) |
 

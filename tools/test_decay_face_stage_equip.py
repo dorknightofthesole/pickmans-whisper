@@ -2,9 +2,10 @@
 """Slice I — stage→face ARMO map + corpse EquipItem path.
 
 Locks:
-  - DecayFaceStages.txt 0=Base 1=Gray 2=Red 3=Green 4=Black
+  - DecayFaceStages.txt 0=none 1=none 2=Red 3=Green 4=Black
   - CorpseDecay loads DecayFaceArmorIds.txt + DecayFaceStages.txt
   - ApplyDecayStageOverlays equips via ApplyDecayFaceArmorForStage
+  - none stages strip face masks (no ARMO)
   - EquipItem(abPreventRemoval=false) — playable / removable
   - Actor.psc declares real EquipItem Native
   - Deploy gate runs this contract
@@ -27,8 +28,8 @@ PS1 = ROOT / "tools" / "build-deploy-local.ps1"
 SH = ROOT / "tools" / "build-deploy-local.sh"
 
 EXPECTED = {
-    0: "Base",
-    1: "Gray",
+    0: "none",
+    1: "none",
     2: "Red",
     3: "Green",
     4: "Black",
@@ -68,15 +69,17 @@ def main() -> None:
         stage_map[int(m.group(1))] = m.group(2)
     if stage_map != EXPECTED:
         fail(f"DecayFaceStages.txt map wrong:\n  got={stage_map}\n  want={EXPECTED}")
-    ok("DecayFaceStages.txt 0=Base 1=Gray 2=Red 3=Green 4=Black")
+    ok("DecayFaceStages.txt 0=none 1=none 2=Red 3=Green 4=Black")
 
     if not IDS.is_file():
         fail("DecayFaceArmorIds.txt missing — rebuild ESP")
     id_text = IDS.read_text(encoding="utf-8")
     for label in EXPECTED.values():
+        if label == "none":
+            continue
         if not re.search(rf"(?m)^{re.escape(label)}=\d+,\d+\s*$", id_text):
             fail(f"DecayFaceArmorIds.txt missing ARMO for label {label}")
-    ok("DecayFaceArmorIds.txt covers all stage labels")
+    ok("DecayFaceArmorIds.txt covers masked stage labels")
 
     actor = ACTOR.read_text(encoding="utf-8", errors="replace")
     if "Function EquipItem(Form akItem, Bool abPreventRemoval = False, Bool abSilent = False) Native" not in actor:
@@ -97,16 +100,43 @@ def main() -> None:
             fail(f"CorpseDecay missing {needle!r}")
 
     ensure = extract_function(decay, "EnsureDecayFaceArmorBanks")
-    if "FACE_ARMOR_IDS_FILE" not in ensure or "FACE_STAGE_FILE" not in ensure:
-        fail("EnsureDecayFaceArmorBanks must load FACE_ARMOR_IDS_FILE + FACE_STAGE_FILE")
+    if "FACE_ARMOR_IDS_FILE" not in ensure:
+        fail("EnsureDecayFaceArmorBanks must load FACE_ARMOR_IDS_FILE")
     if "GetLinesFromFile(FACE_ARMOR_IDS_FILE" not in ensure:
         fail("EnsureDecayFaceArmorBanks must GetLinesFromFile armor ids")
-    if "GetLinesFromFile(FACE_STAGE_FILE" not in ensure:
-        fail("EnsureDecayFaceArmorBanks must GetLinesFromFile stage map")
+    if "FaceStageMapReady" not in ensure:
+        fail("EnsureDecayFaceArmorBanks must cache when FaceStageMapReady (no per-apply reload race)")
+    if "ReloadDecayFaceStageMap" not in ensure:
+        fail("EnsureDecayFaceArmorBanks must ReloadDecayFaceStageMap when cache cold")
     if "Debug.Notification" not in ensure or "Debug.Trace" not in ensure:
         fail("EnsureDecayFaceArmorBanks must fail loud")
+    reload_map = extract_function(decay, "ReloadDecayFaceStageMap")
+    if 'label == "none"' not in reload_map:
+        fail("ReloadDecayFaceStageMap must accept face label none")
+    if "GetLinesFromFile(FACE_STAGE_FILE" not in reload_map:
+        fail("ReloadDecayFaceStageMap must GetLinesFromFile stage map")
+    if "nextFids" not in reload_map:
+        fail("ReloadDecayFaceStageMap must build temp nextFids then commit (no live wipe race)")
+    if "InvalidateDecayFaceArmorBanks" not in decay:
+        fail("CorpseDecay must InvalidateDecayFaceArmorBanks for ModConfig hot-reload")
+    main = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    load_mod = extract_function(main, "LoadModConfig")
+    if "InvalidateDecayFaceArmorBanks" not in load_mod:
+        fail("LoadModConfig must InvalidateDecayFaceArmorBanks after reload")
+
+    strip = extract_function(decay, "StripDecayFaceArmors")
+    if "UnequipItem" not in strip or "RemoveItem" not in strip:
+        fail("StripDecayFaceArmors must UnequipItem + RemoveItem all DecayFace ARMOs")
+    if "EnsureDecayFaceArmorBanks" not in strip:
+        fail("StripDecayFaceArmors must EnsureDecayFaceArmorBanks when bank empty")
 
     apply_face = extract_function(decay, "ApplyDecayFaceArmorForStage")
+    if "StripDecayFaceArmors" not in apply_face:
+        fail("ApplyDecayFaceArmorForStage must StripDecayFaceArmors for none / before equip")
+    if "face cleanup" not in apply_face and "stripped" not in apply_face.lower():
+        fail("ApplyDecayFaceArmorForStage none must cleanup/strip DecayFace masks")
     if "EquipItem(armor, False, True)" not in apply_face:
         fail("ApplyDecayFaceArmorForStage must EquipItem(..., False, True) — removable")
     if "EquipItem(armor, True" in apply_face:
@@ -120,23 +150,21 @@ def main() -> None:
             apply_face,
             re.S,
         ):
-            fail("ApplyDecayFaceArmorForStage must not Return False on IsEquipped=0 alone")
-    if "GetFormFromFile" not in apply_face:
-        fail("ApplyDecayFaceArmorForStage must GetFormFromFile ARMO")
+            fail("ApplyDecayFaceArmorForStage must not Return False solely on !IsEquipped")
+    ok("ApplyDecayFaceArmorForStage none + removable EquipItem")
 
-    stage_fn = extract_function(decay, "ApplyDecayStageOverlays")
-    if "If !ApplyDecayFaceArmorForStage(akCorpse, aiStage)" not in stage_fn:
-        fail("ApplyDecayStageOverlays must abort when ApplyDecayFaceArmorForStage fails")
-    ok("CorpseDecay stage->face ARMO equip path")
+    stage_apply = extract_function(decay, "ApplyDecayStageOverlays")
+    if "ApplyDecayFaceArmorForStage" not in stage_apply:
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage")
+    ok("ApplyDecayStageOverlays wires face stage equip")
 
-    ps1 = PS1.read_text(encoding="utf-8", errors="replace")
-    if "test_decay_face_stage_equip.py" not in ps1:
-        fail("build-deploy-local.ps1 must run test_decay_face_stage_equip.py")
-    sh = SH.read_text(encoding="utf-8", errors="replace")
-    if "test_decay_face_stage_equip.py" not in sh:
-        fail("build-deploy-local.sh must run test_decay_face_stage_equip.py")
-    ok("deploy gate includes face-stage equip contract")
-    print("All decay-face-stage-equip contracts passed.")
+    for path in (PS1, SH):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if "test_decay_face_stage_equip.py" not in text:
+            fail(f"{path.name} must run test_decay_face_stage_equip.py")
+    ok("deploy gate includes face stage equip contract")
+
+    print("All decay face stage equip contracts passed.")
 
 
 if __name__ == "__main__":

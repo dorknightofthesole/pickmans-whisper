@@ -142,6 +142,9 @@ python "$ROOT/tools/test_decay_stage_modconfig.py" || exit 1
 echo "==> Decay kill stamp (Slice H P2) contract test"
 python "$ROOT/tools/test_decay_kill_p2.py" || exit 1
 
+echo "==> Decay MCM kill-clock (reset/apply) contract test"
+python "$ROOT/tools/test_decay_mcm_clock.py" || exit 1
+
 echo "==> WorldScan event bus contract test"
 python "$ROOT/tools/test_world_scan_bus.py" || exit 1
 

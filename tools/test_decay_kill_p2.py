@@ -202,13 +202,21 @@ def test_mcm_decay_stage_row() -> None:
     if '"id": "sDecayStage:Debug"' in cfg:
         fail("config.json must not keep sDecayStage:Debug")
     if '"function": "MCMApplyAimedDecayStage"' not in cfg:
-        fail("config.json Victims page must have Apply decay stage -> MCMApplyAimedDecayStage")
+        fail("config.json Victims page must have Set decay stage -> MCMApplyAimedDecayStage")
+    if '"function": "MCMResetAimedDecayKillClock"' not in cfg:
+        fail("config.json Victims page must have Reset decay stage -> MCMResetAimedDecayKillClock")
     if '"id": "iVictimDecayStage:Victims"' not in cfg:
         fail("config.json Victims page must have iVictimDecayStage stepper")
     if '"scriptName": "PickmansWhisperVictimsScript"' not in cfg:
-        fail("config.json Apply/Refresh/Name must target PickmansWhisperVictimsScript")
-    if "Apply decay stage" not in cfg:
-        fail("config.json missing Apply decay stage button label")
+        fail("config.json Set / Reset / Load / Apply must target PickmansWhisperVictimsScript")
+    if '"text": "Set decay stage"' not in cfg:
+        fail("config.json missing Set decay stage button label")
+    if '"text": "Reset decay stage"' not in cfg:
+        fail("config.json missing Reset decay stage button label")
+    if "Set decay clock" in cfg or "Reset kill clock" in cfg:
+        fail("config.json must use Set/Reset decay stage labels (not clock/kill clock)")
+    if "Apply decay stage" in cfg:
+        fail("config.json must not keep Apply decay stage (clock-only test harness)")
     settings = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini").read_text(
         encoding="utf-8"
     )
@@ -224,6 +232,10 @@ def test_mcm_decay_stage_row() -> None:
     force = extract_function(main, "ForceDecayKillClockToStage")
     if "DecayKillGameTime" not in force or "GetDecayStageStartHours" not in force:
         fail("ForceDecayKillClockToStage must set DecayKillGameTime from startHours")
+    if "elapsedH / 24.0" not in force and "needH / 24.0" not in force:
+        fail("ForceDecayKillClockToStage must subtract startHours/24 from now")
+    if "needH + 0.001" not in force:
+        fail("ForceDecayKillClockToStage must pad startHours>0 by 0.001h")
     if "SyncVictimDecayStageStepper" not in main:
         fail("Main must SyncVictimDecayStageStepper (keep Victims stepper current)")
     prep = extract_function(victims, "PrepAimedDecayStage")
@@ -238,6 +250,13 @@ def test_mcm_decay_stage_row() -> None:
             fail(f"PrepAimedDecayStage must use {needle}")
     if "ApplyDecayStageOverlays" in prep:
         fail("PrepAimedDecayStage must NOT ApplyDecayStageOverlays (clock only)")
+    reset_body = extract_function(victims, "ResetAimedDecayKillClock")
+    if "StampDecayKill" not in reset_body:
+        fail("ResetAimedDecayKillClock must StampDecayKill (murder time = now)")
+    if 'iVictimDecayStage:Victims", 0' not in reset_body:
+        fail("ResetAimedDecayKillClock must set stage selector to 0")
+    if "ApplyDecayStageOverlays" in reset_body:
+        fail("ResetAimedDecayKillClock must NOT ApplyDecayStageOverlays")
     queue = extract_function(victims, "QueueAimedDecayStage")
     if "PrepAimedDecayStage" not in queue:
         fail("QueueAimedDecayStage must PrepAimedDecayStage (legacy deferred)")
@@ -247,37 +266,46 @@ def test_mcm_decay_stage_row() -> None:
     if "QueueAimedDecayStage" not in adv:
         fail("QueueAimedDecayAdvance must wrap QueueAimedDecayStage (+1)")
     run = extract_function(victims, "RunPendingDecayAdvance")
-    if "ApplyDecayStageOverlays" not in run:
-        fail("RunPendingDecayAdvance must ApplyDecayStageOverlays")
+    if "ApplyDecayStageOverlays" in run:
+        fail("RunPendingDecayAdvance must NOT ApplyDecayStageOverlays (WorldScan owns apply)")
+    if "SyncOverlaysFromWorldScanSnapshot" not in run:
+        fail("RunPendingDecayAdvance must nudge SyncOverlaysFromWorldScanSnapshot")
     if "IsInMenuMode" not in run:
         fail("RunPendingDecayAdvance must defer while MCM open")
     mcm_apply = extract_function(victims, "MCMApplyAimedDecayStage")
     if "iVictimDecayStage:Victims" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must read iVictimDecayStage:Victims")
     if "PrepAimedDecayStage" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must PrepAimedDecayStage")
-    if "ApplyDecayStageOverlays" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must sync ApplyDecayStageOverlays (Wound Lab path)")
-    if "StartTimer" in mcm_apply:
-        fail("MCMApplyAimedDecayStage must not StartTimer (sync apply; no close-MCM deferral)")
-    if "CallFunctionNoWait(" in mcm_apply:
-        fail("MCMApplyAimedDecayStage must not CallFunctionNoWait")
-    if "SetDecayKillLastStage" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must SetDecayKillLastStage on success")
-    if "ClearPendingDecayAdvance" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must ClearPendingDecayAdvance (no double apply)")
+        fail("MCMApplyAimedDecayStage must PrepAimedDecayStage (clock only)")
+    if "ApplyDecayStageOverlays" in mcm_apply:
+        fail("MCMApplyAimedDecayStage must NOT ApplyDecayStageOverlays — WorldScan SyncDecay owns apply")
+    if "StartTimer" not in mcm_apply or "TIMER_DECAY_ADVANCE" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must StartTimer to nudge WorldScan after MCM closes")
     if "MessageBox" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must MessageBox result")
-    if "close MCM so overlays" in mcm_apply.lower():
-        fail("MCMApplyAimedDecayStage must not tell player close MCM to trigger apply")
-    # Legacy +1 entry also sync-applies (cached MCM configs may still call Advance)
+    if "WorldScan" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage MessageBox must mention WorldScan")
+    if "McmDecayButtonBusy" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must ignore re-entrant CallFunction spam")
+    if "WriteDecayStageStatusToMcmForActor(aimed, False)" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must not SyncVictimDecayStageStepper mid-button")
+    mcm_reset = extract_function(victims, "MCMResetAimedDecayKillClock")
+    if "ResetAimedDecayKillClock" not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must ResetAimedDecayKillClock")
+    if 'iVictimDecayStage:Victims", 0' not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must force selector to stage 0")
+    if "ApplyDecayStageOverlays" in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must NOT ApplyDecayStageOverlays")
+    if "McmDecayButtonBusy" not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must ignore re-entrant CallFunction spam")
+    # Legacy +1 entry — clock only
     mcm_adv = extract_function(victims, "MCMAdvanceAimedDecayStage")
-    if "ApplyDecayStageOverlays" not in mcm_adv:
-        fail("MCMAdvanceAimedDecayStage must sync ApplyDecayStageOverlays")
-    if "StartTimer" in mcm_adv:
-        fail("MCMAdvanceAimedDecayStage must not StartTimer (sync apply)")
-    if "PrepAimedDecayStage" not in mcm_adv:
-        fail("MCMAdvanceAimedDecayStage must PrepAimedDecayStage")
+    if "ApplyDecayStageOverlays" in mcm_adv:
+        fail("MCMAdvanceAimedDecayStage must NOT ApplyDecayStageOverlays")
+    if "QueueAimedDecayAdvance" not in mcm_adv:
+        fail("MCMAdvanceAimedDecayStage must QueueAimedDecayAdvance")
+    if "NoteForcedDecayClockForTest" not in prep:
+        fail("PrepAimedDecayStage must NoteForcedDecayClockForTest (clear WorldScan rate-limit)")
     if "TIMER_DECAY_ADVANCE" not in victims:
         fail("VictimsScript must declare TIMER_DECAY_ADVANCE")
     if "aiTimerID == TIMER_DECAY_ADVANCE" not in victims:
@@ -285,12 +313,13 @@ def test_mcm_decay_stage_row() -> None:
     idx = victims.find("aiTimerID == TIMER_DECAY_ADVANCE")
     if idx < 0 or "RunPendingDecayAdvance()" not in victims[idx : idx + 200]:
         fail("Victims OnTimer TIMER_DECAY_ADVANCE must RunPendingDecayAdvance()")
-    # Main façades remain for internal callers
     if "Victims()" not in extract_function(main, "MCMApplyAimedDecayStage"):
         fail("Main MCMApplyAimedDecayStage must façade via Victims()")
+    if "Victims()" not in extract_function(main, "MCMResetAimedDecayKillClock"):
+        fail("Main MCMResetAimedDecayKillClock must façade via Victims()")
     if "Victims()" not in extract_function(main, "MCMAdvanceAimedDecayStage"):
         fail("Main MCMAdvanceAimedDecayStage must façade via Victims()")
-    ok("MCM Victims decay stage row + sync set-any-stage apply wired")
+    ok("MCM Victims decay test harness is clock-only; WorldScan SyncDecay applies")
 
 
 def main() -> int:

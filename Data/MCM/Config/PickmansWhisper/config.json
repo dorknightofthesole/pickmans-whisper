@@ -303,12 +303,16 @@
 						"script": "Debug",
 						"function": "MessageBox",
 						"params": [
-							"Pickman's Whisper MCM PING\n\nIf you see this, MCM buttons work.\nNext: try Refresh aimed / list."
+							"Pickman's Whisper MCM PING\n\nIf you see this, MCM buttons work.\nNext: try \"Load targeted corpse\"."
 						]
 					}
 				},
 				{
-					"text": "Look at someone, type a name, then <b>Name aimed NPC</b>. That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
+					"text": "Corpse",
+					"type": "section"
+				},
+				{
+					"text": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted corpse\" re-pushes Aimed / Decay / named list from that cache — it does not re-scan the world.",
 					"type": "text",
 					"html": true
 				},
@@ -316,7 +320,7 @@
 					"id": "sVictimAimed:Victims",
 					"text": "Aimed now",
 					"type": "textinput",
-					"help": "Face someone in-world for ~2s (killscan caches them), then open this page. Refresh does not re-scan the world — it only re-pushes the cache.",
+					"help": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted corpse\" re-pushes the cache only.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
@@ -325,72 +329,10 @@
 					"id": "sDecayStage:Victims",
 					"text": "Decay stage (current)",
 					"type": "textinput",
-					"help": "Current decay for the cached body. Named victims without a clock start Freshly Deceased (overlays apply after you close MCM). Blade kills stamp automatically.",
+					"help": "Current decay for the cached body. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply after you close MCM (may take several seconds).",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
-				},
-				{
-					"id": "iVictimDecayStage:Victims",
-					"text": "Set decay stage",
-					"type": "stepper",
-					"help": "Pick any ModConfig stage (0–4), then Apply. Works forward or backward. Dead aimed / cached body only. Backdates the decay clock so WorldScan will not revert it. Apply runs immediately (same as Wound Lab).",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Freshly Deceased",
-							"Pallor Mortis",
-							"Livor Mortis",
-							"Putrefaction",
-							"Black Putrefaction"
-						]
-					}
-				},
-				{
-					"text": "Apply decay stage",
-					"type": "button",
-					"help": "Apply the Set decay stage selection to the aimed / cached corpse now (face + body overlays). Close MCM afterward to look at the body.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMApplyAimedDecayStage",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"id": "sVictimName:Victims",
-					"text": "New name",
-					"type": "textinput",
-					"help": "Real name only (e.g. Marie). Not Settler/Resident.",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Name aimed NPC",
-					"type": "button",
-					"help": "SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMNameAimedVictim",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"text": "Refresh aimed / list",
-					"type": "button",
-					"help": "Re-push Aimed / Decay / named list from cache. Opens a MessageBox so you can confirm the button fired. Face the body in-world before opening MCM.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMRefreshVictimsPanel",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
 				},
 				{
 					"id": "sVictimStatus:Victims",
@@ -404,9 +346,96 @@
 					"id": "sVictimsSummary:Victims",
 					"text": "Named victims",
 					"type": "textinput",
-					"help": "Up to 8 labels from the saved FormID table (cap 32).",
+					"help": "Up to 8 names from the saved FormID table (cap 32). \"Leslie x2\" means two different NPCs share that name.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Load targeted corpse",
+					"type": "button",
+					"help": "Re-push Aimed / Decay / named list from the killscan cache. Opens a MessageBox so you can confirm the button fired. Face the body in-world before opening MCM.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMRefreshVictimsPanel",
+						"scriptName": "PickmansWhisperVictimsScript"
+					}
+				},
+				{
+					"text": "Name / rename",
+					"type": "section"
+				},
+				{
+					"text": "Type a real name, then \"Apply name\". That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "sVictimName:Victims",
+					"text": "New name",
+					"type": "textinput",
+					"help": "Real name only (e.g. Marie). Not Settler/Resident. Then press \"Apply name\".",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Apply name",
+					"type": "button",
+					"help": "SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMNameAimedVictim",
+						"scriptName": "PickmansWhisperVictimsScript"
+					}
+				},
+				{
+					"text": "Decay stage options",
+					"type": "section"
+				},
+				{
+					"text": "Testing only. Pick a stage, then \"Set decay stage\" (backdates murder time by ModConfig startHours). \"Reset decay stage\" sets murder time to now and the picker to Freshly Deceased. Close MCM — overlays may take several seconds via WorldScan.",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "iVictimDecayStage:Victims",
+					"text": "Pick stage",
+					"type": "stepper",
+					"help": "Testing only. Choose the ModConfig stage, then press \"Set decay stage\". Or press \"Reset decay stage\" first (murder time = now, picker → Freshly Deceased). Close MCM; WorldScan may take several seconds to apply overlays.",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Freshly Deceased",
+							"Pallor Mortis",
+							"Livor Mortis",
+							"Putrefaction",
+							"Black Putrefaction"
+						]
+					}
+				},
+				{
+					"text": "Set decay stage",
+					"type": "button",
+					"help": "Separate from \"Reset decay stage\". Subtracts ModConfig startHours for the selected Pick stage from now (killTime = now − hours/24). Close MCM — WorldScan SyncDecay applies face/body and may take several seconds. Does not strip/re-apply overlays itself.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMApplyAimedDecayStage",
+						"scriptName": "PickmansWhisperVictimsScript"
+					}
+				},
+				{
+					"text": "Reset decay stage",
+					"type": "button",
+					"help": "Separate from \"Set decay stage\". Sets murder/kill time to now and forces Pick stage to Freshly Deceased (stage 0), regardless of current stage. Close MCM — WorldScan may take several seconds to sync, or pick a later stage and press \"Set decay stage\".",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMResetAimedDecayKillClock",
+						"scriptName": "PickmansWhisperVictimsScript"
 					}
 				}
 			]

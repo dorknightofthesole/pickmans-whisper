@@ -89,10 +89,29 @@ def test_main_naming(text: str) -> None:
         "EnsureVictimDisplayName",
         "ApplyVictimName",
         "WriteVictimsSummaryToMcm",
+        "CountVictimNameOccurrences",
+        "VictimNameAlreadyListed",
         "Victims",
     ):
         extract_function(text, name)
     ok("victim helpers present on Main")
+
+    summary = extract_function(text, "WriteVictimsSummaryToMcm")
+    if "CountVictimNameOccurrences" not in summary or "VictimNameAlreadyListed" not in summary:
+        fail("WriteVictimsSummaryToMcm must collapse duplicate names (Leslie x2)")
+    if '" x"' not in summary and " x" not in summary:
+        fail("WriteVictimsSummaryToMcm must append xN for duplicate names")
+    # Pure mirror: two FormIDs named Leslie -> one "Leslie x2" row.
+    names = ["Cindy", "Jane", "Leslie", "Leslie"]
+    rows: list[str] = []
+    for i, n in enumerate(names):
+        if any(names[j] == n for j in range(i)):
+            continue
+        copies = sum(1 for x in names if x == n)
+        rows.append(f"{n} x{copies}" if copies > 1 else n)
+    if "; ".join(rows) != "Cindy; Jane; Leslie x2":
+        fail(f"named-victims summary mirror wrong: {rows}")
+    ok("WriteVictimsSummary collapses duplicate names")
 
     if "as PickmansWhisperVictimsScript" not in extract_function(text, "Victims"):
         fail("Main Victims() must cast to PickmansWhisperVictimsScript")
@@ -157,6 +176,7 @@ def test_main_naming(text: str) -> None:
         "MCMNameAimedVictim",
         "MCMAdvanceAimedDecayStage",
         "MCMApplyAimedDecayStage",
+        "MCMResetAimedDecayKillClock",
         "TickVictimsAimCache",
     ):
         body = extract_function(text, name)
@@ -202,6 +222,8 @@ def test_victims_script(victims: str) -> None:
         "MCMNameAimedVictim",
         "MCMAdvanceAimedDecayStage",
         "MCMApplyAimedDecayStage",
+        "MCMResetAimedDecayKillClock",
+        "ResetAimedDecayKillClock",
         "QueueAimedDecayAdvance",
         "QueueAimedDecayStage",
         "PrepAimedDecayStage",
@@ -304,16 +326,80 @@ def test_mcm() -> None:
         '"function": "MCMNameAimedVictim"',
         '"function": "MCMRefreshVictimsPanel"',
         '"function": "MCMApplyAimedDecayStage"',
+        '"function": "MCMResetAimedDecayKillClock"',
         '"id": "iVictimDecayStage:Victims"',
-        "Apply decay stage",
+        "Load targeted corpse",
+        "Apply name",
+        "Set decay stage",
+        "Reset decay stage",
+        "Pick stage",
+        '"text": "Corpse"',
+        '"text": "Name / rename"',
+        '"text": "Decay stage options"',
         '"scriptName": "PickmansWhisperVictimsScript"',
         "CallGlobalFunction",
         "MCM PING",
     ):
         if needle not in cfg:
             fail(f"Victims MCM missing {needle}")
+    if "Refresh aimed / list" in cfg:
+        fail("Victims MCM must rename Refresh aimed / list -> Load targeted corpse")
+    if "Name aimed NPC" in cfg:
+        fail("Victims MCM must rename Name aimed NPC -> Apply name")
+    if "Set decay clock" in cfg:
+        fail("Victims MCM must rename Set decay clock -> Set decay stage")
+    if "Reset kill clock" in cfg:
+        fail("Victims MCM must rename Reset kill clock -> Reset decay stage")
     if '"function": "RefreshVictimsPanel"' in cfg:
         fail("MCM button must call MCMRefreshVictimsPanel (not RefreshVictimsPanel with Bool)")
+    # Page order: Corpse (fields then Load) → Name (field then Apply) → Decay
+    # (Pick stage stepper, then Set decay stage, then Reset decay stage).
+    victims_page = cfg.split('"pageDisplayName": "Victims"', 1)[1].split(
+        '"pageDisplayName":', 1
+    )[0]
+    order = [
+        ('"text": "Corpse"', "Corpse section"),
+        ('"id": "sVictimAimed:Victims"', "Aimed now"),
+        ('"id": "sDecayStage:Victims"', "Decay stage (current)"),
+        ('"id": "sVictimsSummary:Victims"', "Named victims"),
+        ('"function": "MCMRefreshVictimsPanel"', "Load targeted corpse"),
+        ('"text": "Name / rename"', "Name / rename section"),
+        ('"id": "sVictimName:Victims"', "New name"),
+        ('"function": "MCMNameAimedVictim"', "Apply name"),
+        ('"text": "Decay stage options"', "Decay stage options section"),
+        ('"id": "iVictimDecayStage:Victims"', "Pick stage stepper"),
+        ('"function": "MCMApplyAimedDecayStage"', "Set decay stage"),
+        ('"function": "MCMResetAimedDecayKillClock"', "Reset decay stage"),
+    ]
+    last = -1
+    for needle, label in order:
+        idx = victims_page.find(needle)
+        if idx < 0:
+            fail(f"Victims page missing {label} ({needle})")
+        if idx < last:
+            fail(f"Victims page order wrong: {label} must come after prior section items")
+        last = idx
+    # Load button must sit after Named victims (not between Aimed and Last apply).
+    load_idx = victims_page.find('"function": "MCMRefreshVictimsPanel"')
+    summary_idx = victims_page.find('"id": "sVictimsSummary:Victims"')
+    aimed_idx = victims_page.find('"id": "sVictimAimed:Victims"')
+    if not (aimed_idx < summary_idx < load_idx):
+        fail("Load targeted corpse must come after Aimed + Named victims fields")
+    apply_idx = victims_page.find('"function": "MCMApplyAimedDecayStage"')
+    reset_idx = victims_page.find('"function": "MCMResetAimedDecayKillClock"')
+    if apply_idx < 0 or reset_idx < 0 or apply_idx >= reset_idx:
+        fail("Set decay stage button must be a separate button above Reset decay stage")
+    # Help text quotes button names.
+    for quoted in (
+        '\\"Load targeted corpse\\"',
+        '\\"Apply name\\"',
+        '\\"Set decay stage\\"',
+        '\\"Reset decay stage\\"',
+    ):
+        if quoted not in victims_page:
+            fail(f"Victims help text must quote button name {quoted}")
+    if "several seconds" not in victims_page:
+        fail("Victims decay help must mention several seconds for overlays")
 
     data = json.loads(cfg)
     missing_script = 0
@@ -332,14 +418,15 @@ def test_mcm() -> None:
                 "MCMNameAimedVictim",
                 "MCMRefreshVictimsPanel",
                 "MCMApplyAimedDecayStage",
+                "MCMResetAimedDecayKillClock",
             ):
                 victims_buttons += 1
                 if action.get("scriptName") != "PickmansWhisperVictimsScript":
                     fail(f"{fn} must use scriptName PickmansWhisperVictimsScript")
     if missing_script:
         fail(f"{missing_script} CallFunction actions missing scriptName (multi-script quest)")
-    if victims_buttons < 3:
-        fail("Victims page must wire Refresh / Name / Apply decay to VictimsScript")
+    if victims_buttons < 4:
+        fail("Victims page must wire Load / Apply name / Set / Reset to VictimsScript")
     ok("MCM Victims page targets VictimsScript")
 
     main = PSC.read_text(encoding="utf-8", errors="replace")
