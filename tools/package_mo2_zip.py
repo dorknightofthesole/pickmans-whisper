@@ -81,6 +81,9 @@ def stage() -> None:
         "PickmansWhisperBedGiftScript",
         "PickmansWhisperCorpseDecayScript",
         "PickmansWhisperDecayWoundLabScript",
+        "PickmansWhisperVictimsScript",
+        "PickmansWhisperWorldScanScript",
+        "PickmansWhisperVoiceScanScript",
         "PickmansWhisperPlayerAliasScript",
     ):
         pex = ROOT / "Data" / "Scripts" / f"{script_stem}.pex"
@@ -93,9 +96,29 @@ def stage() -> None:
     copy_tree_contents(ROOT / "Data" / "MCM", STAGING / "MCM")
     copy_tree_contents(ROOT / "Data" / "PickmansWhisper", STAGING / "PickmansWhisper")
     copy_tree_contents(ROOT / "Data" / "Sound", STAGING / "Sound")
+    copy_tree_contents(ROOT / "Data" / "Materials", STAGING / "Materials")
+    copy_tree_contents(ROOT / "Data" / "Meshes", STAGING / "Meshes")
+    copy_tree_contents(ROOT / "Data" / "Textures", STAGING / "Textures")
+    copy_tree_contents(ROOT / "Data" / "F4SE", STAGING / "F4SE")
     require_file(
         STAGING / "Sound" / "PickmansWhisper" / "EndIt.xwm",
         "Sound/PickmansWhisper/EndIt.xwm",
+    )
+    require_file(
+        STAGING / "F4SE" / "Plugins" / "F4EE" / "Overlays" / "PickmansWhisper.esp" / "overlays.json",
+        "F4SE/.../PickmansWhisper.esp/overlays.json",
+    )
+    require_file(
+        STAGING / "Meshes" / "PickmansWhisper" / "Decay" / "NecroBaseFemaleHead.nif",
+        "Meshes/PickmansWhisper/Decay/NecroBaseFemaleHead.nif",
+    )
+    require_file(
+        STAGING / "Materials" / "PickmansWhisper" / "Decay" / "Necro_Bruising01_d.bgsm",
+        "Materials/PickmansWhisper/Decay/Necro_Bruising01_d.bgsm",
+    )
+    require_file(
+        STAGING / "Textures" / "PickmansWhisper" / "Decay" / "Necro_Bruising01_d.DDS",
+        "Textures/PickmansWhisper/Decay/Necro_Bruising01_d.DDS",
     )
 
     docs = ROOT / "docs"
@@ -119,6 +142,10 @@ def stage() -> None:
         "MCM",
         "PickmansWhisper",
         "Sound",
+        "Materials",
+        "Meshes",
+        "Textures",
+        "F4SE",
         "docs",
         "README.md",
         "meta.ini",

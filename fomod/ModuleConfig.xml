@@ -9,6 +9,10 @@
 		<folder source="MCM" destination="MCM" />
 		<folder source="PickmansWhisper" destination="PickmansWhisper" />
 		<folder source="Sound" destination="Sound" />
+		<folder source="Materials" destination="Materials" />
+		<folder source="Meshes" destination="Meshes" />
+		<folder source="Textures" destination="Textures" />
+		<folder source="F4SE" destination="F4SE" />
 		<folder source="docs" destination="docs" />
 		<file source="README.md" destination="README.md" />
 		<file source="meta.ini" destination="meta.ini" />

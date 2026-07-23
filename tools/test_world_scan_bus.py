@@ -76,6 +76,8 @@ def test_world_scan_producer() -> None:
         fail("DispatchListeners must CallFunctionNoWait HandleWorldScanKnifeAimWarm")
     if i_overlay < 0:
         fail("DispatchListeners must CallFunctionNoWait SyncOverlaysFromWorldScanSnapshot")
+    if "NoteFromWorldScanSnapshot" not in dispatch:
+        fail("DispatchListeners must CallFunctionNoWait NoteFromWorldScanSnapshot (Victims aim)")
     if not (i_voice < i_knife):
         fail("voice HandleWorldScanVoice must run BEFORE knife NoWait")
     on_timer = extract_function(text, "OnTimer")

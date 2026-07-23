@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # Build Pickman's Whisper (Caprica), deploy into a local MO2 mod folder, and write
 # dist/PickmansWhisper-<version>.zip (FOMOD) for Install Mod in MO2.
 #
@@ -8,10 +8,10 @@
 # Machine-specific paths are read from a git-ignored .env at repo root.
 # Copy .env.example to .env and fill in your paths. Real env vars override .env.
 # Settings:
-#   PICKMANS_WHISPER_ROOT   — repo root (default: parent of tools/)
+#   PICKMANS_WHISPER_ROOT   â€” repo root (default: parent of tools/)
 #   PICKMANS_WHISPER_DEPLOY - MO2 mod folder (REQUIRED; set in .env or env)
-#   CAPRICA                — path to Caprica.exe
-#   FALLOUT4_ESM           — path to Fallout4.esm (for ESP MGEF clone; set in .env)
+#   CAPRICA                â€” path to Caprica.exe
+#   FALLOUT4_ESM           â€” path to Fallout4.esm (for ESP MGEF clone; set in .env)
 #
 # * Caprica is a Windows binary; this script expects it runnable under your shell.
 
@@ -58,6 +58,7 @@ PSC="PickmansWhisperMainQuestScript.psc"
 PSC_BED="PickmansWhisperBedGiftScript.psc"
 PSC_DECAY="PickmansWhisperCorpseDecayScript.psc"
 PSC_WOUND_LAB="PickmansWhisperDecayWoundLabScript.psc"
+PSC_VICTIMS="PickmansWhisperVictimsScript.psc"
 PSC_WORLD_SCAN="PickmansWhisperWorldScanScript.psc"
 PSC_VOICE_SCAN="PickmansWhisperVoiceScanScript.psc"
 PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
@@ -147,13 +148,22 @@ python "$ROOT/tools/test_world_scan_bus.py" || exit 1
 echo "==> Voice debug Trace / MCM dump contract test"
 python "$ROOT/tools/test_voice_debug_trace.py" || exit 1
 
+echo "==> Decay assets ship contract test"
+python "$ROOT/tools/test_decay_assets_ship.py" || exit 1
+
+echo "==> Decay face ARMA/ARMO ESP contract test"
+python "$ROOT/tools/test_decay_face_armor_esp.py" || exit 1
+
+echo "==> Decay face stage equip contract test"
+python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
+
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -184,6 +194,10 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" ]]; then
   echo "ERROR: compile produced no DecayWoundLab .pex" >&2
   exit 1
 fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" ]]; then
+  echo "ERROR: compile produced no Victims .pex" >&2
+  exit 1
+fi
 if [[ ! -f "$PEX_OUT/PickmansWhisperWorldScanScript.pex" ]]; then
   echo "ERROR: compile produced no WorldScan .pex" >&2
   exit 1
@@ -202,14 +216,19 @@ mkdir -p \
   "$DEPLOY/Scripts/Source/User" \
   "$DEPLOY/MCM/Config/PickmansWhisper" \
   "$DEPLOY/MCM/Settings" \
-  "$DEPLOY/PickmansWhisper/config" \
+  "$DEPLOY/PickmansWhisper" \
   "$DEPLOY/Sound/PickmansWhisper" \
+  "$DEPLOY/Materials" \
+  "$DEPLOY/Meshes" \
+  "$DEPLOY/Textures" \
+  "$DEPLOY/F4SE" \
   "$DEPLOY/docs"
 
 cp -f "$PEX_OUT/PickmansWhisperMainQuestScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperCorpseDecayScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperWorldScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVoiceScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
@@ -217,16 +236,45 @@ cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperDecayWoundLabScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperVictimsScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperWorldScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVoiceScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"
-cp -f "$ROOT/Data/PickmansWhisper/config/"*.txt "$DEPLOY/PickmansWhisper/config/" 2>/dev/null || true
-mkdir -p "$DEPLOY/PickmansWhisper/config/necromantic"
-cp -f "$ROOT/Data/PickmansWhisper/config/necromantic/"*.txt "$DEPLOY/PickmansWhisper/config/necromantic/" 2>/dev/null || true
-cp -f "$ROOT/Data/Sound/PickmansWhisper/"*.xwm "$DEPLOY/Sound/PickmansWhisper/" 2>/dev/null || true
+
+sync_data_tree() {
+  local rel="$1"
+  local src="$ROOT/Data/$rel"
+  local dst="$DEPLOY/$rel"
+  if [[ ! -d "$src" ]]; then
+    echo "ERROR: Deploy source missing Data/$rel" >&2
+    exit 1
+  fi
+  mkdir -p "$dst"
+  cp -rf "$src/." "$dst/"
+}
+sync_data_tree "PickmansWhisper"
+sync_data_tree "Materials"
+sync_data_tree "Meshes"
+sync_data_tree "Textures"
+sync_data_tree "F4SE"
+if [[ ! -f "$DEPLOY/Meshes/PickmansWhisper/Decay/NecroBaseFemaleHead.nif" ]]; then
+  echo "ERROR: Deploy missing Meshes/PickmansWhisper/Decay/NecroBaseFemaleHead.nif" >&2
+  exit 1
+fi
+if [[ ! -f "$DEPLOY/Materials/PickmansWhisper/Decay/Necro_Bruising01_d.bgsm" ]]; then
+  echo "ERROR: Deploy missing Materials/PickmansWhisper/Decay/*.bgsm" >&2
+  exit 1
+fi
+if [[ ! -f "$DEPLOY/Textures/PickmansWhisper/Decay/Necro_Bruising01_d.DDS" ]]; then
+  echo "ERROR: Deploy missing Textures/PickmansWhisper/Decay/*.DDS" >&2
+  exit 1
+fi
+
+mkdir -p "$DEPLOY/Sound/PickmansWhisper"
+cp -rf "$ROOT/Data/Sound/PickmansWhisper/." "$DEPLOY/Sound/PickmansWhisper/" 2>/dev/null || true
 if [[ ! -f "$DEPLOY/Sound/PickmansWhisper/EndIt.xwm" ]]; then
   echo "ERROR: Deploy missing Sound/PickmansWhisper/EndIt.xwm (D0-POC audio)" >&2
   exit 1

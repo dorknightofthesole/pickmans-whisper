@@ -12,12 +12,13 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **E** | Named-victim kill voice + soft Necromantic intimacy hooks                      | **Done** — E1–E5                                                                             |
 | **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`)                       | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md))             |
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
-| **H** | Corpse decay (LooksMenu + ROF DeadOverlays → eat urge → reward)                | P1 done; P2 kill stamp + startHours coded — verify — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
-| **I** | Slow hunger stages (days) + peak-hunger wait rewards                           | Planned                                                                                      |
-| **J** | Corpse preserve sync with Necromantic                                          | Planned                                                                                      |
-| **K** | Perk gates; optional butcher cell / Cannibal hooks                             | Planned                                                                                      |
-| **L** | Witness support: flee/scream or attack; rumors of the "killer"                 | Planned                                                                                      |
-| **M** | Infamy / serial-killer whispers                                                | Planned                                                                                      |
+| **H** | Corpse decay (LooksMenu + ROF DeadOverlays → eat urge → reward) | P1 done; P2 kill stamp + startHours coded — verify — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
+| **I** | Face decay without replacing FaceGen (slot 54 decal ARMO) | **P0 art** — stage 0 works; stages 1–4 tint WIP — [Decay_Head_Guide.md](Decay_Head_Guide.md) |
+| **J** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
+| **K** | Corpse preserve sync with Necromantic | Planned |
+| **L** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
+| **M** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
+| **N** | Infamy / serial-killer whispers | Planned |
 
 
 
@@ -111,7 +112,7 @@ Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contrac
 
 ## Slice H — corpse decay / consume + victim places
 
-Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Soft with I (decay head armor), K (preserve), and L (Cannibal). Cap aligns with Victims (32).
+Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Soft with I (FaceGen-preserving face decay), K (preserve), and L (Cannibal). Cap aligns with Victims (32).
 
 **Visual:** LooksMenu overlays + **ROF DeadOverlays** DeathMarks (`DecayWoundOverlays.txt`). `PlayImpactEffect` **retired**. Soft deps — no ROF/LooksMenu ESP master. SPID not required.
 
@@ -124,15 +125,15 @@ Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Soft with I (decay h
 
 Victim **places** (last-known cell/label) remain a tangential foundation for unloaded refs / MCM — not required for P1–P4 visuals.
 
-## Slice I — decay head armor (face bruise / dirt)
+## Slice I — face decay without replacing FaceGen
 
-Custom **head armor** for dead NPCs that carries bruise + dirt decals whose look tracks the H decay stages. Most art / CK armor work is author-owned; script side only **equips / swaps / strips** the piece on knife-tracked (and optionally bed-gift) corpses when stage changes.
+**P0 art verified (in-game):** multi-layer face **decals** as ARMA/ARMO on biped **54** (not slot 32). FaceGen identity kept. Author guide: [Decay_Head_Guide.md](Decay_Head_Guide.md).
 
-- **Why:** LooksMenu body overlays cannot paint FaceGen; SFT `ChangeHeadPart` is lab-only and unsafe on world corpses. A head-slot armor is a practical face layer for in-world decay.
-- **Author owns:** **five ARMO variants** (stages 0–4) — same mesh family, baked bruise/dirt colors per stage to match ModConfig `decayStageN` look. No runtime tint.
-- **Script owns (later):** on stage sync (`SyncDecayForKnifeCorpse` / WorldScan overlay path), unequip prior stage piece and `EquipItem` the matching stage ARMO; strip on consume, despawn, or stage clear. Fail loud if FormID missing. Soft with H P2 stage clock — do not FindActors again.
-- **Constraints:** head gear can clip hair / hide vanilla face; keep piece light (face shell, not a full helmet silhouette unless intended). Do not resurrect corpses for this path. Soft dep none required if armor ships in `PickmansWhisper.esp`.
-- Phases TBD after armor assets exist (P0 equip one stage POC → P1 swap across five ARMOs → P2 bed-gift parity).
+- **Hard no:** FaceGen Head (slot 32) full-head replacement → identical BaseFemaleHead on every corpse.
+- **Working recipe:** BGSM Decal + alpha blend; NIF NiAlphaProperty flags **4844**; shader Decal / no ZBuffer_Write; Outfit Studio segment Object Code **25** (Head/Hair); CK ARMA+ARMO on **54**.
+- **Author next:** photo-edit stage-0 DDS toward putrefaction; **one asset set per ModConfig stage 0–4** (stage 0 done). Extra decals optional on the same layering rules (one BGSM per shape).
+- **Script later:** equip/swap/strip stage ARMO on knife-tracked (optional bed-gift) corpses from H stage clock. Fail loud if FormID missing. Do not resurrect for this path.
+- **ESP caution:** uild_hunger_spell_esp.py / deploy can overwrite CK-added ARMO — preserve FormIDs in the builder before relying on script equip.
 
 ## Slice J — slow hunger + peak wait rewards
 
@@ -150,7 +151,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - `HeldCorpses[]` + soft claim token on knife-kill victims.
 - Compatible with Necromantic holds; no ESP master dependency.
 - Ephemeral bed-hallucination corpses (Slice G) are **not** long-term hold targets.
-- Soft with **H** / **I**: preserved / claimed corpses pause or reset decay (and head-armor stage).
+- Soft with **H** / **I**: preserved / claimed corpses pause or reset decay (and face-decay stage).
 
 
 
@@ -159,7 +160,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Soft-gate or enhance via Lady Killer / Black Widow.
 - Optional Cannibal; stretch butcher-shop cell.
 - Occult Pact bridges documented only until that mod exists.
-- Soft with **H**: Cannibal / blade-eat consume path that clears Victims (strip decay head armor first).
+- Soft with **H**: Cannibal / blade-eat consume path that clears Victims (clear face-decay visuals first).
 
 
 
@@ -194,7 +195,7 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 - Corpse sever (F): limb-under-reticule unavailable in Papyrus; MSG menu + `Dismember` must leave gore pieces (no force-explode / no BloodyMess gib).
 - Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
 - Corpse decay / places (H): unloaded Actor refs; decay vs K preserve race; eat must clear Victims without orphaning place data; exterior place labels are fuzzy.
-- Decay head armor (I): five stage ARMOs (not live tint); hair/face clip; equip reliability on ragdolls; strip on consume/despawn.
+- Face decay (I): slot-54 decal ARMO preserves FaceGen; stage tints + ESP/builder merge; equip on ragdolls; strip on consume/despawn.
 - Hunger pacing (J): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (M): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 

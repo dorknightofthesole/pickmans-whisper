@@ -5,17 +5,21 @@ Scriptname PickmansWhisperCorpseDecayScript extends Quest
 ; Uses Overlays.Add (not AddEntry) so we can tint — AddEntry hardcodes rgba 0.
 ; Wound ids: DecayWoundOverlays.txt | Skin ids: DecaySkinOverlays.txt
 ; Face ids: DecayFaceOverlays.txt — SFT Damage FULL names (LooksMenu body overlays cannot paint faces).
+; Slice I face decals: DecayFaceStages.txt (stage→color) + DecayFaceArmorIds.txt (color→ARMO FormID).
 
 String PLUGIN_LOOKSMENU = "LooksMenu.esp"
 String PLUGIN_DEAD_OVERLAYS = "INVB_OverlayFramework_DeadOverlays.esp"
 String PLUGIN_PORC_OVERLAYS = "porcOverlays.esl"
 String PLUGIN_SFT = "SFT.esp"
+String PLUGIN_PW = "PickmansWhisper.esp"
 ; SFT.esp FormLists of Damage / Boxer headparts (female / male). Soft dep — no ESP master.
 Int FID_SFT_DAMAGE_F = 0x000008D ; SFT_Damage
 Int FID_SFT_DAMAGE_M = 0x00000B2 ; SFT_Damage_M
 String WOUND_FILE = "DecayWoundOverlays.txt"
 String SKIN_FILE = "DecaySkinOverlays.txt"
 String FACE_FILE = "DecayFaceOverlays.txt"
+String FACE_STAGE_FILE = "DecayFaceStages.txt"
+String FACE_ARMOR_IDS_FILE = "DecayFaceArmorIds.txt"
 String CONFIG_PATH = ".\\Data\\PickmansWhisper\\config\\"
 Int BED_GIFT_WOUND_COUNT = 6 ; doubled for coverage / progression look-test (was 3)
 ; Bed gift applies ModConfig decayStage4 (Black Putrefaction) after DeathMarks wounds.
@@ -27,6 +31,8 @@ Float WOUND_TINT_R = 1.0
 Float WOUND_TINT_G = 0.92
 Float WOUND_TINT_B = 0.88
 Float WOUND_TINT_A = 0.75
+Int FACE_ARMOR_MAX = 16
+Int DECAY_STAGE_COUNT = 5
 
 String[] WoundTemplates
 Int WoundTemplateCount = 0
@@ -37,6 +43,14 @@ Bool SkinBankLoaded = False
 String[] FaceTemplates
 Int FaceTemplateCount = 0
 Bool FaceBankLoaded = False
+; Slice I — color label → local ARMO FormID (from DecayFaceArmorIds.txt).
+String[] FaceArmorLabels
+Int[] FaceArmorArmoFids
+Int FaceArmorCount = 0
+; Per ModConfig stage 0..4 — resolved ARMO local FormID (0 = missing).
+Int[] FaceStageArmoFids
+Bool FaceArmorBanksLoaded = False
+String FaceArmorLoadStatus = ""
 String Property LastCorpseDecayStatus = "" Auto
 
 PickmansWhisperMainQuestScript Function Main()
@@ -49,6 +63,16 @@ EndFunction
 
 Float LastOverlaySyncReal = 0.0
 Float OVERLAY_SYNC_MIN_SECONDS = 8.0
+
+; Victims MCM test harness: after ForceDecayKillClockToStage, drop rate-limit / fail backoff
+; so the next WorldScan snapshot can SyncDecayForKnifeCorpse instead of waiting 8–30s.
+Function NoteForcedDecayClockForTest()
+	LastOverlaySyncReal = 0.0
+	PickmansWhisperMainQuestScript m = Main()
+	If m
+		m.DecaySyncBackoffUntil = 0.0
+	EndIf
+EndFunction
 
 ; Kicked via WorldScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
 ; Consumes WorldScan.ScanDead — never FindActors here.
@@ -179,6 +203,249 @@ Bool Function EnsureFaceBank()
 		Debug.Notification("Pickman's Whisper: " + FACE_FILE + " missing or empty")
 		Debug.Trace("PickmansWhisper: ERROR DecayFaceOverlays load failed — " + m.GetLastStageLoadStatus())
 		Return False
+	EndIf
+	Return True
+EndFunction
+
+Int Function FindCharIndex(String s, String ch)
+	If !s || !ch
+		Return -1
+	EndIf
+	Int i = 0
+	Int n = GardenOfEden.StrLength(s)
+	While i < n
+		If GardenOfEden.SubStr(s, i, 1) == ch
+			Return i
+		EndIf
+		i += 1
+	EndWhile
+	Return -1
+EndFunction
+
+Int Function FindFaceArmorLabelIndex(String label)
+	If !label
+		Return -1
+	EndIf
+	Int i = 0
+	While i < FaceArmorCount
+		If FaceArmorLabels[i] == label
+			Return i
+		EndIf
+		i += 1
+	EndWhile
+	Return -1
+EndFunction
+
+; DecayFaceArmorIds.txt + DecayFaceStages.txt — fail loud if missing/incomplete.
+Bool Function EnsureDecayFaceArmorBanks()
+	If FaceArmorBanksLoaded && FaceArmorCount > 0
+		Return True
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		FaceArmorLoadStatus = "ERROR: Main missing"
+		SetCorpseDecayStatus(FaceArmorLoadStatus)
+		Return False
+	EndIf
+	FaceArmorLabels = new String[16]
+	FaceArmorArmoFids = new Int[16]
+	FaceArmorCount = 0
+	FaceStageArmoFids = new Int[5]
+	Int si = 0
+	While si < DECAY_STAGE_COUNT
+		FaceStageArmoFids[si] = 0
+		si += 1
+	EndWhile
+	FaceArmorBanksLoaded = False
+	FaceArmorLoadStatus = "READ FAILED"
+
+	If !GardenOfEden2.DoesFileExist(FACE_ARMOR_IDS_FILE, CONFIG_PATH)
+		FaceArmorLoadStatus = "MISSING " + FACE_ARMOR_IDS_FILE
+		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus + " — rebuild ESP")
+		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR " + FACE_ARMOR_IDS_FILE + " missing at " + CONFIG_PATH)
+		Return False
+	EndIf
+	If !GardenOfEden2.DoesFileExist(FACE_STAGE_FILE, CONFIG_PATH)
+		FaceArmorLoadStatus = "MISSING " + FACE_STAGE_FILE
+		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
+		Debug.Notification("Pickman's Whisper: " + FACE_STAGE_FILE + " missing")
+		Debug.Trace("PickmansWhisper: ERROR " + FACE_STAGE_FILE + " missing at " + CONFIG_PATH)
+		Return False
+	EndIf
+
+	String[] idRaw = GardenOfEden2.GetLinesFromFile(FACE_ARMOR_IDS_FILE, CONFIG_PATH)
+	If !idRaw || idRaw.Length == 0
+		FaceArmorLoadStatus = "EMPTY " + FACE_ARMOR_IDS_FILE
+		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
+		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " empty — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR " + FACE_ARMOR_IDS_FILE + " empty")
+		Return False
+	EndIf
+	Int i = 0
+	While i < idRaw.Length && FaceArmorCount < FACE_ARMOR_MAX
+		String line = m.TrimString(idRaw[i])
+		i += 1
+		If line == ""
+			; skip
+		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
+			; comment
+		Else
+			Int eq = FindCharIndex(line, "=")
+			If eq > 0
+				String label = m.TrimString(GardenOfEden.SubStr(line, 0, eq))
+				String val = m.TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				Int comma = FindCharIndex(val, ",")
+				If label != "" && comma > 0
+					String armoStr = m.TrimString(GardenOfEden.SubStr(val, comma + 1, -1))
+					Int armoFid = m.ParsePositiveInt(armoStr)
+					If armoFid > 0
+						FaceArmorLabels[FaceArmorCount] = label
+						FaceArmorArmoFids[FaceArmorCount] = armoFid
+						FaceArmorCount += 1
+					EndIf
+				EndIf
+			EndIf
+		EndIf
+	EndWhile
+	If FaceArmorCount <= 0
+		FaceArmorLoadStatus = "EMPTY rows " + FACE_ARMOR_IDS_FILE
+		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
+		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " has no ARMO rows")
+		Debug.Trace("PickmansWhisper: ERROR " + FACE_ARMOR_IDS_FILE + " parsed 0 ARMOs")
+		Return False
+	EndIf
+
+	String[] stageRaw = GardenOfEden2.GetLinesFromFile(FACE_STAGE_FILE, CONFIG_PATH)
+	If !stageRaw || stageRaw.Length == 0
+		FaceArmorLoadStatus = "EMPTY " + FACE_STAGE_FILE
+		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
+		Debug.Notification("Pickman's Whisper: " + FACE_STAGE_FILE + " empty")
+		Debug.Trace("PickmansWhisper: ERROR " + FACE_STAGE_FILE + " empty")
+		Return False
+	EndIf
+	Int mapped = 0
+	i = 0
+	While i < stageRaw.Length
+		String sline = m.TrimString(stageRaw[i])
+		i += 1
+		If sline == ""
+			; skip
+		ElseIf GardenOfEden.SubStr(sline, 0, 1) == "#"
+			; comment
+		Else
+			Int seq = FindCharIndex(sline, "=")
+			If seq > 0
+				String stageStr = m.TrimString(GardenOfEden.SubStr(sline, 0, seq))
+				String label = m.TrimString(GardenOfEden.SubStr(sline, seq + 1, -1))
+				Int stage = m.ParsePositiveInt(stageStr)
+				; ParsePositiveInt rejects 0? Check - for stage 0 need to allow 0
+				If stageStr == "0"
+					stage = 0
+				EndIf
+				If stage >= 0 && stage < DECAY_STAGE_COUNT && label != ""
+					Int li = FindFaceArmorLabelIndex(label)
+					If li < 0
+						FaceArmorLoadStatus = "UNKNOWN label " + label + " (stage " + stage + ")"
+						SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus + " — rebuild ESP / check " + FACE_ARMOR_IDS_FILE)
+						Debug.Notification("Pickman's Whisper: face stage " + stage + " label " + label + " has no ARMO")
+						Debug.Trace("PickmansWhisper: ERROR face stage map — " + FaceArmorLoadStatus)
+						Return False
+					EndIf
+					FaceStageArmoFids[stage] = FaceArmorArmoFids[li]
+					mapped += 1
+				EndIf
+			EndIf
+		EndIf
+	EndWhile
+	si = 0
+	While si < DECAY_STAGE_COUNT
+		If FaceStageArmoFids[si] <= 0
+			FaceArmorLoadStatus = "MISSING stage " + si + " in " + FACE_STAGE_FILE
+			SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
+			Debug.Notification("Pickman's Whisper: " + FACE_STAGE_FILE + " missing stage " + si)
+			Debug.Trace("PickmansWhisper: ERROR " + FaceArmorLoadStatus)
+			Return False
+		EndIf
+		si += 1
+	EndWhile
+	FaceArmorBanksLoaded = True
+	FaceArmorLoadStatus = FaceArmorCount + " ARMOs / " + mapped + " stages"
+	Debug.Trace("PickmansWhisper: decay face armor banks loaded — " + FaceArmorLoadStatus)
+	Return True
+EndFunction
+
+Function StripDecayFaceArmors(Actor akCorpse)
+	If !akCorpse || FaceArmorCount <= 0
+		Return
+	EndIf
+	Int i = 0
+	While i < FaceArmorCount
+		Form f = Game.GetFormFromFile(FaceArmorArmoFids[i], PLUGIN_PW)
+		If f
+			Int n = akCorpse.GetItemCount(f)
+			If n > 0
+				akCorpse.UnequipItem(f, False, True)
+				akCorpse.RemoveItem(f, n, True)
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+EndFunction
+
+; Equip playable slot-54 face decal for ModConfig stage. Removable (abPreventRemoval=false).
+Bool Function ApplyDecayFaceArmorForStage(Actor akCorpse, Int aiStage)
+	If !akCorpse
+		SetCorpseDecayStatus("skip: no corpse for face armor")
+		Return False
+	EndIf
+	If aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		SetCorpseDecayStatus("ERROR: face armor stage index " + aiStage)
+		Debug.Trace("PickmansWhisper: ERROR ApplyDecayFaceArmorForStage — bad stage " + aiStage)
+		Return False
+	EndIf
+	If !EnsureDecayFaceArmorBanks()
+		Return False
+	EndIf
+	Int fid = FaceStageArmoFids[aiStage]
+	If fid <= 0
+		SetCorpseDecayStatus("ERROR: no face ARMO FormID for stage " + aiStage)
+		Debug.Notification("Pickman's Whisper: no face ARMO for decay stage " + aiStage)
+		Debug.Trace("PickmansWhisper: ERROR ApplyDecayFaceArmorForStage — fid 0 stage " + aiStage)
+		Return False
+	EndIf
+	Form armor = Game.GetFormFromFile(fid, PLUGIN_PW)
+	If !armor
+		SetCorpseDecayStatus("ERROR: GetFormFromFile face ARMO 0x" + fid + " failed")
+		Debug.Notification("Pickman's Whisper: face ARMO FormID missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR ApplyDecayFaceArmorForStage GetFormFromFile fid=" + fid)
+		Return False
+	EndIf
+	StripDecayFaceArmors(akCorpse)
+	akCorpse.AddItem(armor, 1, True)
+	; Playable / removable — do not lock with abPreventRemoval.
+	akCorpse.EquipItem(armor, False, True)
+	; Dead actors often report IsEquipped=false even when the item is on them — trust inventory.
+	Int held = akCorpse.GetItemCount(armor)
+	If held <= 0
+		SetCorpseDecayStatus("ERROR: face ARMO AddItem failed stage " + aiStage + " fid=" + fid)
+		Debug.Notification("Pickman's Whisper: face armor AddItem failed (stage " + aiStage + ")")
+		Debug.Trace("PickmansWhisper: ERROR ApplyDecayFaceArmorForStage AddItem stage=" + aiStage + " fid=" + fid)
+		Return False
+	EndIf
+	Bool worn = akCorpse.IsEquipped(armor)
+	If !worn
+		; Retry once — some corpses need a second EquipItem after AddItem.
+		akCorpse.EquipItem(armor, False, True)
+		worn = akCorpse.IsEquipped(armor)
+	EndIf
+	If worn
+		SetCorpseDecayStatus("face ARMO stage " + aiStage + " fid=" + fid + " equipped")
+		Debug.Trace("PickmansWhisper: decay face ARMO equipped stage=" + aiStage + " fid=" + fid)
+	Else
+		; Inventory has it; visuals may still show. Do not fail the whole decay stage on IsEquipped.
+		SetCorpseDecayStatus("face ARMO stage " + aiStage + " fid=" + fid + " in inventory (IsEquipped=0 on corpse)")
+		Debug.Trace("PickmansWhisper: WARN decay face ARMO IsEquipped=0 on corpse stage=" + aiStage + " fid=" + fid + " count=" + held + " — kept (dead IsEquipped often lies)")
 	EndIf
 	Return True
 EndFunction
@@ -794,50 +1061,73 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 		SetCorpseDecayStatus("ERROR: decay stage index " + aiStage)
 		Return False
 	EndIf
-	If !EnsureSkinBank()
-		Return False
-	EndIf
-	If !SoftSkinDepsReady()
-		Return False
-	EndIf
+	; Body LooksMenu overlays FIRST, face ARMO LAST.
+	; Overlays.Update (clear/add skins) unequips slot-54 face decals — that looked like
+	; "face changed once, then snapped back" when face was applied before the body pass.
 	Float tintR = m.GetDecayStageTintR(aiStage)
 	Float tintG = m.GetDecayStageTintG(aiStage)
 	Float tintB = m.GetDecayStageTintB(aiStage)
 	Float tintA = m.GetDecayStageTintA(aiStage)
 	String stageName = m.GetDecayStageName(aiStage)
-	String[] stageBank = new String[64]
-	Int n = 0
-	String[] skins = new String[8]
-	Int skinCount = m.FillDecayStageSkins(aiStage, skins)
-	Int s = 0
-	While s < skinCount
-		If skins[s] != ""
-			stageBank[n] = skins[s]
-			n += 1
-		EndIf
-		s += 1
-	EndWhile
+	Bool bodyOk = False
+	String bodyStatus = ""
+	Int skinCount = 0
 	Int scarCount = 0
-	If m.GetDecayStageAllScars(aiStage)
-		Int i = 0
-		While i < SkinTemplateCount
-			String id = SkinTemplates[i]
-			If IsScarSkinTemplate(id)
-				stageBank[n] = id
+	If !EnsureSkinBank()
+		bodyStatus = LastCorpseDecayStatus
+	ElseIf !SoftSkinDepsReady()
+		bodyStatus = LastCorpseDecayStatus
+	Else
+		String[] stageBank = new String[64]
+		Int n = 0
+		String[] skins = new String[8]
+		skinCount = m.FillDecayStageSkins(aiStage, skins)
+		Int s = 0
+		While s < skinCount
+			If skins[s] != ""
+				stageBank[n] = skins[s]
 				n += 1
-				scarCount += 1
 			EndIf
-			i += 1
+			s += 1
 		EndWhile
+		If m.GetDecayStageAllScars(aiStage)
+			Int i = 0
+			While i < SkinTemplateCount
+				String id = SkinTemplates[i]
+				If IsScarSkinTemplate(id)
+					stageBank[n] = id
+					n += 1
+					scarCount += 1
+				EndIf
+				i += 1
+			EndWhile
+		EndIf
+		If n <= 0
+			bodyStatus = "empty skin bank"
+			Debug.Notification("Pickman's Whisper: empty decay stage bank — " + stageName)
+			Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays empty skin bank stage=" + aiStage)
+		Else
+			; Wipe prior Porcupine Scars/SkinTexture so stage tint swaps (0–2 share SkinTexture_07).
+			ClearSkinBankOverlays(akCorpse, SkinTemplates, SkinTemplateCount)
+			ApplyTintedAllSkinTemplatesKeepExisting(akCorpse, stageBank, n, 1, tintR, tintG, tintB, tintA)
+			bodyOk = True
+			bodyStatus = LastCorpseDecayStatus
+		EndIf
 	EndIf
-	If n <= 0
-		SetCorpseDecayStatus("ERROR: empty stage bank for " + stageName)
-		Debug.Notification("Pickman's Whisper: empty decay stage bank — " + stageName)
-		Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — " + LastCorpseDecayStatus)
+
+	; Slice I face decal — after LooksMenu Updates so it is not stripped.
+	If !ApplyDecayFaceArmorForStage(akCorpse, aiStage)
 		Return False
 	EndIf
-	ApplyTintedAllSkinTemplatesKeepExisting(akCorpse, stageBank, n, 1, tintR, tintG, tintB, tintA)
-	SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " a=" + tintA + " | " + LastCorpseDecayStatus)
+	String faceStatus = LastCorpseDecayStatus
+	If bodyOk
+		SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " a=" + tintA + " | " + faceStatus + " | " + bodyStatus)
+		Return True
+	EndIf
+	; Face stuck; stamp success so WorldScan does not Strip+retry every sync (face thrash).
+	SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " face ok | body skipped — " + bodyStatus)
+	Debug.Notification("Pickman's Whisper: body decay skipped — " + bodyStatus)
+	Debug.Trace("PickmansWhisper: WARN ApplyDecayStageOverlays body skipped — " + LastCorpseDecayStatus)
 	Return True
 EndFunction
 

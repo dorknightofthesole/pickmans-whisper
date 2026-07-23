@@ -329,8 +329,8 @@ def test_e5_load_pick(text: str) -> None:
     _ = start_evt  # keep unused quiet
     _ = end_evt
     deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
-    if "necromantic" not in deploy:
-        fail("build-deploy-local.ps1 must copy config/necromantic")
+    if 'Sync-DataTree "PickmansWhisper"' not in deploy and "necromantic" not in deploy:
+        fail("build-deploy-local.ps1 must Sync-DataTree PickmansWhisper (includes config/necromantic)")
     if "Necromantic\\Start" not in deploy and "Necromantic/Start" not in deploy:
         fail("deploy must verify Necromantic Start xwm (recursive sound)")
     if "Get-ChildItem" not in deploy and "Copy-Item" not in deploy:

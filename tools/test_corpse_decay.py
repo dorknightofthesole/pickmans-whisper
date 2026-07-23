@@ -143,14 +143,27 @@ def test_decay_script(decay: str) -> None:
     if "SoftDepsReady" not in tinted and "IsPluginInstalled" not in tinted:
         fail("ApplyDecayWoundOverlaysTinted must gate on soft deps")
     stage_fn = extract_function(decay, "ApplyDecayStageOverlays")
+    if "ApplyDecayFaceArmorForStage" not in stage_fn:
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage (Slice I)")
     if "FillDecayStageSkins" not in stage_fn:
         fail("ApplyDecayStageOverlays must FillDecayStageSkins from ModConfig")
     if "GetDecayStageTintA" not in stage_fn:
         fail("ApplyDecayStageOverlays must use GetDecayStageTintA")
+    if "ClearSkinBankOverlays" not in stage_fn:
+        fail("ApplyDecayStageOverlays must ClearSkinBankOverlays before stage skins (tint swap)")
     if "ApplyTintedAllSkinTemplatesKeepExisting" not in stage_fn:
         fail("ApplyDecayStageOverlays must ApplyTintedAllSkinTemplatesKeepExisting")
+    if stage_fn.find("ClearSkinBankOverlays") > stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting"):
+        fail("ApplyDecayStageOverlays must clear skin bank BEFORE KeepExisting apply")
     if "GetDecayStageAllScars" not in stage_fn:
         fail("ApplyDecayStageOverlays must honor ModConfig scars flag")
+    # Face after body — Overlays.Update strips slot-54 if face is equipped first.
+    face_idx = stage_fn.find("ApplyDecayFaceArmorForStage")
+    skin_idx = stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting")
+    if face_idx < 0 or skin_idx < 0 or face_idx < skin_idx:
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage AFTER body skin apply")
+    if "body skipped" not in stage_fn:
+        fail("ApplyDecayStageOverlays must soft-skip body (face still succeeds) when skins/deps fail")
     bed = extract_function(decay, "ApplyBedGiftDecayOverlays")
     if "ApplyDecayWoundOverlaysTinted" not in bed:
         fail("ApplyBedGiftDecayOverlays must ApplyDecayWoundOverlaysTinted (darkened wounds)")

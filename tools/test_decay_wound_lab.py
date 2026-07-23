@@ -234,8 +234,18 @@ def test_lab_script(lab: str) -> None:
         fail("ApplyDecayStageOverlays must FillDecayStageSkins from ModConfig")
     if "GetDecayStageAllScars" not in decay_stage:
         fail("ApplyDecayStageOverlays must use GetDecayStageAllScars from ModConfig")
+    if "ClearSkinBankOverlays" not in decay_stage:
+        fail("ApplyDecayStageOverlays must ClearSkinBankOverlays (Victims/WorldScan share path)")
     if "ApplyTintedAllSkinTemplatesKeepExisting" not in decay_stage:
         fail("ApplyDecayStageOverlays must ApplyTintedAllSkinTemplatesKeepExisting")
+    if decay_stage.find("ClearSkinBankOverlays") > decay_stage.find(
+        "ApplyTintedAllSkinTemplatesKeepExisting"
+    ):
+        fail("ApplyDecayStageOverlays must clear before KeepExisting")
+    if decay_stage.find("ApplyDecayFaceArmorForStage") < decay_stage.find(
+        "ApplyTintedAllSkinTemplatesKeepExisting"
+    ):
+        fail("ApplyDecayStageOverlays must equip face AFTER body skins (Update strips ARMO)")
     # Overlay Update Wait must not freeze MCM CallFunction applies.
     for fn_name in ("ApplyTintedTemplateN", "ApplyTintedAllTemplates"):
         fn_body = extract_function(decay_txt_full, fn_name)

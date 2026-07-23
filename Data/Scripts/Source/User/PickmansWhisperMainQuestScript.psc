@@ -121,6 +121,10 @@ Int TIMER_BOOT_ARM = 7 ; post-load delayed ArmRuntimeLoops (OnInit often skips o
 Int TIMER_KILL_SCAN = 13 ; legacy — CancelTimer only; WorldScan owns TIMER_WORLD_SCAN=16
 Int TIMER_RENAME_PROMPT = 14 ; delayed renamePromptFemaleNPC (avoid clobbering recognition toast)
 Int TIMER_DECAY_SYNC = 15 ; legacy — CancelTimer only; overlays via OnWorldScan + CallFunctionNoWait
+; Keep declared — mid-save OnTimer still references this id; removing it wedged Main
+; ("Failed to find variable TIMER_DECAY_ADVANCE"). Apply body lives on VictimsScript.
+Int TIMER_DECAY_ADVANCE = 17
+Float DECAY_ADVANCE_DELAY = 0.35
 Float RENAME_PROMPT_DELAY = 2.5
 String PendingRenamePrompt = "" ; queued ModConfig line for TIMER_RENAME_PROMPT
 Actor LastButcherCorpse = None ; last valid sever target (floor corpses miss camera rays)
@@ -315,10 +319,7 @@ Int VictimSlotCount = 0
 RefCollectionAlias Property VictimsHold Auto ; optional hold; AddRef when present
 String Property LastVictimStatus = "" Auto ; MCM Victims — last apply / aimed status
 String Property LastVictimsSummary = "" Auto ; MCM Victims — short list
-; Camera target is usually None while MCM is open — cache last world aim for Victims page.
-Actor LastVictimsAimActor = None
-Int LastVictimsAimId = 0
-String LastVictimsAimLine = "" ; pushed to sVictimAimed (survives RefreshMenu re-push)
+; Aim cache + MCM Advance timer live on PickmansWhisperVictimsScript (own lock).
 
 ; TargetOverrides.txt — opt-in filter gates (default off = current safe blocks).
 Bool AllowChildFemalesOverride = False
@@ -438,6 +439,10 @@ Function HandleGameResume(String reason)
 	RefreshHungerPanel(False)
 	; Potential Victims summary only — SetDisplayName re-applies lazily when she is seen.
 	WriteVictimsSummaryToMcm()
+	PickmansWhisperVictimsScript victims = Victims()
+	If victims
+		victims.EnsureMcmOpenRegistered()
+	EndIf
 	Debug.Trace("PickmansWhisper: game resume (" + reason + ") " + DEBUG_BUILD)
 	ToastDebug("Pickman's Whisper load [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
@@ -651,6 +656,11 @@ PickmansWhisperWorldScanScript Function WorldScan()
 	Return (Self as Quest) as PickmansWhisperWorldScanScript
 EndFunction
 
+PickmansWhisperVictimsScript Function Victims()
+	; Caprica forbids Self-as-sibling; Quest intermediate is the FO4 co-script cast.
+	Return (Self as Quest) as PickmansWhisperVictimsScript
+EndFunction
+
 ; Verify WorldScan + VoiceScan attached (dispatch is direct from WorldScan, not CustomEvent).
 Function RegisterWorldScanEvents()
 	PickmansWhisperWorldScanScript scan = WorldScan()
@@ -663,6 +673,13 @@ Function RegisterWorldScanEvents()
 	If !voice
 		Debug.Notification("Pickman's Whisper: VoiceScan script missing — rebuild PickmansWhisper.esp")
 		Debug.Trace("PickmansWhisper: ERROR VoiceScan script missing on Main quest")
+	EndIf
+	PickmansWhisperVictimsScript victims = Victims()
+	If !victims
+		Debug.Notification("Pickman's Whisper: Victims script missing — rebuild PickmansWhisper.esp")
+		Debug.Trace("PickmansWhisper: ERROR Victims script missing on Main quest")
+	Else
+		victims.EnsureMcmOpenRegistered()
 	EndIf
 EndFunction
 
@@ -965,6 +982,12 @@ Event OnTimer(Int aiTimerID)
 			ShowVoiceToast(PendingRenamePrompt)
 			Debug.Trace("PickmansWhisper: name-her prompt (delayed) | " + PendingRenamePrompt)
 			PendingRenamePrompt = ""
+		EndIf
+	ElseIf aiTimerID == TIMER_DECAY_ADVANCE
+		; Stale Main timer from older builds / save stacks — forward to VictimsScript.
+		PickmansWhisperVictimsScript v = Victims()
+		If v
+			v.RunPendingDecayAdvance()
 		EndIf
 	EndIf
 EndEvent
@@ -2105,98 +2128,126 @@ Function WriteVictimsSummaryToMcm()
 	EndIf
 EndFunction
 
-Function WriteVictimsAimedToMcm()
+; --- Victims MCM façades (logic on PickmansWhisperVictimsScript) ---------------
+
+Int Function GetDecayKillSlotCount()
+	EnsureDecayKillLists()
+	Return DecayKillSlotCount
+EndFunction
+
+; Aimed-row fallback when Victims cache is empty (no FindActors).
+String Function FormatNoAimVictimsAimLine()
+	EnsureDecayKillLists()
+	If DecayKillSlotCount < 1
+		Return ""
+	EndIf
+	Int lastId = DecayKillIds[DecayKillSlotCount - 1]
+	String hexId = "" + lastId
+	Form lastForm = Game.GetForm(lastId)
+	If lastForm
+		hexId = GardenOfEden.GetHexFormID(lastForm)
+	EndIf
+	Return "(no aim cache) last knife kill id=0x" + hexId
+EndFunction
+
+; Decay row without re-entering Victims.Resolve (avoids lock deadlock from Push).
+Function WriteDecayStageStatusToMcmForActor(Actor ak)
 	If !MCM.IsInstalled()
 		Return
 	EndIf
-	If !LastVictimsAimLine
-		MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", "(look at an adult woman, then open MCM)")
-	Else
-		MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", LastVictimsAimLine)
+	If ak
+		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForActor(ak))
+		SyncVictimDecayStageStepper(ak.GetFormID())
+		Return
+	EndIf
+	EnsureDecayKillLists()
+	If DecayKillSlotCount > 0
+		Int lastId = DecayKillIds[DecayKillSlotCount - 1]
+		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForFormId(lastId, "last kill") + " (no aim)")
+		SyncVictimDecayStageStepper(lastId)
+		Return
+	EndIf
+	MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", "(no aim / no knife kills tracked)")
+EndFunction
+
+; Keep Victims "Set decay stage" stepper aligned with the aimed / last-kill clock.
+; Prefer resolved clock stage (what WorldScan / ForceDecay want) over LastStage-1, so a queued
+; apply does not snap the stepper backward before overlays land.
+Function SyncVictimDecayStageStepper(Int formId)
+	If !MCM.IsInstalled() || formId == 0
+		Return
+	EndIf
+	If FindDecayKillSlot(formId) < 0
+		Return
+	EndIf
+	If !DecayStagesReady()
+		LoadModConfig()
+	EndIf
+	If !DecayStagesReady()
+		Return
+	EndIf
+	Int resolved = ResolveDecayStageForKill(formId)
+	Int applied = GetDecayKillLastStage(formId)
+	Int visual = resolved
+	If visual < 0
+		visual = applied
+	EndIf
+	If visual < 0
+		visual = 0
+	ElseIf visual > 4
+		visual = 4
+	EndIf
+	MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", visual)
+EndFunction
+
+Function WriteVictimsAimedToMcm()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.WriteVictimsAimedToMcm()
 	EndIf
 EndFunction
 
-; Remember world aim — GetCameraTargetReference is usually None while Pause/MCM is open.
 Function NoteVictimsAimActor(Actor ak)
-	If !ak || ak == PlayerRef
-		Return
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.NoteVictimsAimActor(ak)
 	EndIf
-	If ak.IsDisabled()
-		Return
-	EndIf
-	LastVictimsAimActor = ak
-	LastVictimsAimId = ak.GetFormID()
 EndFunction
 
-; Victims MCM resolve — cheap only (cache + camera/activate). World facing is filled
-; by killscan NoteFacedDeadForVictimsAim. Butcher keeps its own facing scan.
 Actor Function ResolveVictimsAimActor()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	; Live camera/activate when available (in-world).
-	Actor live = GetLookAimActor()
-	If live && live != PlayerRef && !live.IsDisabled()
-		NoteVictimsAimActor(live)
-		Return live
-	EndIf
-	If LastVictimsAimActor && LastVictimsAimId != 0
-		If LastVictimsAimActor.GetFormID() == LastVictimsAimId && !LastVictimsAimActor.IsDisabled()
-			Return LastVictimsAimActor
-		EndIf
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		Return v.ResolveVictimsAimActor()
 	EndIf
 	Return None
 EndFunction
 
 Function PushVictimsPanelStrings()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.PushVictimsPanelStrings()
 	EndIf
-	Actor aimed = ResolveVictimsAimActor()
-	LastVictimsAimLine = "(face her in-world ~2s, then open MCM — no scan while menu open)"
-	If aimed
-		String nm = GetActorDisplayName(aimed)
-		If !nm
-			nm = "unnamed"
-		EndIf
-		String src = "cache"
-		Actor live = GetLookAimActor()
-		If live && live == aimed
-			src = "aim"
-		EndIf
-		LastVictimsAimLine = nm + "  id=0x" + GardenOfEden.GetHexFormID(aimed) + " (" + src + ")"
-		EnsureVictimDisplayName(aimed)
-	ElseIf DecayKillSlotCount > 0
-		EnsureDecayKillLists()
-		Int lastId = DecayKillIds[DecayKillSlotCount - 1]
-		String hexId = "" + lastId
-		Form lastForm = Game.GetForm(lastId)
-		If lastForm
-			hexId = GardenOfEden.GetHexFormID(lastForm)
-		EndIf
-		LastVictimsAimLine = "(no aim cache) last knife kill id=0x" + hexId
-	EndIf
-	WriteVictimsAimedToMcm()
-	WriteDecayStageStatusToMcm()
-	WriteVictimsSummaryToMcm()
-	WriteVictimsStatusToMcm()
 EndFunction
 
 Function RefreshVictimsPanel(Bool refreshMenu = True)
-	; Same order as RefreshDebugStatus: RefreshMenu reloads settings.ini and wipes
-	; SetModSettingString — push live rows AFTER the menu refresh.
-	PushVictimsPanelStrings()
-	If refreshMenu && MCM.IsInstalled()
-		MCM.RefreshMenu()
-		PushVictimsPanelStrings()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.RefreshVictimsPanel(refreshMenu)
 	EndIf
 EndFunction
 
-; Debug / Victims — prove MCM CallFunction reaches MainQuestScript (multi-script quest needs scriptName).
+; Debug — prove MCM CallFunction reaches MainQuestScript (multi-script quest needs scriptName).
 Function MCMQuestPing()
+	Int cacheId = 0
+	String victimsBit = "VictimsScript=MISSING"
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		cacheId = v.LastVictimsAimId
+		victimsBit = "VictimsScript=OK"
+	EndIf
 	Debug.Notification("PW QUEST PING — CallFunction hit MainQuestScript")
 	Debug.Trace("PickmansWhisper: MCMQuestPing OK")
-	Debug.MessageBox("Pickman's Whisper — QUEST PING\n\nCallFunction reached PickmansWhisperMainQuestScript.\nBond=" + BondStarted + " killsTracked=" + DecayKillSlotCount + " cacheId=" + LastVictimsAimId)
+	Debug.MessageBox("Pickman's Whisper — QUEST PING\n\nCallFunction reached PickmansWhisperMainQuestScript.\nBond=" + BondStarted + " killsTracked=" + DecayKillSlotCount + " cacheId=" + cacheId + "\n" + victimsBit)
 EndFunction
 
 ; MCM Debug — one MessageBox with every gate that can silence whispers.
@@ -2243,50 +2294,120 @@ Function DebugVoicePathDump()
 	Debug.MessageBox(body)
 EndFunction
 
-; MCM CallFunction entry (no args) — button "Refresh aimed / list".
-; Must stay cheap: no FindActors, no overlay apply before the MessageBox.
+; Façade — MCM CallFunction targets VictimsScript (own lock). Kept for old configs.
 Function MCMRefreshVictimsPanel()
-	Debug.Notification("PW Victims Refresh — CallFunction hit")
-	Debug.Trace("PickmansWhisper: MCMRefreshVictimsPanel OK")
-	RefreshVictimsPanel(True)
-	String decayLine = "(MCM not installed)"
-	If MCM.IsInstalled()
-		decayLine = MCM.GetModSettingString(MOD_NAME, "sDecayStage:Victims")
-		If !decayLine
-			decayLine = "(empty after push)"
-		EndIf
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.MCMRefreshVictimsPanel()
+	Else
+		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR MCMRefreshVictimsPanel — VictimsScript missing")
+		Debug.MessageBox("Pickman's Whisper — Victims\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
-	Debug.MessageBox("Pickman's Whisper — Victims\n\nAimed:\n" + LastVictimsAimLine + "\n\nDecay:\n" + decayLine + "\n\nKnife kills tracked: " + DecayKillSlotCount)
 EndFunction
 
-; MCM Victims — apply sVictimName to live aim or last cached look.
-Function MCMNameAimedVictim()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
+; Backdate kill clock so ResolveDecayStageForKill returns aiStage (and not the next).
+Bool Function ForceDecayKillClockToStage(Int formId, Int aiStage)
+	If formId == 0 || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+		Return False
 	EndIf
-	Actor aimed = ResolveVictimsAimActor()
-	If !aimed || aimed == PlayerRef
-		LastVictimStatus = "no aim cache — face her in-world ~2s, then Name aimed"
-		PushVictimsPanelStrings()
-		If MCM.IsInstalled()
-			MCM.RefreshMenu()
-			WriteVictimsAimedToMcm()
-			WriteVictimsStatusToMcm()
+	If !DecayStagesReady()
+		LoadModConfig()
+	EndIf
+	If !DecayStagesReady()
+		Return False
+	EndIf
+	Int slot = FindDecayKillSlot(formId)
+	If slot < 0
+		Return False
+	EndIf
+	Float needH = GetDecayStageStartHours(aiStage)
+	If needH < 0.0
+		Return False
+	EndIf
+	; Sit just at this stage's threshold; stay below the next stage's start when possible.
+	Float elapsedH = needH
+	If aiStage + 1 < DECAY_STAGE_COUNT
+		Float nextH = GetDecayStageStartHours(aiStage + 1)
+		If nextH > needH
+			Float mid = (needH + nextH) * 0.5
+			If mid > needH
+				elapsedH = mid
+			EndIf
 		EndIf
-		Debug.MessageBox("Pickman's Whisper — Name aimed\n\nNo aim cache.\nFace her in-world for ~2s (killscan), then open MCM and try again.")
-		Return
-	EndIf
-	String name = ""
-	If MCM.IsInstalled()
-		name = MCM.GetModSettingString(MOD_NAME, "sVictimName:Victims")
-	EndIf
-	If ApplyVictimName(aimed, name)
-		String shown = TrimString(name)
-		Debug.MessageBox("Pickman's Whisper — Name aimed\n\nShe is " + shown + " now.")
 	Else
-		Debug.MessageBox("Pickman's Whisper — Name aimed\n\nFailed:\n" + LastVictimStatus)
+		; Black — keep past its startHours.
+		elapsedH = needH + 1.0
 	EndIf
-	RefreshVictimsPanel(True)
+	DecayKillGameTime[slot] = Utility.GetCurrentGameTime() - (elapsedH / 24.0)
+	Return True
+EndFunction
+
+; Façades — bodies on PickmansWhisperVictimsScript.
+Bool Function QueueAimedDecayStage(Int targetStage)
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		Return v.QueueAimedDecayStage(targetStage)
+	EndIf
+	LastVictimStatus = "set decay: VictimsScript missing"
+	Return False
+EndFunction
+
+Bool Function QueueAimedDecayAdvance()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		Return v.QueueAimedDecayAdvance()
+	EndIf
+	LastVictimStatus = "advance decay: VictimsScript missing"
+	Return False
+EndFunction
+
+Function RunPendingDecayAdvance()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.RunPendingDecayAdvance()
+	EndIf
+EndFunction
+
+Bool Function AdvanceAimedDecayStage()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		Return v.AdvanceAimedDecayStage()
+	EndIf
+	Return False
+EndFunction
+
+Function MCMApplyAimedDecayStage()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.MCMApplyAimedDecayStage()
+	Else
+		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR MCMApplyAimedDecayStage — VictimsScript missing")
+		Debug.MessageBox("Pickman's Whisper — Set decay stage\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+	EndIf
+EndFunction
+
+Function MCMAdvanceAimedDecayStage()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.MCMAdvanceAimedDecayStage()
+	Else
+		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR MCMAdvanceAimedDecayStage — VictimsScript missing")
+		Debug.MessageBox("Pickman's Whisper — Advance decay\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+	EndIf
+EndFunction
+
+Function MCMNameAimedVictim()
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.MCMNameAimedVictim()
+	Else
+		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR MCMNameAimedVictim — VictimsScript missing")
+		Debug.MessageBox("Pickman's Whisper — Name aimed\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+	EndIf
 EndFunction
 
 Bool Function IsNoticeCandidate(Actor ak)
@@ -2436,22 +2557,28 @@ String Function FormatDecayStageStatusForActor(Actor ak)
 EndFunction
 
 Function WriteDecayStageStatusToMcm()
-	If !MCM.IsInstalled()
-		Return
+	WriteDecayStageStatusToMcmForActor(ResolveVictimsAimActor())
+EndFunction
+
+; VictimsScript CallFunctionNoWait after aimed push — decay/summary/status without stalling MCM.
+Function WriteVictimsMcmAuxRows()
+	PickmansWhisperVictimsScript v = Victims()
+	Actor aimed = None
+	If v
+		aimed = v.ResolveVictimsAimActor()
+		If aimed
+			EnsureVictimDisplayName(aimed)
+		Else
+			; Keep Aimed row honest if Main has a knife-kill fallback.
+			String noAim = FormatNoAimVictimsAimLine()
+			If noAim && MCM.IsInstalled()
+				MCM.SetModSettingString(MOD_NAME, "sVictimAimed:Victims", noAim)
+			EndIf
+		EndIf
 	EndIf
-	Actor ak = ResolveVictimsAimActor()
-	If ak
-		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForActor(ak))
-		Return
-	EndIf
-	; No aim — still show last stamped blade kill so the row isn't a dead placeholder.
-	EnsureDecayKillLists()
-	If DecayKillSlotCount > 0
-		Int lastId = DecayKillIds[DecayKillSlotCount - 1]
-		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForFormId(lastId, "last kill") + " (no aim)")
-		Return
-	EndIf
-	MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", "(no aim / no knife kills tracked)")
+	WriteDecayStageStatusToMcmForActor(aimed)
+	WriteVictimsSummaryToMcm()
+	WriteVictimsStatusToMcm()
 EndFunction
 
 ; Drop lowest count (tie → lowest index / oldest). Leaves one free slot.
@@ -2557,16 +2684,11 @@ Actor Function GetLookAimActor()
 	Return pick as Actor
 EndFunction
 
-; Victims MCM cache helper (MCM refresh). Live aim also filled from OnWorldScan.
-; Camera only (never sticky activate). Does not touch GetLookAimActor / butcher.
+; Victims MCM cache helper — body on VictimsScript.
 Function TickVictimsAimCache()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	ObjectReference cam = GardenOfEden3.GetCameraTargetReference()
-	Actor ak = cam as Actor
-	If ak && ak != PlayerRef && !ak.IsDisabled()
-		NoteVictimsAimActor(ak)
+	PickmansWhisperVictimsScript v = Victims()
+	If v
+		v.TickVictimsAimCache()
 	EndIf
 EndFunction
 

@@ -150,28 +150,41 @@ def test_docs() -> None:
 
 def test_mcm_decay_stage_row() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
+    victims_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVictimsScript.psc"
+    if not victims_path.is_file():
+        fail(f"missing {victims_path}")
+    victims = victims_path.read_text(encoding="utf-8", errors="replace")
     if "WriteDecayStageStatusToMcm" not in main:
         fail("Main must WriteDecayStageStatusToMcm")
+    if "WriteDecayStageStatusToMcmForActor" not in main:
+        fail("Main must WriteDecayStageStatusToMcmForActor")
     if "FormatDecayStageStatusForActor" not in main:
         fail("Main must FormatDecayStageStatusForActor")
     if "sDecayStage:Victims" not in main:
         fail("Main must write MCM sDecayStage:Victims")
     if "sDecayStage:Debug" in main:
         fail("Decay stage row moved off Debug — must not write sDecayStage:Debug")
-    push = extract_function(main, "PushVictimsPanelStrings")
-    if "WriteDecayStageStatusToMcm" not in push:
-        fail("PushVictimsPanelStrings must WriteDecayStageStatusToMcm")
-    write = extract_function(main, "WriteDecayStageStatusToMcm")
-    if "ResolveVictimsAimActor" not in write:
+    push = extract_function(victims, "PushVictimsPanelStrings")
+    if "WriteVictimsMcmAuxRows" not in push and "PushVictimsAimedOnly" not in push:
+        fail("PushVictimsPanelStrings must PushVictimsAimedOnly + WriteVictimsMcmAuxRows")
+    if "WriteVictimsMcmAuxRows" not in main:
+        fail("Main must WriteVictimsMcmAuxRows for Victims NoWait aux push")
+    write = extract_function(main, "WriteDecayStageStatusToMcmForActor")
+    if "FormatDecayStageStatusForActor" not in write:
+        fail("WriteDecayStageStatusToMcmForActor must FormatDecayStageStatusForActor")
+    if "last kill" not in write and "DecayKillSlotCount" not in write:
+        fail("WriteDecayStageStatusToMcmForActor must fall back to last stamped knife kill")
+    write_wrap = extract_function(main, "WriteDecayStageStatusToMcm")
+    if "ResolveVictimsAimActor" not in write_wrap:
         fail("WriteDecayStageStatusToMcm must ResolveVictimsAimActor (MCM-open aim cache)")
     if "TickVictimsAimCache" not in main:
-        fail("Main must TickVictimsAimCache so living aim enters Victims cache")
-    cache = extract_function(main, "TickVictimsAimCache")
+        fail("Main must TickVictimsAimCache façade")
+    cache = extract_function(victims, "TickVictimsAimCache")
     if "IsFixationEligible" in cache:
         fail("TickVictimsAimCache must not use IsFixationEligible (rejects dead)")
     if "GetLastActivateTargetRef" in cache:
         fail("TickVictimsAimCache must not sticky-activate (regressed corpse cache)")
-    if "GetFacedSeverCorpse" in extract_function(main, "ResolveVictimsAimActor"):
+    if "GetFacedSeverCorpse" in extract_function(victims, "ResolveVictimsAimActor"):
         fail("ResolveVictimsAimActor must not GetFacedSeverCorpse (MCM Refresh FindActors hitch)")
     if "OnWorldScanVictimsAim" not in main:
         fail("Main must OnWorldScanVictimsAim (fills aim cache from WorldScan event)")
@@ -181,8 +194,6 @@ def test_mcm_decay_stage_row() -> None:
         fail("ProcessKnifeKill must NoteVictimsAimActor")
     if "FormatDecayStageStatusForFormId" not in main:
         fail("Main must FormatDecayStageStatusForFormId (decay row without aim)")
-    if "last kill" not in write and "DecayKillSlotCount" not in write:
-        fail("WriteDecayStageStatusToMcm must fall back to last stamped knife kill")
     cfg = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json").read_text(
         encoding="utf-8"
     )
@@ -190,6 +201,14 @@ def test_mcm_decay_stage_row() -> None:
         fail("config.json missing sDecayStage:Victims on Victims page")
     if '"id": "sDecayStage:Debug"' in cfg:
         fail("config.json must not keep sDecayStage:Debug")
+    if '"function": "MCMApplyAimedDecayStage"' not in cfg:
+        fail("config.json Victims page must have Apply decay stage -> MCMApplyAimedDecayStage")
+    if '"id": "iVictimDecayStage:Victims"' not in cfg:
+        fail("config.json Victims page must have iVictimDecayStage stepper")
+    if '"scriptName": "PickmansWhisperVictimsScript"' not in cfg:
+        fail("config.json Apply/Refresh/Name must target PickmansWhisperVictimsScript")
+    if "Apply decay stage" not in cfg:
+        fail("config.json missing Apply decay stage button label")
     settings = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini").read_text(
         encoding="utf-8"
     )
@@ -197,7 +216,81 @@ def test_mcm_decay_stage_row() -> None:
         fail("settings.ini must default sDecayStage=")
     if "[Victims]" not in settings or "sDecayStage=" not in settings.split("[Victims]", 1)[1]:
         fail("settings.ini sDecayStage must live under [Victims]")
-    ok("MCM Victims decay stage row wired")
+    if "iVictimDecayStage=" not in settings.split("[Victims]", 1)[1]:
+        fail("settings.ini iVictimDecayStage must live under [Victims]")
+
+    if "ForceDecayKillClockToStage" not in main:
+        fail("Main must ForceDecayKillClockToStage (backdate clock for MCM set stage)")
+    force = extract_function(main, "ForceDecayKillClockToStage")
+    if "DecayKillGameTime" not in force or "GetDecayStageStartHours" not in force:
+        fail("ForceDecayKillClockToStage must set DecayKillGameTime from startHours")
+    if "SyncVictimDecayStageStepper" not in main:
+        fail("Main must SyncVictimDecayStageStepper (keep Victims stepper current)")
+    prep = extract_function(victims, "PrepAimedDecayStage")
+    for needle in (
+        "ResolveVictimsAimActor",
+        "IsDead()",
+        "ForceDecayKillClockToStage",
+        "SetDecayKillLastStage",
+        "StampDecayKill",
+    ):
+        if needle not in prep:
+            fail(f"PrepAimedDecayStage must use {needle}")
+    if "ApplyDecayStageOverlays" in prep:
+        fail("PrepAimedDecayStage must NOT ApplyDecayStageOverlays (clock only)")
+    queue = extract_function(victims, "QueueAimedDecayStage")
+    if "PrepAimedDecayStage" not in queue:
+        fail("QueueAimedDecayStage must PrepAimedDecayStage (legacy deferred)")
+    if "ApplyDecayStageOverlays" in queue:
+        fail("QueueAimedDecayStage must NOT ApplyDecayStageOverlays")
+    adv = extract_function(victims, "QueueAimedDecayAdvance")
+    if "QueueAimedDecayStage" not in adv:
+        fail("QueueAimedDecayAdvance must wrap QueueAimedDecayStage (+1)")
+    run = extract_function(victims, "RunPendingDecayAdvance")
+    if "ApplyDecayStageOverlays" not in run:
+        fail("RunPendingDecayAdvance must ApplyDecayStageOverlays")
+    if "IsInMenuMode" not in run:
+        fail("RunPendingDecayAdvance must defer while MCM open")
+    mcm_apply = extract_function(victims, "MCMApplyAimedDecayStage")
+    if "iVictimDecayStage:Victims" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must read iVictimDecayStage:Victims")
+    if "PrepAimedDecayStage" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must PrepAimedDecayStage")
+    if "ApplyDecayStageOverlays" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must sync ApplyDecayStageOverlays (Wound Lab path)")
+    if "StartTimer" in mcm_apply:
+        fail("MCMApplyAimedDecayStage must not StartTimer (sync apply; no close-MCM deferral)")
+    if "CallFunctionNoWait(" in mcm_apply:
+        fail("MCMApplyAimedDecayStage must not CallFunctionNoWait")
+    if "SetDecayKillLastStage" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must SetDecayKillLastStage on success")
+    if "ClearPendingDecayAdvance" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must ClearPendingDecayAdvance (no double apply)")
+    if "MessageBox" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must MessageBox result")
+    if "close MCM so overlays" in mcm_apply.lower():
+        fail("MCMApplyAimedDecayStage must not tell player close MCM to trigger apply")
+    # Legacy +1 entry also sync-applies (cached MCM configs may still call Advance)
+    mcm_adv = extract_function(victims, "MCMAdvanceAimedDecayStage")
+    if "ApplyDecayStageOverlays" not in mcm_adv:
+        fail("MCMAdvanceAimedDecayStage must sync ApplyDecayStageOverlays")
+    if "StartTimer" in mcm_adv:
+        fail("MCMAdvanceAimedDecayStage must not StartTimer (sync apply)")
+    if "PrepAimedDecayStage" not in mcm_adv:
+        fail("MCMAdvanceAimedDecayStage must PrepAimedDecayStage")
+    if "TIMER_DECAY_ADVANCE" not in victims:
+        fail("VictimsScript must declare TIMER_DECAY_ADVANCE")
+    if "aiTimerID == TIMER_DECAY_ADVANCE" not in victims:
+        fail("VictimsScript OnTimer must handle TIMER_DECAY_ADVANCE")
+    idx = victims.find("aiTimerID == TIMER_DECAY_ADVANCE")
+    if idx < 0 or "RunPendingDecayAdvance()" not in victims[idx : idx + 200]:
+        fail("Victims OnTimer TIMER_DECAY_ADVANCE must RunPendingDecayAdvance()")
+    # Main façades remain for internal callers
+    if "Victims()" not in extract_function(main, "MCMApplyAimedDecayStage"):
+        fail("Main MCMApplyAimedDecayStage must façade via Victims()")
+    if "Victims()" not in extract_function(main, "MCMAdvanceAimedDecayStage"):
+        fail("Main MCMAdvanceAimedDecayStage must façade via Victims()")
+    ok("MCM Victims decay stage row + sync set-any-stage apply wired")
 
 
 def main() -> int:

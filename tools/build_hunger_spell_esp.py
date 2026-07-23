@@ -3,9 +3,12 @@
 #   QUST 0x01000805 PickmansWhisperPlayerCombat (Player UniqueActor alias —
 #     VMAD mirrors DialogueGenericPlayer: 0 quest scripts + alias script)
 #   GLOB / MGEF / SPEL Knife Hunger
+#   ARMA/ARMO Slice I decay face (biped 54) @ 0x850+ for NecroBaseFemaleHead*.nif
 #   SNDR clones for Desperate_Audio.txt + E5 Intimacy_*_Audio.txt starting at
 #     0x01000807 — EDID PW_Whisper_<SanitizedStem>, path Sound\PickmansWhisper\<rel>
-#   Writes Data/PickmansWhisper/config/WhisperSndrIds.txt (mapKey=localFid)
+#   Writes WhisperSndrIds.txt + DecayFaceArmorIds.txt
+from __future__ import annotations
+
 import os
 import re
 import struct
@@ -38,8 +41,24 @@ FID_MGEF_CHA = 0x01000804
 FID_PLAYER_QUEST = 0x01000805
 FID_SEVER_MSG = 0x01000806  # PW_SeverLimbMenu (Slice F)
 FID_WHISPER_BASE = 0x01000807
-# Whisper SNDRs: ~12 Desperate + ~46 Necromantic intimacy; leave headroom.
-NEXT_OID = 0x00000850
+# Whisper SNDRs: ~12 Desperate + ~46 Necromantic intimacy (ends ~0x840).
+# Slice I face-decal armor (slot 54): variants from NecroBaseFemaleHead*.nif
+#   Base + NecroBaseFemaleHead_<Color>.nif — ARMA/ARMO pairs @ 0x850+ (2 ids each)
+FID_DECAY_FACE_BASE = 0x01000850
+# Keep FormID headroom for more color NIFs without reshuffling SNDR/others.
+DECAY_FACE_VARIANT_RESERVE = 16
+FID_HUMAN_RACE = 0x00013746  # Fallout4.esm HumanRace
+# BOD2 bit 24 = biped 54 [Unnamed] — FaceGen-safe decal slot (not 32).
+BOD2_SLOT_54 = struct.pack("<I", 0x01000000)
+DECAY_FACE_MESH_DIR = ROOT / "Data" / "Meshes" / "PickmansWhisper" / "Decay"
+DECAY_FACE_MESH_PREFIX = "NecroBaseFemaleHead"
+DECAY_FACE_MESH_REL = "PickmansWhisper\\Decay\\NecroBaseFemaleHead.nif"
+DECAY_FACE_MESH_STAGE = DECAY_FACE_MESH_DIR / f"{DECAY_FACE_MESH_PREFIX}.nif"
+DECAY_FACE_ARMOR_IDS_PATH = (
+    ROOT / "Data" / "PickmansWhisper" / "config" / "DecayFaceArmorIds.txt"
+)
+# Past reserved decay-face ARMA/ARMO pairs (0x850 .. 0x86F for 16 variants).
+NEXT_OID = 0x00000870  # == FID_DECAY_FACE_BASE + DECAY_FACE_VARIANT_RESERVE * 2
 
 # Vanilla PeakValueMod alcohol-withdrawal MGEFs we clone DATA from
 VANILLA_MGEF_AGI = 0x0010224F
@@ -182,6 +201,7 @@ def build_main_quest_payload() -> bytes:
                 "PickmansWhisperBedGiftScript",
                 "PickmansWhisperCorpseDecayScript",
                 "PickmansWhisperDecayWoundLabScript",
+                "PickmansWhisperVictimsScript",
                 "PickmansWhisperWorldScanScript",
                 "PickmansWhisperVoiceScanScript",
             ]
@@ -380,6 +400,111 @@ def parse_modconfig_audio_files() -> list[str]:
     return out
 
 
+def discover_decay_face_variants() -> list[tuple[str, str]]:
+    """Return [(label, mesh_rel), ...] from on-disk NecroBaseFemaleHead*.nif.
+
+    - NecroBaseFemaleHead.nif → label Base (always first when present)
+    - NecroBaseFemaleHead_<Color>.nif → label Color (sorted, e.g. Black/Gray/Green)
+
+    Labels become EDID/FULL tokens so ``help DecayFace 4`` / ``help Green 4`` work.
+    """
+    out: list[tuple[str, str]] = []
+    base = DECAY_FACE_MESH_DIR / f"{DECAY_FACE_MESH_PREFIX}.nif"
+    if base.is_file():
+        out.append(("Base", f"PickmansWhisper\\Decay\\{base.name}"))
+    suffix_re = re.compile(rf"^{re.escape(DECAY_FACE_MESH_PREFIX)}_([A-Za-z][A-Za-z0-9]*)\.nif$")
+    colored: list[tuple[str, str]] = []
+    if DECAY_FACE_MESH_DIR.is_dir():
+        for nif in sorted(DECAY_FACE_MESH_DIR.glob(f"{DECAY_FACE_MESH_PREFIX}_*.nif")):
+            m = suffix_re.match(nif.name)
+            if not m:
+                continue
+            label = m.group(1)
+            colored.append((label, f"PickmansWhisper\\Decay\\{nif.name}"))
+    colored.sort(key=lambda t: t[0].lower())
+    out.extend(colored)
+    return out
+
+
+def build_decay_face_arma_payload(label: str, mesh_rel: str) -> bytes:
+    """ARMA — female model only, biped 54, HumanRace (Slice I guide)."""
+    edid = f"PickmansWhisper_DecayFace_{label}_ARMA"
+    # MO3T: CK dump from working stage-0 record (20 bytes).
+    mo3t = b"\x04\x00\x00\x00" + (b"\x00" * 16)
+    return b"".join(
+        [
+            field(b"EDID", zstr(edid)),
+            field(b"BOD2", BOD2_SLOT_54),
+            field(b"RNAM", u32(FID_HUMAN_RACE)),
+            field(b"DNAM", b"\x00" * 12),
+            field(b"MOD3", zstr(mesh_rel)),
+            field(b"MO3T", mo3t),
+        ]
+    )
+
+
+def build_decay_face_armo_payload(label: str, arma_fid: int) -> bytes:
+    """ARMO — links ARMA via MODL FormID; biped 54. FULL includes color for Help."""
+    edid = f"PickmansWhisper_DecayFace_{label}_ARMO"
+    full = f"PW DecayFace {label}"
+    return b"".join(
+        [
+            field(b"EDID", zstr(edid)),
+            field(b"OBND", b"\x00" * 12),
+            field(b"FULL", zstr(full)),
+            field(b"BOD2", BOD2_SLOT_54),
+            field(b"RNAM", u32(FID_HUMAN_RACE)),
+            field(b"DESC", zstr("")),
+            field(b"INDX", b"\x00\x00"),
+            field(b"MODL", u32(arma_fid)),
+            field(b"DATA", b"\x00" * 12),
+            field(b"FNAM", b"\x00" * 8),
+        ]
+    )
+
+
+def collect_decay_face_armor_records() -> tuple[list[bytes], list[bytes]]:
+    """Emit ARMA/ARMO for each NecroBaseFemaleHead*.nif on disk (Base required)."""
+    variants = discover_decay_face_variants()
+    if not variants or variants[0][0] != "Base":
+        raise SystemExit(
+            f"Missing decay face NIF (need Base): {DECAY_FACE_MESH_STAGE}"
+        )
+    if len(variants) > DECAY_FACE_VARIANT_RESERVE:
+        raise SystemExit(
+            f"Too many decay-face NIFs ({len(variants)}); raise "
+            f"DECAY_FACE_VARIANT_RESERVE (now {DECAY_FACE_VARIANT_RESERVE})"
+        )
+    armas: list[bytes] = []
+    armos: list[bytes] = []
+    id_lines = [
+        "# Generated by tools/build_hunger_spell_esp.py — do not hand-edit.",
+        "# label=armaLocalFid,armoLocalFid (plugin local FormIDs, decimal)",
+        "# Biped 54 face decals — see docs/Decay_Head_Guide.md",
+        "# Console: help DecayFace 4  (or help Green 4, help Black 4, …)",
+    ]
+    for i, (label, mesh_rel) in enumerate(variants):
+        arma_fid = FID_DECAY_FACE_BASE + 2 * i
+        armo_fid = FID_DECAY_FACE_BASE + 2 * i + 1
+        armas.append(
+            record(b"ARMA", arma_fid, build_decay_face_arma_payload(label, mesh_rel))
+        )
+        armos.append(
+            record(b"ARMO", armo_fid, build_decay_face_armo_payload(label, arma_fid))
+        )
+        id_lines.append(
+            f"{label}={arma_fid & 0xFFFFFF},{armo_fid & 0xFFFFFF}"
+        )
+        print(
+            f"  ARMA 0x{arma_fid:08X} / ARMO 0x{armo_fid:08X} "
+            f"DecayFace {label} -> Meshes\\{mesh_rel}"
+        )
+    DECAY_FACE_ARMOR_IDS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    DECAY_FACE_ARMOR_IDS_PATH.write_text("\n".join(id_lines) + "\n", encoding="utf-8")
+    print(f"  Wrote {DECAY_FACE_ARMOR_IDS_PATH} ({len(armas)} variant(s))")
+    return armas, armos
+
+
 def build_sever_limb_menu_payload() -> bytes:
     """MESG message-box with limb buttons. DNAM bit0 = Message Box.
 
@@ -485,9 +610,12 @@ def main() -> None:
     msg_rec = record(b"MESG", FID_SEVER_MSG, build_sever_limb_menu_payload())
     sndr_recs = collect_sndr_records()
     sndr_blob = b"".join(sndr_recs)
+    arma_recs, armo_recs = collect_decay_face_armor_records()
+    arma_blob = b"".join(arma_recs)
+    armo_blob = b"".join(armo_recs)
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF + MESG + N SNDR
-    num_records = 7 + len(sndr_recs)
+    # 2x QUST + SPEL + GLOB + 2x MGEF + MESG + N SNDR + N ARMA + N ARMO
+    num_records = 7 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
@@ -495,6 +623,8 @@ def main() -> None:
         + group(b"MGEF", mgef_agi + mgef_cha)
         + group(b"SPEL", spel_rec)
         + group(b"MESG", msg_rec)
+        + group(b"ARMA", arma_blob)
+        + group(b"ARMO", armo_blob)
         + group(b"QUST", main_q + player_q)
         + group(b"SNDR", sndr_blob)
     )
@@ -504,6 +634,7 @@ def main() -> None:
     print(f"  MGEF 0x{FID_MGEF_AGI:08X} / 0x{FID_MGEF_CHA:08X} ValueMod AGI/CHA")
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
+    print(f"  ARMA/ARMO decay face variants={len(arma_recs)} (biped 54)")
     print(f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain")
     print(f"  QUST 0x{FID_PLAYER_QUEST:08X} PickmansWhisperPlayerCombat + PlayerAlias")
     print(f"  SNDR count={len(sndr_recs)} (Desperate + Intimacy Start/End maps)")

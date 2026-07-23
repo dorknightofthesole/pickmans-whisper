@@ -323,11 +323,38 @@
 				},
 				{
 					"id": "sDecayStage:Victims",
-					"text": "Decay stage",
+					"text": "Decay stage (current)",
 					"type": "textinput",
-					"help": "Decay for the cached body. Named victims without a clock start Freshly Deceased (overlays apply after you close MCM). Blade kills stamp automatically.",
+					"help": "Current decay for the cached body. Named victims without a clock start Freshly Deceased (overlays apply after you close MCM). Blade kills stamp automatically.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"id": "iVictimDecayStage:Victims",
+					"text": "Set decay stage",
+					"type": "stepper",
+					"help": "Pick any ModConfig stage (0–4), then Apply. Works forward or backward. Dead aimed / cached body only. Backdates the decay clock so WorldScan will not revert it. Apply runs immediately (same as Wound Lab).",
+					"valueOptions": {
+						"sourceType": "ModSettingInt",
+						"options": [
+							"Freshly Deceased",
+							"Pallor Mortis",
+							"Livor Mortis",
+							"Putrefaction",
+							"Black Putrefaction"
+						]
+					}
+				},
+				{
+					"text": "Apply decay stage",
+					"type": "button",
+					"help": "Apply the Set decay stage selection to the aimed / cached corpse now (face + body overlays). Close MCM afterward to look at the body.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMApplyAimedDecayStage",
+						"scriptName": "PickmansWhisperVictimsScript"
 					}
 				},
 				{
@@ -347,7 +374,7 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "MCMNameAimedVictim",
-						"scriptName": "PickmansWhisperMainQuestScript"
+						"scriptName": "PickmansWhisperVictimsScript"
 					}
 				},
 				{
@@ -358,7 +385,7 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "MCMRefreshVictimsPanel",
-						"scriptName": "PickmansWhisperMainQuestScript"
+						"scriptName": "PickmansWhisperVictimsScript"
 					}
 				},
 				{

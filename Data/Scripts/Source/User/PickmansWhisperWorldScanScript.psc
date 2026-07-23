@@ -42,6 +42,10 @@ PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
 EndFunction
 
+PickmansWhisperVictimsScript Function Victims()
+	Return (Self as Quest) as PickmansWhisperVictimsScript
+EndFunction
+
 Function StartWorldScanLoop()
 	CancelTimer(TIMER_WORLD_SCAN)
 	StartTimer(WORLD_SCAN_SECONDS, TIMER_WORLD_SCAN)
@@ -138,6 +142,12 @@ Function DispatchListeners()
 	PickmansWhisperMainQuestScript m = Main()
 	If m
 		m.CallFunctionNoWait("HandleWorldScanKnifeAimWarm", None)
+	EndIf
+
+	; Victims aim cache — own lock; must not wait on Main (Refresh was empty when Main wedged).
+	PickmansWhisperVictimsScript victims = Victims()
+	If victims
+		victims.CallFunctionNoWait("NoteFromWorldScanSnapshot", None)
 	EndIf
 
 	; Overlays throttled — LooksMenu Wait must never run on this stack.

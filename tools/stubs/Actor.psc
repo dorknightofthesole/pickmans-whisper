@@ -53,6 +53,8 @@ Event OnPlayerLoadGame()
 EndEvent
 Weapon Function GetEquippedWeapon(Int aiEquipIndex = 0) Native
 Bool Function IsEquipped(Form akItem) Native
+; FO4 native — forces equip; abPreventRemoval=false keeps playable gear removable.
+Function EquipItem(Form akItem, Bool abPreventRemoval = False, Bool abSilent = False) Native
 ; FO4 native — unequip worn gear (pair with RemoveAllItems to strip corpses).
 Function UnequipAll() Native
 Function UnequipItem(Form akItem, Bool abPreventEquip = False, Bool abSilent = False) Native

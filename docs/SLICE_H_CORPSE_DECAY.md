@@ -1,6 +1,6 @@
 # Slice H — corpse decay / consume + victim places
 
-Soft ties to **I** (decay head armor), **K** (preserve), **L** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
+Soft ties to **I** (FaceGen-preserving face decals — [Decay_Head_Guide.md](Decay_Head_Guide.md); slot 54 ARMO, not slot 32), **K** (preserve), **L** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
 
 ## Visual path status
 
