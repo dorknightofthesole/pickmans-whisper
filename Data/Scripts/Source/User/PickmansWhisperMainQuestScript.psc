@@ -314,7 +314,7 @@ String Property LastCorpseDecayStatus = "" Auto
 ; Slice H P0.1 — mirrored from DecayWoundLabScript.
 String Property LastWoundLabStatus = "" Auto
 
-; C5 P3+P4 Potential Victims — FormID ↔ player name + SetDisplayName (world).
+; C5 P3+P4 Potential Victims — FormID ↔ player name + GoE2.SetDisplayName (world).
 ; RefCollectionAlias is optional (fill in CK / later ESP); FormID table is save truth.
 Int VICTIM_MAX = 32
 Int[] VictimIds
@@ -442,7 +442,7 @@ Function HandleGameResume(String reason)
 	NecroSceneActive = False
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
-	; Potential Victims summary only — SetDisplayName re-applies lazily when she is seen.
+	; Potential Victims summary only — GoE2.SetDisplayName re-applies lazily when she is seen.
 	WriteVictimsSummaryToMcm()
 	PickmansWhisperVictimsScript victims = Victims()
 	If victims
@@ -1130,7 +1130,8 @@ Bool Function NameLooksLikePickmansBlade(String n)
 	If n == ""
 		Return False
 	EndIf
-	Return StringUtil.Find(n, BLADE_NAME_NEEDLE) >= 0
+	; GoE StrFind returns occurrence count (>0 == contains), not a char index.
+	Return GardenOfEden.StrFind(n, BLADE_NAME_NEEDLE) > 0
 EndFunction
 
 Bool Function FormIsCombatKnife(Form f)
@@ -1844,7 +1845,8 @@ Function MaybeSpeakNoticeLine(String source)
 	Actor target = PickNoticeTarget()
 	If !target
 		; PickNoticeTarget already set LastNoticeStatus — force skip: prefix for MCM clarity.
-		If !LastNoticeStatus || StringUtil.Find(LastNoticeStatus, "skip:") < 0
+		; GoE StrFind = occurrence count; <=0 means "skip:" not present.
+		If !LastNoticeStatus || GardenOfEden.StrFind(LastNoticeStatus, "skip:") <= 0
 			If LastNoticeBreakAt
 				LastNoticeStatus = "skip: no target (" + LastNoticeBreakAt + ")"
 			Else
@@ -1953,7 +1955,7 @@ Function ShowVoiceToast(String line)
 EndFunction
 
 ; Whisper / fixation / notice label for an actor.
-; P3+P4 Potential Victims: override + SetDisplayName so {name} matches aim/HUD.
+; P3+P4 Potential Victims: override + GoE2.SetDisplayName so {name} matches aim/HUD.
 String Function GetActorDisplayName(Actor ak)
 	If !ak
 		Return ""
@@ -2049,7 +2051,8 @@ Function HoldVictimRef(Actor ak)
 	EndIf
 EndFunction
 
-; Re-apply F4SE world name when stored override differs from current display.
+; Re-apply world name when stored override differs from current display.
+; GoE2.SetDisplayName — NOT Actor.SetDisplayName (SKSE-shaped; missing at FO4 runtime).
 Function EnsureVictimDisplayName(Actor ak)
 	If !ak
 		Return
@@ -2062,7 +2065,7 @@ Function EnsureVictimDisplayName(Actor ak)
 	If cur == n
 		Return
 	EndIf
-	ak.SetDisplayName(n, True)
+	GardenOfEden2.SetDisplayName(ak, n)
 EndFunction
 
 ; Apply player-chosen name to a living actor (MCM / debug).
@@ -2093,12 +2096,15 @@ Bool Function ApplyVictimName(Actor ak, String name)
 		Debug.Notification("Pickman's Whisper: victim list full (32)")
 		Return False
 	EndIf
-	Bool ok = ak.SetDisplayName(useName, True)
+	; GoE returns true on no native error — verify aim/HUD name with GetDisplayName.
+	Bool goeOk = GardenOfEden2.SetDisplayName(ak, useName)
 	HoldVictimRef(ak)
-	If ok
+	String shown = ak.GetDisplayName()
+	If shown == useName
 		LastVictimStatus = useName + " ok id=0x" + GardenOfEden.GetHexFormID(ak)
 	Else
-		LastVictimStatus = useName + " stored; SetDisplayName returned false id=0x" + GardenOfEden.GetHexFormID(ak)
+		LastVictimStatus = useName + " stored; world name still '" + shown + "' goe=" + goeOk + " id=0x" + GardenOfEden.GetHexFormID(ak)
+		Debug.Trace("PickmansWhisper: ERROR GoE2.SetDisplayName verify failed want='" + useName + "' got='" + shown + "' goeOk=" + goeOk)
 	EndIf
 	WriteVictimsSummaryToMcm()
 	WriteVictimsStatusToMcm()

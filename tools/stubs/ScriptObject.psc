@@ -4,8 +4,9 @@ Function RegisterForKey(Int keyCode) Native
 Function UnregisterForKey(Int keyCode) Native
 Function RegisterForControl(String control) Native
 Function UnregisterForControl(String control) Native
-Function RegisterForRemoteEvent(Form akForm, String asEventName) Native
-Function UnregisterForRemoteEvent(Form akForm, String asEventName) Native
+; Real FO4 — ScriptEventName is the compiler type for remote event name literals.
+Bool Function RegisterForRemoteEvent(ScriptObject akEventSource, ScriptEventName asEventName) Native
+Function UnregisterForRemoteEvent(ScriptObject akEventSource, ScriptEventName asEventName) Native
 ; Real FO4 — second arg is CustomEventName (compiler type for a declared CustomEvent).
 Function RegisterForCustomEvent(ScriptObject akSender, CustomEventName asEventName) Native
 Function UnregisterForCustomEvent(ScriptObject akSender, CustomEventName asEventName) Native
@@ -23,7 +24,11 @@ Function RegisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilt
 Function UnregisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilter = None, Form akSourceFilter = None, Form akProjectileFilter = None, Int aiPowerFilter = -1, Int aiSneakFilter = -1, Int aiBashFilter = -1, Int aiBlockFilter = -1, Bool abMatch = True) Native
 Function UnregisterForAllHitEvents(ScriptObject akTarget = None) Native
 
-; FO4 timers: StartTimer / CancelTimer / OnTimer (on Quest/ScriptObject in engine).
+; FO4 timers live on ScriptObject (Quest inherits). Do NOT stub Skyrim RegisterForUpdate*.
+Function StartTimer(Float afInterval, Int aiTimerID = 0) Native
+Function CancelTimer(Int aiTimerID = 0) Native
+Event OnTimer(Int aiTimerID)
+EndEvent
 ; Do NOT stub Skyrim RegisterForUpdate* — removed in FO4; fake Natives compile green
 ; and fail at runtime. See .cursor/rules/no-fake-native-stubs.mdc.
 

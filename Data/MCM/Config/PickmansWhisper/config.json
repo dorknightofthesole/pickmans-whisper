@@ -295,24 +295,11 @@
 			"pageDisplayName": "Victims",
 			"content": [
 				{
-					"text": "!!! MCM PING (MessageBox) !!!",
-					"type": "button",
-					"help": "CallGlobalFunction Debug.MessageBox — proves MCM buttons work even if quest CallFunction is broken.",
-					"action": {
-						"type": "CallGlobalFunction",
-						"script": "Debug",
-						"function": "MessageBox",
-						"params": [
-							"Pickman's Whisper MCM PING\n\nIf you see this, MCM buttons work.\nNext: try \"Load targeted corpse\"."
-						]
-					}
-				},
-				{
-					"text": "Corpse",
+					"text": "Victim",
 					"type": "section"
 				},
 				{
-					"text": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted corpse\" re-pushes Aimed / Decay / named list from that cache — it does not re-scan the world.",
+					"text": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted victim\" re-pushes Aimed / Decay / named list from that cache — it does not re-scan the world.",
 					"type": "text",
 					"html": true
 				},
@@ -320,7 +307,7 @@
 					"id": "sVictimAimed:Victims",
 					"text": "Aimed now",
 					"type": "textinput",
-					"help": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted corpse\" re-pushes the cache only.",
+					"help": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted victim\" re-pushes the cache only.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
@@ -329,15 +316,7 @@
 					"id": "sDecayStage:Victims",
 					"text": "Decay stage (current)",
 					"type": "textinput",
-					"help": "Current decay for the cached body. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply after you close MCM (may take several seconds).",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sVictimStatus:Victims",
-					"text": "Last apply",
-					"type": "textinput",
+					"help": "Current decay for the cached victim. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply after you close MCM (may take several seconds).",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
@@ -352,9 +331,9 @@
 					}
 				},
 				{
-					"text": "Load targeted corpse",
+					"text": "Load targeted victim",
 					"type": "button",
-					"help": "Re-push Aimed / Decay / named list from the killscan cache. Opens a MessageBox so you can confirm the button fired. Face the body in-world before opening MCM.",
+					"help": "Re-push Aimed / Decay / named list from the killscan cache. Opens a MessageBox so you can confirm the button fired. Face her in-world before opening MCM.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -383,7 +362,7 @@
 				{
 					"text": "Apply name",
 					"type": "button",
-					"help": "SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
+					"help": "GardenOfEden2.SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",

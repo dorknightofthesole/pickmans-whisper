@@ -13,6 +13,8 @@ Int Function CountLinesOfFile(String asFileName, String asFilePath = "") Native 
 String[] Function GetWordsInStringAsArray(String asString) Native Global
 ; Real GoE2 native — same lookup SFT uses for Damage/Boxer FULL names (face lab).
 HeadPart[] Function GetHeadPartsByFullName(String asFullName) Native Global
+; Real GoE2 native — ExtraTextDisplayData rename (aim/HUD). Not ObjectReference.SetDisplayName (SKSE-only shape).
+Bool Function SetDisplayName(ObjectReference akReference, String asName) Native Global
 
 Int Function GetModelNodeCount(ObjectReference akReference) Native Global
 String[] Function GetModelNodes(ObjectReference akReference) Native Global

@@ -152,6 +152,28 @@ String Function LocalActorLabel(Actor ak)
 	Return "unnamed"
 EndFunction
 
+; Prefer player override when SetDisplayName failed: "Jenny (Resident) id=0x…"
+String Function FormatVictimsAimLine(Actor aimed)
+	If !aimed
+		Return "(face her in-world ~2s, then open MCM — no scan while menu open)"
+	EndIf
+	String baseLabel = LocalActorLabel(aimed)
+	String personal = ""
+	PickmansWhisperMainQuestScript m = Main()
+	If m
+		personal = m.GetVictimOverrideName(aimed)
+	EndIf
+	String label = baseLabel
+	If personal
+		If personal != baseLabel
+			label = personal + " (" + baseLabel + ")"
+		Else
+			label = personal
+		EndIf
+	EndIf
+	Return label + " id=0x" + GardenOfEden.GetHexFormID(aimed)
+EndFunction
+
 Function WriteVictimsAimedToMcm()
 	If !MCM.IsInstalled()
 		Return
@@ -163,18 +185,10 @@ Function WriteVictimsAimedToMcm()
 	EndIf
 EndFunction
 
-; Aimed row only — never waits on Main (Refresh was hanging in Push → Main).
+; Aimed row only — never waits on Main for the push itself (Refresh was hanging).
 Function PushVictimsAimedOnly()
 	Actor aimed = ResolveVictimsAimActor()
-	LastVictimsAimLine = "(face her in-world ~2s, then open MCM — no scan while menu open)"
-	If aimed
-		String src = "cache"
-		Actor live = GetLiveAimActor()
-		If live && live == aimed
-			src = "aim"
-		EndIf
-		LastVictimsAimLine = LocalActorLabel(aimed) + "  id=0x" + GardenOfEden.GetHexFormID(aimed) + " (" + src + ")"
-	EndIf
+	LastVictimsAimLine = FormatVictimsAimLine(aimed)
 	WriteVictimsAimedToMcm()
 	Debug.Trace("PickmansWhisper: Victims aimed | " + LastVictimsAimLine + " cacheId=" + LastVictimsAimId)
 EndFunction

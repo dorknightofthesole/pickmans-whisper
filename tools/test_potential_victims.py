@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-"""Contracts for C5 P3+P4 Potential Victims (name ↔ FormID + SetDisplayName).
+"""Contracts for C5 P3+P4 Potential Victims (name ↔ FormID + GoE2.SetDisplayName).
 
 Locks:
   - VictimIds / VictimNames / VICTIM_MAX = 32 on Main
   - GetVictimOverrideName looks up the FormID table (not empty stub)
-  - ApplyVictimName calls SetDisplayName(..., True) and UpsertVictim
+  - ApplyVictimName calls GardenOfEden2.SetDisplayName + verifies GetDisplayName
   - GetActorDisplayName prefers override, then GetDisplayName, then base name
-  - EnsureVictimDisplayName re-applies when display drifts
+  - EnsureVictimDisplayName re-applies via GoE2 when display drifts
   - Optional VictimsHold RefCollectionAlias AddRef when present
   - MCM Victims CallFunctions target PickmansWhisperVictimsScript (own lock)
   - Aim cache + Refresh / Name / Advance bodies on VictimsScript
   - Main keeps thin façades for internal callers
   - No StrFind->SubStr index slicing in victim helpers
-  - SetDisplayName stub is real F4SE (present); no fake natives
+  - No SKSE-shaped ObjectReference.SetDisplayName(String) stub
 
 Usage:
   python tools/test_potential_victims.py
@@ -60,11 +60,17 @@ def extract_function(text: str, name: str) -> str:
 
 def test_stubs() -> None:
     obj = OBJ_STUB.read_text(encoding="utf-8")
-    if "Function SetDisplayName" not in obj:
-        fail("ObjectReference.psc must declare F4SE SetDisplayName")
-    if "Native" not in obj.split("SetDisplayName")[1][:80]:
-        fail("SetDisplayName must be Native")
-    ok("SetDisplayName stub present")
+    if re.search(r"Function\s+SetDisplayName\s*\(\s*String", obj):
+        fail("ObjectReference.psc must NOT declare SKSE-shaped SetDisplayName(String,...)")
+    if "Function GetDisplayName" not in obj:
+        fail("ObjectReference.psc must keep F4SE GetDisplayName()")
+    goe2 = (ROOT / "tools" / "stubs" / "GardenOfEden2.psc").read_text(encoding="utf-8")
+    if not re.search(
+        r"Bool\s+Function\s+SetDisplayName\s*\(\s*ObjectReference\s+akReference\s*,\s*String\s+asName\s*\)\s*Native\s+Global",
+        goe2,
+    ):
+        fail("GardenOfEden2.psc must declare SetDisplayName(ObjectReference, String) Native Global")
+    ok("GoE2.SetDisplayName stub present; no fake ObjectReference member")
     if not ALIAS_STUB.is_file():
         fail("missing RefCollectionAlias.psc stub")
     alias = ALIAS_STUB.read_text(encoding="utf-8")
@@ -125,17 +131,19 @@ def test_main_naming(text: str) -> None:
     ok("GetVictimOverrideName uses FormID table")
 
     apply = extract_function(text, "ApplyVictimName")
-    if "SetDisplayName" not in apply:
-        fail("ApplyVictimName must call SetDisplayName")
-    if "SetDisplayName(useName, True)" not in apply and "SetDisplayName(useName,True)" not in apply:
-        fail("ApplyVictimName must SetDisplayName(..., True) to force alias overwrite")
+    if "GardenOfEden2.SetDisplayName" not in apply:
+        fail("ApplyVictimName must call GardenOfEden2.SetDisplayName")
+    if re.search(r"\bak\.SetDisplayName\s*\(", apply):
+        fail("ApplyVictimName must not call Actor.SetDisplayName (missing at FO4 runtime)")
+    if "GetDisplayName()" not in apply:
+        fail("ApplyVictimName must verify world name with GetDisplayName()")
     if "UpsertVictim" not in apply:
         fail("ApplyVictimName must UpsertVictim")
     if "HoldVictimRef" not in apply:
         fail("ApplyVictimName must HoldVictimRef (optional alias)")
     if "IsUsableWhisperName" not in apply:
         fail("ApplyVictimName must reject unusable names")
-    ok("ApplyVictimName SetDisplayName + store")
+    ok("ApplyVictimName GoE2.SetDisplayName + store")
 
     get_name = extract_function(text, "GetActorDisplayName")
     if "GetVictimOverrideName" not in get_name:
@@ -147,8 +155,10 @@ def test_main_naming(text: str) -> None:
     ok("GetActorDisplayName override -> GetDisplayName -> base")
 
     ensure = extract_function(text, "EnsureVictimDisplayName")
-    if "SetDisplayName" not in ensure:
-        fail("EnsureVictimDisplayName must SetDisplayName when drifted")
+    if "GardenOfEden2.SetDisplayName" not in ensure:
+        fail("EnsureVictimDisplayName must GardenOfEden2.SetDisplayName when drifted")
+    if re.search(r"\bak\.SetDisplayName\s*\(", ensure):
+        fail("EnsureVictimDisplayName must not call Actor.SetDisplayName")
     ok("EnsureVictimDisplayName re-applies")
 
     hold = extract_function(text, "HoldVictimRef")
@@ -273,8 +283,15 @@ def test_victims_script(victims: str) -> None:
     if "WriteDecayStageStatusToMcm()" in push:
         fail("PushVictimsPanelStrings must not call WriteDecayStageStatusToMcm() (deadlock)")
     aimed_only = extract_function(victims, "PushVictimsAimedOnly")
-    if "Main()" in aimed_only:
-        fail("PushVictimsAimedOnly must not call Main (Refresh hung waiting on Main)")
+    if "FormatVictimsAimLine" not in aimed_only:
+        fail("PushVictimsAimedOnly must FormatVictimsAimLine")
+    if "WriteVictimsMcmAuxRows" in aimed_only:
+        fail("PushVictimsAimedOnly must not call WriteVictimsMcmAuxRows (deadlock)")
+    fmt = extract_function(victims, "FormatVictimsAimLine")
+    if "GetVictimOverrideName" not in fmt:
+        fail("FormatVictimsAimLine must include override name via GetVictimOverrideName")
+    if '(aim)' in aimed_only or '(cache)' in aimed_only:
+        fail("Aimed line must not append (aim)/(cache)")
     ok("Push deadlock-safe (aimed local; Main aux NoWait)")
 
     mcm_refresh = extract_function(victims, "MCMRefreshVictimsPanel")
@@ -325,12 +342,12 @@ def test_mcm() -> None:
         '"function": "MCMApplyAimedDecayStage"',
         '"function": "MCMResetAimedDecayKillClock"',
         '"id": "iVictimDecayStage:Victims"',
-        "Load targeted corpse",
+        "Load targeted victim",
         "Apply name",
         "Set decay stage",
         "Reset decay stage",
         "Pick stage",
-        '"text": "Corpse"',
+        '"text": "Victim"',
         '"text": "Name / rename"',
         '"text": "Decay stage options"',
         '"scriptName": "PickmansWhisperVictimsScript"',
@@ -339,8 +356,12 @@ def test_mcm() -> None:
     ):
         if needle not in cfg:
             fail(f"Victims MCM missing {needle}")
+    if "Load targeted corpse" in cfg or '"text": "Corpse"' in cfg:
+        fail("Victims MCM must use Victim / Load targeted victim (not Corpse)")
+    if '"text": "Last apply"' in cfg or '"id": "sVictimStatus:Victims"' in cfg:
+        fail("Victims MCM must not show Last apply / sVictimStatus row")
     if "Refresh aimed / list" in cfg:
-        fail("Victims MCM must rename Refresh aimed / list -> Load targeted corpse")
+        fail("Victims MCM must rename Refresh aimed / list -> Load targeted victim")
     if "Name aimed NPC" in cfg:
         fail("Victims MCM must rename Name aimed NPC -> Apply name")
     if "Set decay clock" in cfg:
@@ -349,17 +370,17 @@ def test_mcm() -> None:
         fail("Victims MCM must rename Reset kill clock -> Reset decay stage")
     if '"function": "RefreshVictimsPanel"' in cfg:
         fail("MCM button must call MCMRefreshVictimsPanel (not RefreshVictimsPanel with Bool)")
-    # Page order: Corpse (fields then Load) → Name (field then Apply) → Decay
+    # Page order: Victim (fields then Load) → Name (field then Apply) → Decay
     # (Pick stage stepper, then Set decay stage, then Reset decay stage).
     victims_page = cfg.split('"pageDisplayName": "Victims"', 1)[1].split(
         '"pageDisplayName":', 1
     )[0]
     order = [
-        ('"text": "Corpse"', "Corpse section"),
+        ('"text": "Victim"', "Victim section"),
         ('"id": "sVictimAimed:Victims"', "Aimed now"),
         ('"id": "sDecayStage:Victims"', "Decay stage (current)"),
         ('"id": "sVictimsSummary:Victims"', "Named victims"),
-        ('"function": "MCMRefreshVictimsPanel"', "Load targeted corpse"),
+        ('"function": "MCMRefreshVictimsPanel"', "Load targeted victim"),
         ('"text": "Name / rename"', "Name / rename section"),
         ('"id": "sVictimName:Victims"', "New name"),
         ('"function": "MCMNameAimedVictim"', "Apply name"),
@@ -376,19 +397,19 @@ def test_mcm() -> None:
         if idx < last:
             fail(f"Victims page order wrong: {label} must come after prior section items")
         last = idx
-    # Load button must sit after Named victims (not between Aimed and Last apply).
+    # Load button must sit after Named victims.
     load_idx = victims_page.find('"function": "MCMRefreshVictimsPanel"')
     summary_idx = victims_page.find('"id": "sVictimsSummary:Victims"')
     aimed_idx = victims_page.find('"id": "sVictimAimed:Victims"')
     if not (aimed_idx < summary_idx < load_idx):
-        fail("Load targeted corpse must come after Aimed + Named victims fields")
+        fail("Load targeted victim must come after Aimed + Named victims fields")
     apply_idx = victims_page.find('"function": "MCMApplyAimedDecayStage"')
     reset_idx = victims_page.find('"function": "MCMResetAimedDecayKillClock"')
     if apply_idx < 0 or reset_idx < 0 or apply_idx >= reset_idx:
         fail("Set decay stage button must be a separate button above Reset decay stage")
     # Help text quotes button names.
     for quoted in (
-        '\\"Load targeted corpse\\"',
+        '\\"Load targeted victim\\"',
         '\\"Apply name\\"',
         '\\"Set decay stage\\"',
         '\\"Reset decay stage\\"',

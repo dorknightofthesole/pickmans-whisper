@@ -6,7 +6,8 @@ Bool Function IsGhost() Native
 Bool Function IsChild() Native
 Bool Function IsPlayerTeammate() Native
 Bool Function IsHostileToActor(Actor akActor) Native
-Bool Function HasKeyword(Keyword akKeyword) Native
+; HasKeyword / GetValue / SetValue / ModValue / GetHeadingAngle / Is3DLoaded /
+; Disable / Enable / IsDisabled live on ObjectReference — do not redeclare here.
 Actor Function GetCombatTarget() Native
 Bool Function HasSpell(Form akSpell) Native
 Bool Function HasMagicEffect(MagicEffect akEffect) Native
@@ -14,14 +15,10 @@ Bool Function AddSpell(Spell akSpell, Bool abVerbose = True) Native
 Bool Function RemoveSpell(Spell akSpell) Native
 Function DispelSpell(Spell akSpell) Native
 Function DoCombatSpellApply(Spell akSpell, ObjectReference akTarget) Native
-Float Function GetValue(ActorValue akAV) Native
-Function SetValue(ActorValue akAV, Float afValue) Native
-Function ModValue(ActorValue akAV, Float afAmount) Native
-Float Function GetHeadingAngle(ObjectReference akOther) Native
 ActorBase Function GetLeveledActorBase() Native
-Function StartCombat(Actor akTarget) Native
+Function StartCombat(Actor akTarget, Bool abPreferredTarget = False) Native
 Function StopCombat() Native
-Function EvaluatePackage() Native
+Function EvaluatePackage(Bool abResetAI = False) Native
 Function SetGhost(Bool abIsGhost) Native
 Function SetRestrained(Bool abRestrained) Native
 Function SetUnconscious(Bool abUnconscious) Native
@@ -31,14 +28,10 @@ Function Kill(Actor akKiller = None) Native
 Function KillSilent(Actor akKiller = None) Native
 ; FO4 native — add/remove HeadPart (SFT face bruises). Often needs QueueUpdate; weak on frozen corpses.
 Function ChangeHeadPart(HeadPart apHeadPart, Bool abRemovePart = False, Bool abRemoveExtraParts = False) Native
-; F4SE native — rebuild actor 3D. First arg is facegen (wiki); flags=0 is full/expensive.
-Function QueueUpdate(Bool bFacegen = False, Int flags = 0) Native
+; F4SE native — rebuild actor 3D. First arg is equipment refresh; flags=0 is full/expensive.
+Function QueueUpdate(Bool bDoEquipment = False, Int flags = 0) Native
 ; FO4 native — near-instantly enter furniture/mount (fails if seat occupied / no 3D).
 Bool Function SnapIntoInteraction(ObjectReference akTarget) Native
-Function Disable(Bool abFadeOut = False) Native
-Function Enable(Bool abFadeIn = False) Native
-Bool Function IsDisabled() Native
-Bool Function Is3DLoaded() Native
 ; FO4 native — 0 not sleeping, 2 wants sleep, 3 sleeping, 4 wants wake.
 Int Function GetSleepState() Native
 ; FO4 native — detection LOS (player may check non-actors). Not Skyrim HasLOS.

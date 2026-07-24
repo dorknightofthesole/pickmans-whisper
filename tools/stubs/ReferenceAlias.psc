@@ -17,6 +17,8 @@ EndEvent
 
 Function ForceRefTo(ObjectReference akNewRef) Native
 ObjectReference Function GetReference() Native
-Actor Function GetActorReference() Native
-Quest Function GetOwningQuest() Native
+; Real FO4 — non-native convenience wrapper (not a Native).
+Actor Function GetActorReference()
+	Return GetReference() as Actor
+EndFunction
 Function Clear() Native
