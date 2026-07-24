@@ -36,6 +36,8 @@ GENERIC_NAMES = {
     "Citizen",
     "Neighbor",
     "Worker",
+    "Unnamed",
+    "unnamed",
 }
 
 # Files-only design: this old hardcoded fallback must NOT exist in the script
@@ -300,6 +302,7 @@ def test_psc_contracts() -> None:
         "LastStageLoadStatus",
         'npcName == "Settler"',
         'npcName == "Resident"',
+        'npcName == "Unnamed"',
         'StrContains(npcName, "Resident")',
     ):
         if needle not in text:
@@ -623,7 +626,7 @@ def test_psc_contracts() -> None:
     else:
         body = speak.group(1)
         if "IsVoiceWeaponReady" not in body:
-            errors.append("MaybeSpeakNoticeLine must require drawn Pickman's Blade (IsVoiceWeaponReady)")
+            errors.append("MaybeSpeakNoticeLine must require Pickman's Blade on player (IsVoiceWeaponReady)")
         if "SpeakNoticeToTarget(" not in body and "ToastNoticeLine(line)" not in body:
             errors.append("MaybeSpeakNoticeLine must deliver via SpeakNoticeToTarget or ToastNoticeLine")
         if re.search(r"If IsNoticePollDebugEnabled\(\)\s*\n\s*NoticeCoolCount\s*=\s*0", body):
@@ -737,13 +740,13 @@ def test_notice_cadence() -> None:
             errors.append(f"{fn_name} must ShowVoiceToast (not bare Debug.Notification for voice)")
 
     voice_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceScanScript.psc"
-    world_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperWorldScanScript.psc"
+    world_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
     if not voice_path.is_file():
-        errors.append("PickmansWhisperVoiceScanScript.psc missing (WorldScan bus voice path)")
+        errors.append("PickmansWhisperVoiceScanScript.psc missing (KillerScan bus voice path)")
     else:
         body = voice_path.read_text(encoding="utf-8", errors="replace")
-        if "Function HandleWorldScanVoice" not in body:
-            errors.append("VoiceScan must HandleWorldScanVoice (direct dispatch)")
+        if "Function HandleKillerScanVoice" not in body:
+            errors.append("VoiceScan must HandleKillerScanVoice (direct dispatch)")
         if 'MaybeSpeakNoticeLine("killscan")' not in body:
             errors.append("VoiceScan must still call MaybeSpeakNoticeLine(killscan)")
         if re.search(
@@ -753,8 +756,8 @@ def test_notice_cadence() -> None:
             errors.append("hunger killscan must not be locked to % 3 — poll often, gate by game hour")
     if world_path.is_file():
         wbody = world_path.read_text(encoding="utf-8", errors="replace")
-        if "HandleWorldScanVoice" not in wbody or "DispatchListeners" not in wbody:
-            errors.append("WorldScan must DispatchListeners → HandleWorldScanVoice")
+        if "HandleKillerScanVoice" not in wbody or "DispatchListeners" not in wbody:
+            errors.append("KillerScan must DispatchListeners → HandleKillerScanVoice")
 
 
     if errors:
@@ -765,7 +768,7 @@ def test_notice_approach_c4_parked() -> None:
     """C4 is parked until ambient C3 whispers are verified again in-game.
 
     Prior C4 wiring (0.5s timer / extra FindActors on killscan) silenced all
-    notices. This contract locks the restore: WorldScan ambient only, no approach
+    notices. This contract locks the restore: KillerScan ambient only, no approach
     hot path, no 0.5s StartTimer.
     """
     text = PSC.read_text(encoding="utf-8", errors="replace")
@@ -823,14 +826,14 @@ def test_runtime_loops_armed_without_mcm() -> None:
         arm = re.search(r"Function ArmRuntimeLoops\(\)(.*?)EndFunction", text, re.S)
         body = arm.group(1) if arm else ""
         for needle in (
-            "StartBondPoll()",
-            "StartHungerPoll()",
-            "StartTrustVoice()",
-            "StartNoticeVoice()",
-            "StartWorldScanLoop()",
+            "StartKillerScanLoop()",
+            "CancelTimer(TIMER_HUNGER)",
+            "CancelTimer(TIMER_BOND)",
         ):
             if needle not in body:
-                errors.append(f"ArmRuntimeLoops must call {needle}")
+                errors.append(f"ArmRuntimeLoops must {needle}")
+        if "StartTimer(" in body:
+            errors.append("ArmRuntimeLoops must not StartTimer")
 
     if "Function EnsurePlayerCombatQuest()" not in text:
         errors.append("EnsurePlayerCombatQuest missing (alias load hook quest)")
@@ -844,8 +847,10 @@ def test_runtime_loops_armed_without_mcm() -> None:
         errors.append("OnTimer missing")
     else:
         body = on_timer.group(1)
-        if "TIMER_BOOT_ARM" not in body or "ArmRuntimeLoops()" not in body:
-            errors.append("OnTimer TIMER_BOOT_ARM must ArmRuntimeLoops")
+        if "StartKillerScanLoop()" not in body:
+            errors.append("OnTimer legacy path must StartKillerScanLoop")
+        if "StartTimer(" in body:
+            errors.append("OnTimer must not StartTimer (cancel-only)")
 
     on_init = re.search(r"Event OnInit\(\)(.*?)EndEvent", text, re.S)
     if not on_init or "ArmRuntimeLoops()" not in on_init.group(1):
@@ -959,12 +964,12 @@ def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
             errors.append("MaybeSpeakNoticeLine must not Debug.MessageBox")
 
     run = re.search(
-        r"Function HandleWorldScanKnifeAimWarm\(\)(.*?)EndFunction",
+        r"Function HandleKillerScanKnifeAimWarm\(\)(.*?)EndFunction",
         text,
         re.S,
     )
     if run and "Debug.MessageBox(" in run.group(1):
-        errors.append("HandleWorldScanKnifeAimWarm must not MessageBox (heartbeat is ToastDebug only)")
+        errors.append("HandleKillerScanKnifeAimWarm must not MessageBox (heartbeat is ToastDebug only)")
 
 
     arm_ann = re.search(r"Function AnnounceKillScanArmed\(\)(.*?)EndFunction", text, re.S)

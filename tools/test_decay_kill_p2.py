@@ -73,11 +73,11 @@ def test_registry_and_stamp() -> None:
 
 def test_killscan_sync() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    knife = extract_function(main, "ProcessKnifeCreditFromWorldScan")
+    knife = extract_function(main, "ProcessKnifeCreditFromKillerScan")
     if "SyncDecayForKnifeCorpse" in knife:
-        fail("ProcessKnifeCreditFromWorldScan must NOT SyncDecay")
+        fail("ProcessKnifeCreditFromKillerScan must NOT SyncDecay")
     if "FindActors" in knife:
-        fail("ProcessKnifeCreditFromWorldScan must not FindActors")
+        fail("ProcessKnifeCreditFromKillerScan must not FindActors")
     if "EnsureDecayForTrackedVictim" in knife:
         fail("knife credit must not EnsureDecay (CorpseDecay NoWait owns stamps + overlays)")
     voice_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceScanScript.psc"
@@ -88,17 +88,17 @@ def test_killscan_sync() -> None:
         fail("VoiceScan must TickLookFixation + MaybeSpeakNoticeLine(killscan)")
     if "SyncDecayForKnifeCorpse" in voice:
         fail("VoiceScan must not SyncDecay")
-    if "ProcessKnifeCreditFromWorldScan" in voice:
+    if "ProcessKnifeCreditFromKillerScan" in voice:
         fail("VoiceScan must not own knife credit")
     if "RegisterForCustomEvent" in voice:
-        fail("VoiceScan must not CustomEvent-listen (direct HandleWorldScanVoice)")
-    knife_fn = extract_function(main, "HandleWorldScanKnifeAimWarm")
+        fail("VoiceScan must not CustomEvent-listen (direct HandleKillerScanVoice)")
+    knife_fn = extract_function(main, "HandleKillerScanKnifeAimWarm")
     if "TickLookFixation" in knife_fn or "MaybeSpeakNoticeLine" in knife_fn:
-        fail("HandleWorldScanKnifeAimWarm must not own voice (VoiceScan does)")
+        fail("HandleKillerScanKnifeAimWarm must not own voice (VoiceScan does)")
     if "StartDecaySyncLoop" in main:
-        fail("retire StartDecaySyncLoop — overlays via WorldScan CallFunctionNoWait")
-    if "StartWorldScanLoop()" not in extract_function(main, "ArmRuntimeLoops"):
-        fail("ArmRuntimeLoops must StartWorldScanLoop")
+        fail("retire StartDecaySyncLoop — overlays via KillerScan CallFunctionNoWait")
+    if "StartKillerScanLoop()" not in extract_function(main, "ArmRuntimeLoops"):
+        fail("ArmRuntimeLoops must StartKillerScanLoop")
 
     ensure = extract_function(main, "EnsureDecayForTrackedVictim")
     if "FindVictimSlot" not in ensure or "StampDecayKill" not in ensure:
@@ -108,15 +108,15 @@ def test_killscan_sync() -> None:
     if "IsNonGameplayCorpse" not in ensure:
         fail("EnsureDecayForTrackedVictim must skip bed/lab corpses")
     decay = DECAY.read_text(encoding="utf-8", errors="replace")
-    overlay = extract_function(decay, "SyncOverlaysFromWorldScanSnapshot")
+    overlay = extract_function(decay, "SyncOverlaysFromKillerScanSnapshot")
     if "SyncDecayForKnifeCorpse" not in overlay:
-        fail("SyncOverlaysFromWorldScanSnapshot must SyncDecayForKnifeCorpse")
+        fail("SyncOverlaysFromKillerScanSnapshot must SyncDecayForKnifeCorpse")
     if "DecaySyncBackoffUntil" not in overlay:
-        fail("SyncOverlaysFromWorldScanSnapshot must backoff on LooksMenu apply failure")
+        fail("SyncOverlaysFromKillerScanSnapshot must backoff on LooksMenu apply failure")
     if "FindActors" in overlay:
-        fail("SyncOverlaysFromWorldScanSnapshot must not FindActors")
+        fail("SyncOverlaysFromKillerScanSnapshot must not FindActors")
     if "EnsureDecayForTrackedVictim" not in overlay:
-        fail("SyncOverlaysFromWorldScanSnapshot must stamp tracked victims without overlays first")
+        fail("SyncOverlaysFromKillerScanSnapshot must stamp tracked victims without overlays first")
     fmt = extract_function(main, "FormatDecayStageStatusForActor")
     if "EnsureDecayForTrackedVictim(ak, False)" not in fmt:
         fail("FormatDecayStageStatusForActor must stamp without overlays in MCM")
@@ -136,7 +136,7 @@ def test_killscan_sync() -> None:
     bed = BED.read_text(encoding="utf-8", errors="replace")
     if "StampDecayKill" in bed:
         fail("BedGift must not StampDecayKill (hallucination stays out of kill registry)")
-    ok("decay sync on WorldScan NoWait + bed gift not stamped")
+    ok("decay sync on KillerScan NoWait + bed gift not stamped")
 
 
 def test_docs() -> None:
@@ -186,8 +186,8 @@ def test_mcm_decay_stage_row() -> None:
         fail("TickVictimsAimCache must not sticky-activate (regressed corpse cache)")
     if "GetFacedSeverCorpse" in extract_function(victims, "ResolveVictimsAimActor"):
         fail("ResolveVictimsAimActor must not GetFacedSeverCorpse (MCM Refresh FindActors hitch)")
-    if "OnWorldScanVictimsAim" not in main:
-        fail("Main must OnWorldScanVictimsAim (fills aim cache from WorldScan event)")
+    if "OnKillerScanVictimsAim" not in main:
+        fail("Main must OnKillerScanVictimsAim (fills aim cache from KillerScan event)")
     if "IsInMenuMode" not in extract_function(main, "EnsureDecayForTrackedVictim"):
         fail("EnsureDecayForTrackedVictim must defer overlays while MCM open")
     if "NoteVictimsAimActor" not in extract_function(main, "ProcessKnifeKill"):
@@ -267,24 +267,24 @@ def test_mcm_decay_stage_row() -> None:
         fail("QueueAimedDecayAdvance must wrap QueueAimedDecayStage (+1)")
     run = extract_function(victims, "RunPendingDecayAdvance")
     if "ApplyDecayStageOverlays" in run:
-        fail("RunPendingDecayAdvance must NOT ApplyDecayStageOverlays (WorldScan owns apply)")
-    if "SyncOverlaysFromWorldScanSnapshot" not in run:
-        fail("RunPendingDecayAdvance must nudge SyncOverlaysFromWorldScanSnapshot")
-    if "IsInMenuMode" not in run:
-        fail("RunPendingDecayAdvance must defer while MCM open")
+        fail("RunPendingDecayAdvance must NOT ApplyDecayStageOverlays (KillerScan owns apply)")
+    if "StartTimer" in run:
+        fail("RunPendingDecayAdvance parked — must not StartTimer")
     mcm_apply = extract_function(victims, "MCMApplyAimedDecayStage")
     if "iVictimDecayStage:Victims" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must read iVictimDecayStage:Victims")
     if "PrepAimedDecayStage" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must PrepAimedDecayStage (clock only)")
     if "ApplyDecayStageOverlays" in mcm_apply:
-        fail("MCMApplyAimedDecayStage must NOT ApplyDecayStageOverlays — WorldScan SyncDecay owns apply")
-    if "StartTimer" not in mcm_apply or "TIMER_DECAY_ADVANCE" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must StartTimer to nudge WorldScan after MCM closes")
+        fail("MCMApplyAimedDecayStage must NOT ApplyDecayStageOverlays — KillerScan SyncDecay owns apply")
+    if "StartTimer" in mcm_apply:
+        fail("MCMApplyAimedDecayStage must not StartTimer (nudge parked)")
+    if "PARKED" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage MessageBox must say PARKED")
     if "MessageBox" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must MessageBox result")
-    if "WorldScan" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage MessageBox must mention WorldScan")
+    if "KillerScan" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage MessageBox must mention KillerScan")
     if "McmDecayButtonBusy" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must ignore re-entrant CallFunction spam")
     if "WriteDecayStageStatusToMcmForActor(aimed, False)" not in mcm_apply:
@@ -305,21 +305,18 @@ def test_mcm_decay_stage_row() -> None:
     if "QueueAimedDecayAdvance" not in mcm_adv:
         fail("MCMAdvanceAimedDecayStage must QueueAimedDecayAdvance")
     if "NoteForcedDecayClockForTest" not in prep:
-        fail("PrepAimedDecayStage must NoteForcedDecayClockForTest (clear WorldScan rate-limit)")
+        fail("PrepAimedDecayStage must NoteForcedDecayClockForTest (clear KillerScan rate-limit)")
     if "TIMER_DECAY_ADVANCE" not in victims:
-        fail("VictimsScript must declare TIMER_DECAY_ADVANCE")
-    if "aiTimerID == TIMER_DECAY_ADVANCE" not in victims:
-        fail("VictimsScript OnTimer must handle TIMER_DECAY_ADVANCE")
-    idx = victims.find("aiTimerID == TIMER_DECAY_ADVANCE")
-    if idx < 0 or "RunPendingDecayAdvance()" not in victims[idx : idx + 200]:
-        fail("Victims OnTimer TIMER_DECAY_ADVANCE must RunPendingDecayAdvance()")
+        fail("VictimsScript must declare TIMER_DECAY_ADVANCE (CancelTimer only)")
+    if "StartTimer(" in victims:
+        fail("VictimsScript must not StartTimer")
     if "Victims()" not in extract_function(main, "MCMApplyAimedDecayStage"):
         fail("Main MCMApplyAimedDecayStage must façade via Victims()")
     if "Victims()" not in extract_function(main, "MCMResetAimedDecayKillClock"):
         fail("Main MCMResetAimedDecayKillClock must façade via Victims()")
     if "Victims()" not in extract_function(main, "MCMAdvanceAimedDecayStage"):
         fail("Main MCMAdvanceAimedDecayStage must façade via Victims()")
-    ok("MCM Victims decay test harness is clock-only; WorldScan SyncDecay applies")
+    ok("MCM Victims decay test harness is clock-only; KillerScan SyncDecay applies")
 
 
 def main() -> int:

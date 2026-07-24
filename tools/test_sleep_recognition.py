@@ -132,6 +132,22 @@ def test_psc(text: str) -> None:
         fail("SpeakRecognitionLine must still PickRecognitionLine when awake")
     if "ShowVoiceToast" not in speak:
         fail("SpeakRecognitionLine must ShowVoiceToast")
+    # False "file not loaded" toast burned in-game when bank status was "15 lines".
+    if "SleepRecognitionLineCount <= 0" not in speak:
+        fail("SpeakRecognitionLine must only claim SleepRecognitionLines.txt missing when count <= 0")
+    if "pick empty" not in speak:
+        fail("SpeakRecognitionLine must Trace pick-empty separately from missing file")
+    pick = extract_function(text, "PickSleepRecognitionLine")
+    if "ApplyNamePlaceholder" not in pick:
+        fail("PickSleepRecognitionLine must ApplyNamePlaceholder before return")
+    if "While attempt" not in pick:
+        fail("PickSleepRecognitionLine must retry when placeholder strip yields empty")
+    load_sleep = extract_function(text, "LoadSleepRecognitionLines")
+    if not re.search(
+        r"SleepRecognitionLineCount\s*=\s*0\s*\n\s*SleepRecognitionLines\s*=\s*new",
+        load_sleep,
+    ):
+        fail("LoadSleepRecognitionLines must zero count before new String[64] (stale-slot race)")
     ok("SpeakRecognitionLine branches sleep vs awake banks")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")

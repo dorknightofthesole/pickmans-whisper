@@ -165,36 +165,36 @@ def test_psc_contracts(text: str) -> None:
         fail("TickLookFixation must not use FIXATION_TOAST_COOLDOWN")
     ok("TickLookFixation aim + P2 voice + isolated from ambient")
 
-    # VoiceScan HandleWorldScanVoice: fixation BEFORE hunger (order lock)
+    # VoiceScan HandleKillerScanVoice: fixation BEFORE hunger (order lock)
     voice = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceScanScript.psc").read_text(
         encoding="utf-8", errors="replace"
     )
-    if "Function HandleWorldScanVoice" not in voice:
-        fail("VoiceScan must expose HandleWorldScanVoice (direct WorldScan dispatch)")
+    if "Function HandleKillerScanVoice" not in voice:
+        fail("VoiceScan must expose HandleKillerScanVoice (direct KillerScan dispatch)")
     if "TickLookFixation()" not in voice or 'MaybeSpeakNoticeLine("killscan")' not in voice:
         fail("VoiceScan must TickLookFixation + MaybeSpeakNoticeLine(killscan)")
     i_ambient = voice.find('MaybeSpeakNoticeLine("killscan")')
     i_fix = voice.find("TickLookFixation()")
     if i_fix > i_ambient:
         fail("TickLookFixation must run BEFORE ambient MaybeSpeakNoticeLine in VoiceScan")
-    if "ProcessKnifeCreditFromWorldScan" in voice:
+    if "ProcessKnifeCreditFromKillerScan" in voice:
         fail("VoiceScan must not own knife credit")
     if "RegisterForCustomEvent" in voice:
         fail("VoiceScan must not use CustomEvent (same-quest delivery was silent)")
     ok("VoiceScan order: TickLookFixation then ambient")
 
-    # WorldScan OnTimer must re-arm before RunWorldScanTick (silence guard)
-    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperWorldScanScript.psc").read_text(
+    # KillerScan OnTimer must re-arm before RunKillerScanTick (silence guard)
+    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
         encoding="utf-8", errors="replace"
     )
     on_timer = extract_function_event(world, "OnTimer")
-    i_arm = on_timer.find("StartWorldScanLoop()")
-    i_run = on_timer.find("RunWorldScanTick()")
+    i_arm = on_timer.find("StartKillerScanLoop()")
+    i_run = on_timer.find("RunKillerScanTick()")
     if i_arm < 0 or i_run < 0:
-        fail("WorldScan OnTimer must call StartWorldScanLoop and RunWorldScanTick")
+        fail("KillerScan OnTimer must call StartKillerScanLoop and RunKillerScanTick")
     if i_arm > i_run:
-        fail("WorldScan OnTimer must StartWorldScanLoop BEFORE RunWorldScanTick (silence guard)")
-    ok("WorldScan OnTimer re-arms before tick body")
+        fail("KillerScan OnTimer must StartKillerScanLoop BEFORE RunKillerScanTick (silence guard)")
+    ok("KillerScan OnTimer re-arms before tick body")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "TickLookFixation" in notice or "FixationIds" in notice:

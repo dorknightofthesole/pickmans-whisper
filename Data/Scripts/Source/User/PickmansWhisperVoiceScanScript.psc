@@ -1,14 +1,14 @@
 Scriptname PickmansWhisperVoiceScanScript extends Quest
-{WorldScan voice listener — live NPC whispers only (fixation / Recognition + Notice).
-Called DIRECTLY from WorldScan (same-quest CustomEvent delivery is unreliable).
-Knife credit stays on Main; overlays on CorpseDecay. No LooksMenu / Utility.Wait.}
+{KillerScan voice listener — live NPC whispers only (fixation / Recognition + Notice).
+Called DIRECTLY from KillerScan (sync). Knife credit on Main; overlays on CorpseDecay.
+No LooksMenu / Utility.Wait. Ignores dead targets in TargetSnapshot.}
 
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
-; Sync entry from WorldScan.RunWorldScanTick — must stay Wait-free.
-Function HandleWorldScanVoice(PickmansWhisperWorldScanScript akSender)
+; Sync entry from KillerScan — must stay Wait-free. Living-only feature (ignore dead).
+Function HandleKillerScanVoice(PickmansWhisperKillerScanScript akSender)
 	If !akSender
 		Debug.Trace("PickmansWhisper: VoiceScan skip | !akSender")
 		Return
@@ -18,7 +18,7 @@ Function HandleWorldScanVoice(PickmansWhisperWorldScanScript akSender)
 		Debug.Trace("PickmansWhisper: ERROR VoiceScan — Main script missing")
 		Return
 	EndIf
-	; Heartbeat every tick — if MCM sVoiceDispatch never moves, WorldScan never called us.
+	; Heartbeat every tick — if MCM sVoiceDispatch never moves, KillerScan never called us.
 	String bondBit = "bond=0"
 	If m.BondStarted
 		bondBit = "bond=1"

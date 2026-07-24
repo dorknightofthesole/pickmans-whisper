@@ -19,7 +19,7 @@
 			"html": true
 		},
 		{
-			"text": "<p align='center'><font size='18'>Version 0.2.0 · Slice B</font></p>",
+			"text": "<p align='center'><font size='18'>Version 1.3.0 · Killer Orchestrator</font></p>",
 			"type": "text",
 			"html": true
 		},
@@ -396,7 +396,7 @@
 					"type": "section"
 				},
 				{
-					"text": "Testing only. Pick a stage, then \"Set decay stage\" (backdates murder time by ModConfig startHours). \"Reset decay stage\" sets murder time to now and the picker to Freshly Deceased. Close MCM — overlays may take several seconds via WorldScan.",
+					"text": "Testing only. Pick a stage, then \"Set decay stage\" (backdates murder time by ModConfig startHours). \"Reset decay stage\" sets murder time to now and the picker to Freshly Deceased. Close MCM — overlays may take several seconds via KillerScan.",
 					"type": "text",
 					"html": true
 				},
@@ -404,7 +404,7 @@
 					"id": "iVictimDecayStage:Victims",
 					"text": "Pick stage",
 					"type": "stepper",
-					"help": "Testing only. Choose the ModConfig stage, then press \"Set decay stage\". Or press \"Reset decay stage\" first (murder time = now, picker → Freshly Deceased). Close MCM; WorldScan may take several seconds to apply overlays.",
+					"help": "Testing only. Choose the ModConfig stage, then press \"Set decay stage\". Or press \"Reset decay stage\" first (murder time = now, picker → Freshly Deceased). Close MCM; KillerScan may take several seconds to apply overlays.",
 					"valueOptions": {
 						"sourceType": "ModSettingInt",
 						"options": [
@@ -419,7 +419,7 @@
 				{
 					"text": "Set decay stage",
 					"type": "button",
-					"help": "Separate from \"Reset decay stage\". Subtracts ModConfig startHours for the selected Pick stage from now (killTime = now − hours/24). Close MCM — WorldScan SyncDecay applies face/body and may take several seconds. Does not strip/re-apply overlays itself.",
+					"help": "Separate from \"Reset decay stage\". Subtracts ModConfig startHours for the selected Pick stage from now (killTime = now − hours/24). Close MCM — KillerScan SyncDecay applies face/body and may take several seconds. Does not strip/re-apply overlays itself.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -430,7 +430,7 @@
 				{
 					"text": "Reset decay stage",
 					"type": "button",
-					"help": "Separate from \"Set decay stage\". Sets murder/kill time to now and forces Pick stage to Freshly Deceased (stage 0), regardless of current stage. Close MCM — WorldScan may take several seconds to sync, or pick a later stage and press \"Set decay stage\".",
+					"help": "Separate from \"Set decay stage\". Sets murder/kill time to now and forces Pick stage to Freshly Deceased (stage 0), regardless of current stage. Close MCM — KillerScan may take several seconds to sync, or pick a later stage and press \"Set decay stage\".",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -470,7 +470,7 @@
 				{
 					"text": "!!! VOICE PATH DUMP !!!",
 					"type": "button",
-					"help": "MessageBox: bond, blade, WorldScan/VoiceScan casts, scan tick, last dispatch, notice/fixation status, hunger cooldown. Use this before guessing why whispers are silent.",
+					"help": "MessageBox: bond, blade, KillerScan/VoiceScan casts, scan tick, last dispatch, notice/fixation status, hunger cooldown. Use this before guessing why whispers are silent.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -632,9 +632,9 @@
 				},
 				{
 					"id": "sVoiceDispatch:Debug",
-					"text": "Voice dispatch (WorldScan)",
+					"text": "Voice dispatch (KillerScan)",
 					"type": "textinput",
-					"help": "Updates every ~2s when WorldScan reaches VoiceScan. If stuck on (none yet), voice never got the call.",
+					"help": "Updates every ~2s when KillerScan reaches VoiceScan. If stuck on (none yet), voice never got the call.",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}

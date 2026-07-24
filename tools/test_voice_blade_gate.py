@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Voice features require drawn Pickman's Blade (same check as kills — no duplicate GoE scan).
+"""Voice features require owning Pickman's Blade; kills still require it drawn.
 
 Locks:
-  - IsVoiceWeaponReady() returns IsBladeEquipped() only
+  - IsVoiceWeaponReady() returns PlayerHasBlade() only (no duplicated GoE scan)
   - IsBladeEquipped body unchanged (still FindEquippedPickmansBladeIndex / ranged reject)
   - IsBladeKillWeaponReady still aliases IsBladeEquipped (kill path untouched)
   - Toast / notice / fixation / audio entry points gate via IsVoiceWeaponReady
@@ -48,12 +48,13 @@ def main() -> None:
     text = PSC.read_text(encoding="utf-8", errors="replace")
 
     voice = extract_function(text, "IsVoiceWeaponReady")
-    if "Return IsBladeEquipped()" not in voice and "Return IsBladeEquipped()" not in voice.replace(" ", ""):
-        if not re.search(r"Return\s+IsBladeEquipped\s*\(\s*\)", voice):
-            fail("IsVoiceWeaponReady must only Return IsBladeEquipped() (no duplicated scan)")
+    if not re.search(r"Return\s+PlayerHasBlade\s*\(\s*\)", voice):
+        fail("IsVoiceWeaponReady must Return PlayerHasBlade() (owned/inventory, not drawn-only)")
     if "FindEquippedPickmansBladeIndex" in voice:
         fail("IsVoiceWeaponReady must not reimplement GoE blade scan")
-    ok("IsVoiceWeaponReady aliases IsBladeEquipped")
+    if re.search(r"Return\s+IsBladeEquipped\s*\(\s*\)", voice):
+        fail("IsVoiceWeaponReady must not require drawn blade (IsBladeEquipped)")
+    ok("IsVoiceWeaponReady aliases PlayerHasBlade")
 
     blade = extract_function(text, "IsBladeEquipped")
     if "FindEquippedPickmansBladeIndex" not in blade:
@@ -63,7 +64,7 @@ def main() -> None:
     kill = extract_function(text, "IsBladeKillWeaponReady")
     if "IsBladeEquipped()" not in kill:
         fail("IsBladeKillWeaponReady must still alias IsBladeEquipped")
-    ok("kill blade helpers unchanged")
+    ok("kill blade helpers unchanged (drawn-only)")
 
     for name in (
         "ShowVoiceToast",
@@ -84,16 +85,18 @@ def main() -> None:
             fail(f"{name} must gate with IsVoiceWeaponReady")
     ok("toast / notice / fixation / audio / named-E paths gated")
 
-    # Kill path must keep using IsBladeEquipped (not only the voice alias)
     if "IsBladeKillWeaponReady" not in text:
         fail("IsBladeKillWeaponReady missing")
-    praise_kill = False
-    for m in re.finditer(r"Function\s+\w+\([^)]*\)(.*?)\nEndFunction", text, re.S):
-        pass
-    # Spot-check: ProcessKnifeKill or similar still references IsBladeEquipped / KillWeaponReady
     if "IsBladeEquipped()" not in text:
         fail("IsBladeEquipped calls must remain for kill logic")
     ok("blade detection still referenced for kills")
+
+    notice = extract_function(text, "MaybeSpeakNoticeLine")
+    if "skip: no Pickman's Blade" not in notice:
+        fail("MaybeSpeakNoticeLine skip status must say no Pickman's Blade (not 'not drawn')")
+    if "skip: Pickman's Blade not drawn" in notice:
+        fail("MaybeSpeakNoticeLine must not use drawn-only skip copy")
+    ok("notice skip copy matches owned-blade gate")
 
     print("All voice-blade-gate contracts passed.")
 

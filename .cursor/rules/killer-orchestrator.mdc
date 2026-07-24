@@ -1,0 +1,29 @@
+---
+description: Killer Orchestrator — sole KillerScan timer; no timer fan-out
+alwaysApply: true
+---
+
+# Killer Orchestrator (v1.3.0+)
+
+## Single timer
+
+The mod has **one** recurring `StartTimer`: `PickmansWhisperKillerScanScript` (`TIMER_KILLER_SCAN`).
+
+- **Do not** add another `StartTimer` without **explicit user permission**.
+- Delays (boot retry, rename prompt, bed despawn/overlays) use **realtime deadlines** checked on KillerScan cadence — not feature timers.
+- Legacy timer IDs may only `CancelTimer` on load (stale saves). Never `StartTimer` or do work in Main/`Victims` `OnTimer` bodies.
+
+## Orchestration
+
+1. KillerScan re-arms first (always), then may skip `RunKillerScanTick` if `TickBusy` (overlap guard). Up to `BUSY_MAX_SKIPS` skips; next busy pulse force-clears and runs (fail-open if a prior tick aborted without clearing).
+2. Tick: `BuildTargetSnapshot` (sole `FindActors` producer).
+3. `DispatchListeners` — Voice **sync**; knife / cadence / Victims / CorpseDecay / BedGift **NoWait**.
+4. Listeners **filter** living vs dead; they do **not** FindActors.
+
+## Full replace
+
+No `WorldScan` dual path, façades, or “new code calls old WorldScan body.” Port feature logic onto KillerScan; rewrite the orchestrator only.
+
+## Logging
+
+Failure / misconfig skips on scan/dispatch paths must `Debug.Trace` — no silent failure Returns.

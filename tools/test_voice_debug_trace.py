@@ -56,11 +56,11 @@ def test_voice_dispatch_heartbeat() -> None:
         fail("NoteVoiceDispatch must write sVoiceDispatch:Debug")
     if "Debug.Trace" not in note:
         fail("NoteVoiceDispatch must Trace")
-    handle = extract_function(voice, "HandleWorldScanVoice")
+    handle = extract_function(voice, "HandleKillerScanVoice")
     if "NoteVoiceDispatch" not in handle:
-        fail("HandleWorldScanVoice must NoteVoiceDispatch every tick")
+        fail("HandleKillerScanVoice must NoteVoiceDispatch every tick")
     if 'Debug.Trace("PickmansWhisper: VoiceScan skip | !akSender")' not in handle:
-        fail("HandleWorldScanVoice must Trace !akSender (was silent Return)")
+        fail("HandleKillerScanVoice must Trace !akSender (was silent Return)")
     ok("VoiceScan dispatch heartbeat")
 
 
@@ -70,7 +70,7 @@ def test_notice_skip_traces() -> None:
     for needle in (
         "skip: not bonded",
         "skip: voice off",
-        "skip: Pickman's Blade not drawn",
+        "skip: no Pickman's Blade",
         "skip: hunger hour cooldown",
         "skip: no eligible target",
         'Debug.Trace("PickmansWhisper: notice skip |',

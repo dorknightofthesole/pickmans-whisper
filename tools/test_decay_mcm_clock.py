@@ -5,7 +5,7 @@ Reset → murder time = now, stage selector → 0.
 Apply → killTime = now − (ModConfig startHours[stage] / 24).
 
 Pure math mirrors ForceDecayKillClockToStage + ResolveDecayStageFromElapsedHours.
-Papyrus/MCM wiring asserts Reset + Apply stay clock-only (WorldScan applies overlays).
+Papyrus/MCM wiring asserts Reset + Apply stay clock-only (KillerScan applies overlays).
 
 Usage:
   python tools/test_decay_mcm_clock.py
@@ -172,8 +172,10 @@ def test_mcm_reset_and_apply_wiring() -> None:
         fail("MCMResetAimedDecayKillClock must call ResetAimedDecayKillClock")
     if 'iVictimDecayStage:Victims", 0' not in mcm_reset:
         fail("MCMResetAimedDecayKillClock must force stage selector to 0")
-    if "StartTimer" not in mcm_reset or "TIMER_DECAY_ADVANCE" not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must StartTimer to nudge WorldScan after MCM closes")
+    if "StartTimer" in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must not StartTimer (nudge parked)")
+    if "PARKED" not in mcm_reset and "KillerScan" not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock MessageBox must note PARKED / KillerScan")
     if "ApplyDecayStageOverlays" in mcm_reset:
         fail("MCMResetAimedDecayKillClock must NOT ApplyDecayStageOverlays")
 

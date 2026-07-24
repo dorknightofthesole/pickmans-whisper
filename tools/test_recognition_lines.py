@@ -138,6 +138,19 @@ def test_psc(text: str) -> None:
         fail("SpeakRecognitionLine must IncrementRecognitionToast (name-her counter)")
     if "MaybePromptNameHer" not in recog:
         fail("SpeakRecognitionLine must MaybePromptNameHer after recognition toast")
+    if "RecognitionLineCount <= 0" not in recog:
+        fail("SpeakRecognitionLine must only claim RecognitionLines.txt missing when count <= 0")
+    if "pick empty" not in recog:
+        fail("SpeakRecognitionLine must distinguish pick-empty from missing file")
+    pick = extract_function(text, "PickRecognitionLine")
+    if "ApplyNamePlaceholder" not in pick:
+        fail("PickRecognitionLine must ApplyNamePlaceholder inside retry loop")
+    load_awake = extract_function(text, "LoadRecognitionLines")
+    if not re.search(
+        r"RecognitionLineCount\s*=\s*0\s*\n\s*RecognitionLines\s*=\s*new",
+        load_awake,
+    ):
+        fail("LoadRecognitionLines must zero count before new String[64]")
     ok("3rd+ recognition toast without hunger hour stamp")
 
     if 'RECOGNITION_NAME_PROMPT_AT = 3' not in text and "RECOGNITION_NAME_PROMPT_AT=3" not in text:
@@ -149,20 +162,19 @@ def test_psc(text: str) -> None:
         fail("MaybePromptNameHer must skip when already named")
     if "ShowVoiceToast" in prompt:
         fail("MaybePromptNameHer must NOT ShowVoiceToast (clobbers recognition); queue timer instead")
-    if "StartTimer" not in prompt or "TIMER_RENAME_PROMPT" not in prompt:
-        fail("MaybePromptNameHer must StartTimer(TIMER_RENAME_PROMPT) to delay the nudge")
+    if "PendingRenameAtReal" not in prompt:
+        fail("MaybePromptNameHer must set PendingRenameAtReal deadline (Killer Orchestrator)")
+    if "StartTimer" in prompt:
+        fail("MaybePromptNameHer must not StartTimer")
     if "PendingRenamePrompt" not in prompt:
         fail("MaybePromptNameHer must set PendingRenamePrompt")
     if "recognitionToasts < RECOGNITION_NAME_PROMPT_AT" not in prompt and "recognitionToasts<RECOGNITION_NAME_PROMPT_AT" not in prompt:
         fail("MaybePromptNameHer must fire every toast from count >= 3 (not == 3 only)")
     if RENAME_PROMPT_DEFAULT in text:
         fail("PSC must not hard-code renamePromptFemaleNPC text (ModConfig.txt is source of truth)")
-    m = re.search(r"Event OnTimer\(Int aiTimerID\)(.*?)EndEvent", text, re.S)
-    if not m:
-        fail("OnTimer missing")
-    on_timer = m.group(1)
-    if "TIMER_RENAME_PROMPT" not in on_timer or "ShowVoiceToast(PendingRenamePrompt)" not in on_timer:
-        fail("OnTimer must handle TIMER_RENAME_PROMPT and ShowVoiceToast(PendingRenamePrompt)")
+    cadence = extract_function(text, "OnKillerScanCadence")
+    if "PendingRenameAtReal" not in cadence or "ShowVoiceToast(PendingRenamePrompt)" not in cadence:
+        fail("OnKillerScanCadence must fire PendingRenameAtReal → ShowVoiceToast")
     load_banks = extract_function(text, "LoadLineBanks")
     if "LoadModConfig()" not in load_banks:
         fail("LoadLineBanks must call LoadModConfig()")
@@ -173,7 +185,7 @@ def test_psc(text: str) -> None:
         fail("LoadModConfig must parse renamePromptFemaleNPC")
     if "Debug.Notification" in load_mod:
         fail("LoadModConfig must not Notification (clobbers voice toasts); Trace only")
-    ok("name-her prompt delayed via timer; ModConfig files-only")
+    ok("name-her prompt delayed via KillerScan cadence; ModConfig files-only")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "SpeakRecognitionLine" in notice or "SpeakFixationStageWhisper" in notice:

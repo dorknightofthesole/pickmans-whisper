@@ -108,25 +108,29 @@ Float HUNGER_POLL_SECONDS = 12.0
 Float BOND_POLL_SECONDS = 4.0
 Float TRUST_VOICE_SECONDS = 180.0
 Float NOTICE_VOICE_SECONDS = 45.0 ; C2 nearby-female comments (slow ambient backup)
-Float KILL_SCAN_SECONDS = 2.0 ; killscan / fixation poll (<10s); hunger toasts gated separately by game-hour
+Float KILL_SCAN_SECONDS = 2.0 ; KillerScan tick; hunger toasts gated separately by game-hour
 
+; Legacy timer ids — CancelTimer only on load (stale saves). KillerScan is the sole StartTimer.
 Int TIMER_HUNGER = 1
 Int TIMER_BOND = 2
 Int TIMER_TRUST = 3
-Int TIMER_KILL = 4 ; legacy unused
-Int TIMER_NOTICE = 5 ; C2 notice voice (slow ambient)
-Int TIMER_NOTICE_APPROACH = 6 ; retired — CancelTimer only (0.5s poll silenced the quest)
-Int TIMER_BOOT_ARM = 7 ; post-load delayed ArmRuntimeLoops (OnInit often skips on mid-game saves)
-; TIMER_BED_DESPAWN (8) lives on PickmansWhisperBedGiftScript — that script StartTimer/OnTimer.
-Int TIMER_KILL_SCAN = 13 ; legacy — CancelTimer only; WorldScan owns TIMER_WORLD_SCAN=16
-Int TIMER_RENAME_PROMPT = 14 ; delayed renamePromptFemaleNPC (avoid clobbering recognition toast)
-Int TIMER_DECAY_SYNC = 15 ; legacy — CancelTimer only; overlays via OnWorldScan + CallFunctionNoWait
-; Keep declared — mid-save OnTimer still references this id; removing it wedged Main
-; ("Failed to find variable TIMER_DECAY_ADVANCE"). Apply body lives on VictimsScript.
+Int TIMER_KILL = 4
+Int TIMER_NOTICE = 5
+Int TIMER_NOTICE_APPROACH = 6
+Int TIMER_BOOT_ARM = 7
+Int TIMER_KILL_SCAN = 13
+Int TIMER_RENAME_PROMPT = 14
+Int TIMER_DECAY_SYNC = 15
 Int TIMER_DECAY_ADVANCE = 17
-Float DECAY_ADVANCE_DELAY = 0.35
 Float RENAME_PROMPT_DELAY = 2.5
-String PendingRenamePrompt = "" ; queued ModConfig line for TIMER_RENAME_PROMPT
+String PendingRenamePrompt = ""
+Float PendingRenameAtReal = 0.0
+Float NextBondRealTime = 0.0
+Float NextHungerRealTime = 0.0
+Float NextTrustRealTime = 0.0
+Float NextNoticeRealTime = 0.0
+Float BootArmDeadlineReal = 0.0
+String MOD_VERSION = "1.3.0"
 Actor LastButcherCorpse = None ; last valid sever target (floor corpses miss camera rays)
 Float BUTCHER_CORPSE_RADIUS = 500.0 ; slightly > Necromantic 350; floor corpses need slack
 Float BUTCHER_FACING_DEG = 75.0 ; yaw cone for faced-corpse fallback
@@ -228,7 +232,7 @@ Int NOTICE_COOL_MAX = 16
 ; C4 approach is parked — do not reintroduce FindActors/timers on the notice hot
 ; path until ambient killscan whispers are verified working again in-game.
 String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't fire
-String Property LastVoiceDispatchStatus = "" Auto ; MCM Debug — WorldScan→VoiceScan heartbeat
+String Property LastVoiceDispatchStatus = "" Auto ; MCM Debug — KillerScan→VoiceScan heartbeat
 
 ; C5 look-fixation (additive). Aim-edge counts; does not alter ambient whispers.
 ; Aim via GoE camera/activate — NOT Game.GetCurrentCrosshairRef (not a FO4 native).
@@ -343,8 +347,9 @@ Event OnInit()
 EndEvent
 
 Event OnQuestInit()
-	DEBUG_BUILD = "C2-stable"
+	DEBUG_BUILD = "1.3.0-KO"
 	KILL_WATCH_RADIUS = 800.0
+	Debug.Trace("PickmansWhisper: === v1.3.0 Killer Orchestrator loaded ===")
 	ToastDebug("PW OnQuestInit FIRED [" + DEBUG_BUILD + "]")
 	PlayerRef = Game.GetPlayer()
 	InvalidateDebugToastCache()
@@ -358,20 +363,20 @@ Event OnQuestInit()
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
-	; Arm timers on init/load — no MessageBox here (MCM Debug buttons only).
+	; Arm KillerScan on init/load — no MessageBox here (MCM Debug buttons only).
 	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
 	ScheduleBootArm()
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
-	RegisterWorldScanEvents()
+	RegisterKillerScanScripts()
 	EnsureSeverLimbMenu()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
-	Debug.Trace("PickmansWhisper: quest init " + DEBUG_BUILD)
+	Debug.Trace("PickmansWhisper: quest init " + DEBUG_BUILD + " v" + MOD_VERSION)
 	ToastDebug("Pickman's Whisper ready [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
 EndEvent
@@ -426,7 +431,7 @@ Function HandleGameResume(String reason)
 	EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
-	RegisterWorldScanEvents()
+	RegisterKillerScanScripts()
 	EnsureSeverLimbMenu()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
@@ -652,8 +657,8 @@ Function DebugTestSeverAimedHead()
 EndFunction
 
 ; Soft E2 — register Necromantic scene CustomEvents when plugin present.
-PickmansWhisperWorldScanScript Function WorldScan()
-	Return (Self as Quest) as PickmansWhisperWorldScanScript
+PickmansWhisperKillerScanScript Function KillerScan()
+	Return (Self as Quest) as PickmansWhisperKillerScanScript
 EndFunction
 
 PickmansWhisperVictimsScript Function Victims()
@@ -661,12 +666,12 @@ PickmansWhisperVictimsScript Function Victims()
 	Return (Self as Quest) as PickmansWhisperVictimsScript
 EndFunction
 
-; Verify WorldScan + VoiceScan attached (dispatch is direct from WorldScan, not CustomEvent).
-Function RegisterWorldScanEvents()
-	PickmansWhisperWorldScanScript scan = WorldScan()
+; Verify KillerScan + VoiceScan attached (dispatch is direct from KillerScan, not CustomEvent).
+Function RegisterKillerScanScripts()
+	PickmansWhisperKillerScanScript scan = KillerScan()
 	If !scan
-		Debug.Notification("Pickman's Whisper: WorldScan script missing — rebuild PickmansWhisper.esp")
-		Debug.Trace("PickmansWhisper: ERROR WorldScan script missing on Main quest")
+		Debug.Notification("Pickman's Whisper: KillerScan script missing — rebuild PickmansWhisper.esp")
+		Debug.Trace("PickmansWhisper: ERROR KillerScan script missing on Main quest")
 		Return
 	EndIf
 	PickmansWhisperVoiceScanScript voice = VoiceScan()
@@ -687,21 +692,23 @@ PickmansWhisperVoiceScanScript Function VoiceScan()
 	Return (Self as Quest) as PickmansWhisperVoiceScanScript
 EndFunction
 
-Function StartWorldScanLoop()
-	PickmansWhisperWorldScanScript scan = WorldScan()
-	If scan
-		scan.StartWorldScanLoop()
+Function StartKillerScanLoop()
+	PickmansWhisperKillerScanScript scan = KillerScan()
+	If !scan
+		Debug.Trace("PickmansWhisper: ERROR StartKillerScanLoop — KillerScan missing")
+		Return
 	EndIf
+	scan.StartKillerScanLoop()
 EndFunction
 
-Function NoteWorldScanCounts(Int tick, Int aliveCount, Int deadCount, Int detectCount)
+Function NoteKillerScanCounts(Int tick, Int aliveCount, Int deadCount, Int detectCount)
 	KillScanTickCount = tick
 	LastGoeAliveCount = aliveCount
 	LastGoeDeadCount = deadCount
 	LastDetectCount = detectCount
 EndFunction
 
-; Called from VoiceScan.HandleWorldScanVoice every ~2s — proves dispatch reached Main.
+; Called from VoiceScan.HandleKillerScanVoice every ~2s — proves dispatch reached Main.
 Function NoteVoiceDispatch(String detail)
 	If !detail
 		detail = "?"
@@ -713,15 +720,16 @@ Function NoteVoiceDispatch(String detail)
 	Debug.Trace("PickmansWhisper: voice dispatch | " + LastVoiceDispatchStatus)
 EndFunction
 
-; WorldScan CallFunctionNoWait — knife credit + Victims aim + bed warm.
+; KillerScan CallFunctionNoWait — knife credit + Victims aim + bed warm.
 ; Voice runs sync on VoiceScan before this is kicked (must not Wait / LooksMenu).
-Function HandleWorldScanKnifeAimWarm()
-	PickmansWhisperWorldScanScript scan = WorldScan()
+Function HandleKillerScanKnifeAimWarm()
+	PickmansWhisperKillerScanScript scan = KillerScan()
 	If !scan
+		Debug.Trace("PickmansWhisper: ERROR HandleKillerScanKnifeAimWarm — KillerScan missing")
 		Return
 	EndIf
-	ProcessKnifeCreditFromWorldScan(scan)
-	OnWorldScanVictimsAim(scan)
+	ProcessKnifeCreditFromKillerScan(scan)
+	OnKillerScanVictimsAim(scan)
 	If BondStarted && (scan.ScanTick % 5) == 0
 		PickmansWhisperBedGiftScript bed = BedGift()
 		If bed
@@ -737,7 +745,7 @@ Function HandleWorldScanKnifeAimWarm()
 	EndIf
 EndFunction
 
-Function OnWorldScanVictimsAim(PickmansWhisperWorldScanScript akSender)
+Function OnKillerScanVictimsAim(PickmansWhisperKillerScanScript akSender)
 	If !akSender
 		Return
 	EndIf
@@ -874,26 +882,70 @@ Function EnsurePlayerCombatQuest()
 	EndIf
 EndFunction
 
-; Bond / hunger / trust / notice / world-scan — always-on loops. Call on init, load, bond.
+; Killer Orchestrator — cancel stale feature timers; arm sole KillerScan pulse.
 Function ArmRuntimeLoops()
-	StartBondPoll()
-	StartHungerPoll()
-	StartTrustVoice()
-	StartNoticeVoice()
-	CancelTimer(TIMER_NOTICE_APPROACH) ; kill any leftover C4 timer from older pex
-	; Legacy kitchen-sink timers — WorldScan owns the neighborhood poll now.
+	CancelTimer(TIMER_HUNGER)
+	CancelTimer(TIMER_BOND)
+	CancelTimer(TIMER_TRUST)
+	CancelTimer(TIMER_NOTICE)
+	CancelTimer(TIMER_NOTICE_APPROACH)
 	CancelTimer(TIMER_KILL)
 	CancelTimer(TIMER_KILL_SCAN)
 	CancelTimer(TIMER_DECAY_SYNC)
-	RegisterWorldScanEvents()
-	StartWorldScanLoop()
-	; Bed gift sleep events register on PlayerAlias (Quest RegisterForPlayerSleep is flaky).
+	CancelTimer(TIMER_BOOT_ARM)
+	CancelTimer(TIMER_RENAME_PROMPT)
+	CancelTimer(TIMER_DECAY_ADVANCE)
+	NextBondRealTime = 0.0
+	NextHungerRealTime = 0.0
+	NextTrustRealTime = 0.0
+	NextNoticeRealTime = 0.0
+	RegisterKillerScanScripts()
+	StartKillerScanLoop()
+	Debug.Trace("PickmansWhisper: ArmRuntimeLoops — KillerScan only v" + MOD_VERSION)
 EndFunction
 
-; StartTimer during early load can be dropped; re-arm once after BOOT_ARM_SECONDS.
+; Load retry without a second StartTimer — deadline checked on KillerScan cadence.
 Function ScheduleBootArm()
 	CancelTimer(TIMER_BOOT_ARM)
-	StartTimer(BOOT_ARM_SECONDS, TIMER_BOOT_ARM)
+	BootArmDeadlineReal = Utility.GetCurrentRealTime() + BOOT_ARM_SECONDS
+	Debug.Trace("PickmansWhisper: ScheduleBootArm deadline +" + BOOT_ARM_SECONDS + "s (Killer Orchestrator)")
+EndFunction
+
+; Ported from former Main timers — called via KillerScan NoWait each tick.
+Function OnKillerScanCadence()
+	Float now = Utility.GetCurrentRealTime()
+	If BootArmDeadlineReal > 0.0 && now >= BootArmDeadlineReal
+		BootArmDeadlineReal = 0.0
+		EnsurePlayerCombatQuest()
+		ArmRuntimeLoops()
+		Debug.Trace("PickmansWhisper: boot-arm deadline fired v" + MOD_VERSION)
+	EndIf
+	If PendingRenameAtReal > 0.0 && now >= PendingRenameAtReal
+		PendingRenameAtReal = 0.0
+		If PendingRenamePrompt
+			ShowVoiceToast(PendingRenamePrompt)
+			Debug.Trace("PickmansWhisper: name-her prompt (deadline) | " + PendingRenamePrompt)
+			PendingRenamePrompt = ""
+		Else
+			Debug.Trace("PickmansWhisper: rename deadline skip | empty prompt")
+		EndIf
+	EndIf
+	If now >= NextBondRealTime
+		NextBondRealTime = now + BOND_POLL_SECONDS
+		RunBondPoll()
+	EndIf
+	If now >= NextHungerRealTime
+		NextHungerRealTime = now + HUNGER_POLL_SECONDS
+		RunHungerTick()
+	EndIf
+	If now >= NextTrustRealTime
+		NextTrustRealTime = now + TRUST_VOICE_SECONDS
+		MaybeSpeakTrustLine()
+	EndIf
+	If now >= NextNoticeRealTime
+		NextNoticeRealTime = now + NOTICE_VOICE_SECONDS
+		MaybeSpeakNoticeLine("timer")
+	EndIf
 EndFunction
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
@@ -951,44 +1003,13 @@ Event Actor.OnItemRemoved(Actor akSender, Form akBaseItem, Int aiItemCount, Obje
 EndEvent
 
 Event OnTimer(Int aiTimerID)
-	If aiTimerID == TIMER_BOND
-		RunBondPoll()
-		StartBondPoll()
-	ElseIf aiTimerID == TIMER_HUNGER
-		RunHungerTick()
-		StartHungerPoll()
-	ElseIf aiTimerID == TIMER_TRUST
-		MaybeSpeakTrustLine()
-		StartTrustVoice()
-	ElseIf aiTimerID == TIMER_NOTICE
-		MaybeSpeakNoticeLine("timer")
-		StartNoticeVoice()
-	ElseIf aiTimerID == TIMER_NOTICE_APPROACH
-		; Legacy id — cancel and ignore (C4 parked; 0.5s poll silenced the quest).
-		CancelTimer(TIMER_NOTICE_APPROACH)
-	ElseIf aiTimerID == TIMER_BOOT_ARM
-		; Delayed load arm — catches mid-game saves where OnInit skipped and early
-		; StartTimer was dropped during the loading screen.
-		EnsurePlayerCombatQuest()
-		ArmRuntimeLoops()
-		Debug.Trace("PickmansWhisper: boot-arm timer fired " + DEBUG_BUILD)
-	ElseIf aiTimerID == TIMER_KILL || aiTimerID == TIMER_KILL_SCAN || aiTimerID == TIMER_DECAY_SYNC
-		; Legacy ids from older .pex — cancel; PickmansWhisperWorldScanScript owns the poll.
-		CancelTimer(aiTimerID)
-		StartWorldScanLoop()
-	ElseIf aiTimerID == TIMER_RENAME_PROMPT
-		; Fired after recognition toast so FO4 HUD does not replace the line bank toast.
-		If PendingRenamePrompt
-			ShowVoiceToast(PendingRenamePrompt)
-			Debug.Trace("PickmansWhisper: name-her prompt (delayed) | " + PendingRenamePrompt)
-			PendingRenamePrompt = ""
-		EndIf
-	ElseIf aiTimerID == TIMER_DECAY_ADVANCE
-		; Stale Main timer from older builds / save stacks — forward to VictimsScript.
-		PickmansWhisperVictimsScript v = Victims()
-		If v
-			v.RunPendingDecayAdvance()
-		EndIf
+	; Stale saves may still fire old feature timer ids — cancel only; KillerScan owns work.
+	CancelTimer(aiTimerID)
+	If aiTimerID == TIMER_KILL || aiTimerID == TIMER_KILL_SCAN || aiTimerID == TIMER_DECAY_SYNC || aiTimerID == TIMER_BOOT_ARM
+		StartKillerScanLoop()
+		Debug.Trace("PickmansWhisper: legacy OnTimer id=" + aiTimerID + " → StartKillerScanLoop")
+	Else
+		Debug.Trace("PickmansWhisper: legacy OnTimer id=" + aiTimerID + " cancelled (Killer Orchestrator)")
 	EndIf
 EndEvent
 
@@ -1047,8 +1068,9 @@ EndFunction
 ; --- Bond / trigger ------------------------------------------------------------
 
 Function StartBondPoll()
+	; Killer Orchestrator — bond cadence via OnKillerScanCadence (no StartTimer).
 	CancelTimer(TIMER_BOND)
-	StartTimer(BOND_POLL_SECONDS, TIMER_BOND)
+	NextBondRealTime = 0.0
 EndFunction
 
 Function RunBondPoll()
@@ -1061,7 +1083,7 @@ Function RunBondPoll()
 	ResolveVanillaForms()
 
 	; Bond poll survives save load — re-arm world scan here (SingleUpdate does not).
-	StartWorldScanLoop()
+	StartKillerScanLoop()
 
 	Bool inGallery = IsPlayerInGallery()
 	Bool hasBlade = PlayerHasBlade()
@@ -1412,10 +1434,10 @@ Bool Function IsBladeKillWeaponReady()
 	Return IsBladeEquipped()
 EndFunction
 
-; Voice / whisper gate — same drawn-blade check as kills; do not reimplement GoE scan.
-; All toast + notice audio must call this (not inventory ownership alone).
+; Voice / whisper gate — blade must be on the player (owned / inventory), not necessarily drawn.
+; Kill satiation / butcher still use IsBladeEquipped / IsBladeKillWeaponReady (drawn only).
 Bool Function IsVoiceWeaponReady()
-	Return IsBladeEquipped()
+	Return PlayerHasBlade()
 EndFunction
 
 String Function GetDrawnWeaponDebugName()
@@ -1494,7 +1516,7 @@ Function ToastBladeDetectStatus(String context)
 	EndIf
 	ToastDebug(msg)
 	; Blade toasts prove bond poll / load is alive — force-arm world scan there
-	StartWorldScanLoop()
+	StartKillerScanLoop()
 	AnnounceKillScanArmed()
 EndFunction
 
@@ -1529,10 +1551,7 @@ EndFunction
 
 Function StartTrustVoice()
 	CancelTimer(TIMER_TRUST)
-	If !IsVoiceEnabled()
-		Return
-	EndIf
-	StartTimer(TRUST_VOICE_SECONDS, TIMER_TRUST)
+	NextTrustRealTime = 0.0
 EndFunction
 
 Function MaybeSpeakTrustLine()
@@ -1557,10 +1576,7 @@ EndFunction
 
 Function StartNoticeVoice()
 	CancelTimer(TIMER_NOTICE)
-	If !IsVoiceEnabled()
-		Return
-	EndIf
-	StartTimer(NOTICE_VOICE_SECONDS, TIMER_NOTICE)
+	NextNoticeRealTime = 0.0
 EndFunction
 
 Bool Function IsNoticePollDebugEnabled()
@@ -1806,7 +1822,7 @@ Function MaybeSpeakNoticeLine(String source)
 		Return
 	EndIf
 	If !IsVoiceWeaponReady()
-		LastNoticeStatus = "skip: Pickman's Blade not drawn"
+		LastNoticeStatus = "skip: no Pickman's Blade"
 		WriteNoticeStatusToMcm()
 		Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
 		Return
@@ -1902,9 +1918,9 @@ Function ToastNoticeLine(String line)
 		Return
 	EndIf
 	If !IsVoiceWeaponReady()
-		LastNoticeStatus = "skip: ToastNoticeLine — blade not drawn"
+		LastNoticeStatus = "skip: ToastNoticeLine — no Pickman's Blade"
 		WriteNoticeStatusToMcm()
-		Debug.Trace("PickmansWhisper: ToastNoticeLine skip | blade not drawn")
+		Debug.Trace("PickmansWhisper: ToastNoticeLine skip | no Pickman's Blade")
 		Return
 	EndIf
 	LastNoticeToastRealTime = Utility.GetCurrentRealTime()
@@ -1930,7 +1946,7 @@ Function ShowVoiceToast(String line)
 	EndIf
 	; Central toast sink — recognition / rename / trust / praise all land here.
 	If !IsVoiceWeaponReady()
-		Debug.Trace("PickmansWhisper: ShowVoiceToast skip | blade not drawn | " + line)
+		Debug.Trace("PickmansWhisper: ShowVoiceToast skip | no Pickman's Blade | " + line)
 		Return
 	EndIf
 	Debug.Notification(FormatVoiceToast(line))
@@ -2214,7 +2230,7 @@ Function WriteDecayStageStatusToMcmForActor(Actor ak, Bool abSyncStepper = True)
 EndFunction
 
 ; Keep Victims "Pick stage" stepper aligned with the aimed / last-kill clock.
-; Prefer resolved clock stage (what WorldScan / ForceDecay want) over LastStage-1, so a queued
+; Prefer resolved clock stage (what KillerScan / ForceDecay want) over LastStage-1, so a queued
 ; apply does not snap the stepper backward before overlays land.
 Function SyncVictimDecayStageStepper(Int formId)
 	If !MCM.IsInstalled() || formId == 0
@@ -2301,10 +2317,10 @@ Function DebugVoicePathDump()
 	Bool voiceOn = IsVoiceEnabled()
 	Bool blade = IsBladeEquipped()
 	Bool voiceReady = IsVoiceWeaponReady()
-	String worldBit = "WorldScan=MISSING"
-	PickmansWhisperWorldScanScript ws = WorldScan()
+	String worldBit = "KillerScan=MISSING"
+	PickmansWhisperKillerScanScript ws = KillerScan()
 	If ws
-		worldBit = "WorldScan=OK tick=" + ws.ScanTick
+		worldBit = "KillerScan=OK tick=" + ws.ScanTick
 	EndIf
 	String voiceBit = "VoiceScan=MISSING"
 	PickmansWhisperVoiceScanScript vs = VoiceScan()
@@ -2507,7 +2523,7 @@ Bool Function IsTrackedVictim(Actor ak)
 EndFunction
 
 ; Named/tracked victim with no decay clock → stamp Freshly Deceased.
-; abApplyOverlays=False from WorldScan overlay NoWait / MCM; True only for explicit apply paths.
+; abApplyOverlays=False from KillerScan overlay NoWait / MCM; True only for explicit apply paths.
 Bool Function EnsureDecayForTrackedVictim(Actor ak, Bool abApplyOverlays = True)
 	If !ak || ak == PlayerRef || !ak.IsDead()
 		Return False
@@ -2716,8 +2732,8 @@ Function MaybePromptNameHer(Actor ak, Int recognitionToasts)
 	EndIf
 	PendingRenamePrompt = RenamePromptFemaleNPC
 	CancelTimer(TIMER_RENAME_PROMPT)
-	StartTimer(RENAME_PROMPT_DELAY, TIMER_RENAME_PROMPT)
-	Debug.Trace("PickmansWhisper: name-her prompt queued | id=0x" + GardenOfEden.GetHexFormID(ak))
+	PendingRenameAtReal = Utility.GetCurrentRealTime() + RENAME_PROMPT_DELAY
+	Debug.Trace("PickmansWhisper: name-her prompt queued (deadline) | id=0x" + GardenOfEden.GetHexFormID(ak))
 EndFunction
 
 ; Aim actor for fixation — real GoE APIs only (never Game.GetCurrentCrosshairRef).
@@ -3927,6 +3943,8 @@ EndFunction
 
 ; C5 P2 — awake recognition bank (files-only). Later bands can use GetRecognitionBank(band).
 Function LoadRecognitionLines()
+	; Zero count before realloc so a concurrent pick never reads empty slots with a stale count.
+	RecognitionLineCount = 0
 	RecognitionLines = new String[64]
 	RecognitionLineCount = LoadStageBank("RecognitionLines.txt", RecognitionLines)
 	RecognitionLoadStatus = LastStageLoadStatus
@@ -3939,6 +3957,7 @@ EndFunction
 
 ; C5 P5 — sleep recognition bank (files-only).
 Function LoadSleepRecognitionLines()
+	SleepRecognitionLineCount = 0
 	SleepRecognitionLines = new String[64]
 	SleepRecognitionLineCount = LoadStageBank("SleepRecognitionLines.txt", SleepRecognitionLines)
 	SleepRecognitionLoadStatus = LastStageLoadStatus
@@ -3980,17 +3999,31 @@ String Function PickRecognitionLine(String npcName)
 	EndIf
 	String useName = NoticeNameForLine(npcName)
 	Bool wantNameless = (useName == "")
-	String raw = bank[Utility.RandomInt(0, count - 1)]
-	Int tries = 0
-	While tries < 8 && count > 1 && (raw == LastRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
-		raw = bank[Utility.RandomInt(0, count - 1)]
-		tries += 1
+	Int attempt = 0
+	While attempt < 20
+		String raw = bank[Utility.RandomInt(0, count - 1)]
+		Int tries = 0
+		While tries < 8 && count > 1 && (!raw || raw == LastRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
+			raw = bank[Utility.RandomInt(0, count - 1)]
+			tries += 1
+		EndWhile
+		attempt += 1
+		If !raw
+			LoadRecognitionLines()
+			bank = GetRecognitionBank(0)
+			count = GetRecognitionBankCount(0)
+			If count <= 0 || !bank
+				Return ""
+			EndIf
+		Else
+			String line = ApplyNamePlaceholder(raw, useName)
+			If line && GardenOfEden.StrLength(line) >= 1
+				LastRecognitionLine = raw
+				Return line
+			EndIf
+		EndIf
 	EndWhile
-	If !raw
-		Return ""
-	EndIf
-	LastRecognitionLine = raw
-	Return ApplyNamePlaceholder(raw, useName)
+	Return ""
 EndFunction
 
 String Function PickSleepRecognitionLine(String npcName)
@@ -4002,17 +4035,30 @@ String Function PickSleepRecognitionLine(String npcName)
 	EndIf
 	String useName = NoticeNameForLine(npcName)
 	Bool wantNameless = (useName == "")
-	String raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
-	Int tries = 0
-	While tries < 8 && SleepRecognitionLineCount > 1 && (raw == LastSleepRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
-		raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
-		tries += 1
+	Int attempt = 0
+	While attempt < 20
+		String raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
+		Int tries = 0
+		While tries < 8 && SleepRecognitionLineCount > 1 && (!raw || raw == LastSleepRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
+			raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
+			tries += 1
+		EndWhile
+		attempt += 1
+		If !raw
+			; Empty slot with non-zero count = stale array; reload and retry.
+			LoadSleepRecognitionLines()
+			If SleepRecognitionLineCount <= 0 || !SleepRecognitionLines
+				Return ""
+			EndIf
+		Else
+			String line = ApplyNamePlaceholder(raw, useName)
+			If line && GardenOfEden.StrLength(line) >= 1
+				LastSleepRecognitionLine = raw
+				Return line
+			EndIf
+		EndIf
 	EndWhile
-	If !raw
-		Return ""
-	EndIf
-	LastSleepRecognitionLine = raw
-	Return ApplyNamePlaceholder(raw, useName)
+	Return ""
 EndFunction
 
 ; 2nd look — speak current hunger-stage notice line (does not rewrite MaybeSpeakNoticeLine).
@@ -4043,16 +4089,29 @@ Function SpeakRecognitionLine(Actor ak, String npcName)
 		line = PickRecognitionLine(npcName)
 	EndIf
 	If !line || GardenOfEden.StrLength(line) < 1
+		; "N lines" in load status means the file loaded — do not toast a false missing-file error.
 		If asleep
-			LastFixationStatus = "sleep recognition MISSING — " + SleepRecognitionLoadStatus
-			WriteFixationStatusToMcm()
-			Debug.Notification("Pickman's Whisper: SleepRecognitionLines.txt not loaded — see MCM / config")
-			Debug.Trace("PickmansWhisper: ERROR sleep recognition speak failed — " + SleepRecognitionLoadStatus)
+			If SleepRecognitionLineCount <= 0
+				LastFixationStatus = "sleep recognition MISSING — " + SleepRecognitionLoadStatus
+				WriteFixationStatusToMcm()
+				Debug.Notification("Pickman's Whisper: SleepRecognitionLines.txt not loaded — see MCM / config")
+				Debug.Trace("PickmansWhisper: ERROR SleepRecognitionLines.txt — " + SleepRecognitionLoadStatus)
+			Else
+				LastFixationStatus = "sleep recognition pick empty — bank " + SleepRecognitionLoadStatus
+				WriteFixationStatusToMcm()
+				Debug.Trace("PickmansWhisper: ERROR sleep recognition pick empty — bank ok (" + SleepRecognitionLoadStatus + ")")
+			EndIf
 		Else
-			LastFixationStatus = "recognition MISSING — " + RecognitionLoadStatus
-			WriteFixationStatusToMcm()
-			Debug.Notification("Pickman's Whisper: RecognitionLines.txt not loaded — see MCM / config")
-			Debug.Trace("PickmansWhisper: ERROR recognition speak failed — " + RecognitionLoadStatus)
+			If RecognitionLineCount <= 0
+				LastFixationStatus = "recognition MISSING — " + RecognitionLoadStatus
+				WriteFixationStatusToMcm()
+				Debug.Notification("Pickman's Whisper: RecognitionLines.txt not loaded — see MCM / config")
+				Debug.Trace("PickmansWhisper: ERROR RecognitionLines.txt — " + RecognitionLoadStatus)
+			Else
+				LastFixationStatus = "recognition pick empty — bank " + RecognitionLoadStatus
+				WriteFixationStatusToMcm()
+				Debug.Trace("PickmansWhisper: ERROR recognition pick empty — bank ok (" + RecognitionLoadStatus + ")")
+			EndIf
 		EndIf
 		Return
 	EndIf
@@ -4820,6 +4879,10 @@ String Function NoticeNameForLine(String npcName)
 	If npcName == "Resident" || npcName == "Citizen" || npcName == "Neighbor" || npcName == "Worker"
 		Return ""
 	EndIf
+	; Placeholder label from fixation / display fallbacks — not a real name.
+	If npcName == "Unnamed" || npcName == "unnamed"
+		Return ""
+	EndIf
 	If StrContains(npcName, "Settler") || StrContains(npcName, "Resident")
 		Return ""
 	EndIf
@@ -4953,7 +5016,7 @@ Function StartHungerPoll()
 		LastHungerPollGameTime = Utility.GetCurrentGameTime()
 	EndIf
 	CancelTimer(TIMER_HUNGER)
-	StartTimer(HUNGER_POLL_SECONDS, TIMER_HUNGER)
+	NextHungerRealTime = 0.0
 	SyncHungerAddictionSpell()
 	RefreshHungerPanel(False)
 EndFunction
@@ -5170,7 +5233,7 @@ Function MaybeToastHungerBand(Float before, Float after)
 EndFunction
 
 ; --- Knife kills (Slice B) -----------------------------------------------------
-; GoE FindActors + IsDead() like Necromantic. Driven by bond poll (proven) + StartTimer(13).
+; GoE FindActors + IsDead() like Necromantic. Driven by bond poll (proven) + KillerScan timer.
 
 String Function EnsureCombatKillHooks()
 	If !PlayerRef
@@ -5178,7 +5241,7 @@ String Function EnsureCombatKillHooks()
 	EndIf
 	EnsureKillWatchList()
 	EnsureAliveSeenList()
-	StartWorldScanLoop()
+	StartKillerScanLoop()
 	String status = "scan WORLD+T16 living=" + KillWatchCount
 	ToastDebug("PW [" + DEBUG_BUILD + "]: " + status)
 	Debug.Trace("PickmansWhisper: EnsureCombatKillHooks " + DEBUG_BUILD + " " + status)
@@ -5196,15 +5259,15 @@ Function AnnounceKillScanArmed()
 	Debug.Trace("PickmansWhisper: world scan armed " + DEBUG_BUILD)
 EndFunction
 
-; Legacy name — redirects to WorldScan bus.
+; Legacy name — redirects to KillerScan bus.
 Function StartKillScanLoop()
 	CancelTimer(TIMER_KILL_SCAN)
 	CancelTimer(TIMER_DECAY_SYNC)
-	StartWorldScanLoop()
+	StartKillerScanLoop()
 EndFunction
 
-; Knife credit from WorldScan snapshot — no FindActors, no LooksMenu.
-Function ProcessKnifeCreditFromWorldScan(PickmansWhisperWorldScanScript scan)
+; Knife credit from KillerScan snapshot — no FindActors, no LooksMenu.
+Function ProcessKnifeCreditFromKillerScan(PickmansWhisperKillerScanScript scan)
 	If !scan
 		Return
 	EndIf
@@ -5310,11 +5373,13 @@ Function ProcessKnifeCreditFromWorldScan(PickmansWhisperWorldScanScript scan)
 	EndWhile
 EndFunction
 
-; Overlay sync moved to CorpseDecay (OnWorldScan → CallFunctionNoWait). Kept for MCM/debug callers.
+; Overlay sync moved to CorpseDecay (OnKillerScan → CallFunctionNoWait). Kept for MCM/debug callers.
 Function SyncNearbyKnifeDecayOverlays()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If decay
-		decay.SyncOverlaysFromWorldScanSnapshot()
+		decay.SyncOverlaysFromKillerScanSnapshot()
+	Else
+		Debug.Trace("PickmansWhisper: ERROR SyncNearbyKnifeDecayOverlays — CorpseDecay missing")
 	EndIf
 EndFunction
 

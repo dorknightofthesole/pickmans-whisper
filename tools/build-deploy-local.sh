@@ -59,7 +59,7 @@ PSC_BED="PickmansWhisperBedGiftScript.psc"
 PSC_DECAY="PickmansWhisperCorpseDecayScript.psc"
 PSC_WOUND_LAB="PickmansWhisperDecayWoundLabScript.psc"
 PSC_VICTIMS="PickmansWhisperVictimsScript.psc"
-PSC_WORLD_SCAN="PickmansWhisperWorldScanScript.psc"
+PSC_WORLD_SCAN="PickmansWhisperKillerScanScript.psc"
 PSC_VOICE_SCAN="PickmansWhisperVoiceScanScript.psc"
 PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 
@@ -145,8 +145,8 @@ python "$ROOT/tools/test_decay_kill_p2.py" || exit 1
 echo "==> Decay MCM kill-clock (reset/apply) contract test"
 python "$ROOT/tools/test_decay_mcm_clock.py" || exit 1
 
-echo "==> WorldScan event bus contract test"
-python "$ROOT/tools/test_world_scan_bus.py" || exit 1
+echo "==> Killer Orchestrator / KillerScan bus contract test"
+python "$ROOT/tools/test_killer_scan_bus.py" || exit 1
 
 echo "==> Voice debug Trace / MCM dump contract test"
 python "$ROOT/tools/test_voice_debug_trace.py" || exit 1
@@ -201,8 +201,8 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" ]]; then
   echo "ERROR: compile produced no Victims .pex" >&2
   exit 1
 fi
-if [[ ! -f "$PEX_OUT/PickmansWhisperWorldScanScript.pex" ]]; then
-  echo "ERROR: compile produced no WorldScan .pex" >&2
+if [[ ! -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" ]]; then
+  echo "ERROR: compile produced no KillerScan .pex" >&2
   exit 1
 fi
 if [[ ! -f "$PEX_OUT/PickmansWhisperVoiceScanScript.pex" ]]; then
@@ -232,7 +232,7 @@ cp -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperCorpseDecayScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" "$DEPLOY/Scripts/"
-cp -f "$PEX_OUT/PickmansWhisperWorldScanScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVoiceScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
@@ -240,7 +240,7 @@ cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperDecayWoundLabScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVictimsScript.psc" "$DEPLOY/Scripts/Source/User/"
-cp -f "$SRC/PickmansWhisperWorldScanScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperKillerScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVoiceScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"

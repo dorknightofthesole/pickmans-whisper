@@ -177,10 +177,12 @@ def test_main_facade(main: str) -> None:
 def test_bed_script(bed: str) -> None:
     if "Scriptname PickmansWhisperBedGiftScript extends Quest" not in bed:
         fail("BedGift must extend Quest")
-    if "Event OnTimer" not in bed or "TIMER_BED_DESPAWN" not in bed:
-        fail("BedGift must own OnTimer TIMER_BED_DESPAWN")
-    if "TIMER_BED_OVERLAYS" not in bed:
-        fail("BedGift must declare TIMER_BED_OVERLAYS (deferred decay apply)")
+    if "OnKillerScanDeadlines" not in bed:
+        fail("BedGift must OnKillerScanDeadlines (Killer Orchestrator)")
+    if "BedDespawnAtReal" not in bed or "BedOverlaysAtReal" not in bed:
+        fail("BedGift must use BedDespawnAtReal / BedOverlaysAtReal deadlines")
+    if "StartTimer(" in bed:
+        fail("BedGift must not StartTimer")
     if "Actor BedCorpse" not in bed:
         fail("BedCorpse must be Actor on BedGift")
     create = extract_function(bed, "CreateBedCorpseAt")
@@ -261,8 +263,8 @@ def test_bed_script(bed: str) -> None:
         fail("PresentBedCorpseOnWake must PoseBedCorpseInFurniture when still alive")
     if "PlaceAtMe" in present:
         fail("PresentBedCorpseOnWake must not PlaceAtMe")
-    if "TIMER_BED_DESPAWN" not in present:
-        fail("PresentBedCorpseOnWake must StartTimer TIMER_BED_DESPAWN")
+    if "BedDespawnAtReal" not in present:
+        fail("PresentBedCorpseOnWake must set BedDespawnAtReal deadline")
     if "ScheduleBedGiftDecayOverlays" not in present:
         fail("PresentBedCorpseOnWake must ScheduleBedGiftDecayOverlays fallback if not pre-applied")
     if "MaybeApplyBedGiftDecayOverlays()" in present:

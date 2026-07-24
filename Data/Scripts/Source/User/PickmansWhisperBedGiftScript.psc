@@ -2,12 +2,10 @@ Scriptname PickmansWhisperBedGiftScript extends Quest
 {Slice G — bed corpse hallucination. Attached to PickmansWhisperMain alongside MainQuestScript.}
 
 ; Sleep events register on PlayerAlias; alias → Main façades → this script.
-; ONE PlaceAtMe site for gameplay: MaybeWarmBedGiftBody (OnWorldScan CallFunctionNoWait while awake).
+; ONE PlaceAtMe site for gameplay: MaybeWarmBedGiftBody (KillerScan NoWait while awake).
 ; SleepStart/Stop never spawn — Start saves bed, Stop Presents or skips. No retries.
+; Deadlines checked on KillerScan tick — no feature StartTimer (Killer Orchestrator).
 
-Int TIMER_BED_DESPAWN = 8
-; Deferred decay apply after warm (while disabled) — never sync in killscan / Present / MCM Force.
-Int TIMER_BED_OVERLAYS = 9
 Int FID_BED_SPAWN_NPC = 0x00004DEC ; Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
 Int FID_KYWD_ANIM_FURN_BED = 0x000BC262 ; AnimFurnBedAnims
 Int FID_KYWD_ANIM_FURN_FLOOR_BED = 0x0003ADA2 ; AnimFurnFloorBedAnims
@@ -21,7 +19,9 @@ Bool BedSpawnBusy = False
 Bool BedOverlaysApplied = False ; True once Black Putrefaction path ran (pre-Enable when possible)
 Float LastBedGiftGameTime = -999.0
 Float BED_DESPAWN_SECONDS = 6.0
-Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe; keeps killscan snappy
+Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe; keeps KillerScan snappy
+Float BedDespawnAtReal = 0.0
+Float BedOverlaysAtReal = 0.0
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
 Float BED_SPAWN_OFFSET_Z = 36.0
@@ -33,22 +33,28 @@ PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
-Event OnTimer(Int aiTimerID)
-	If aiTimerID == TIMER_BED_DESPAWN
+; KillerScan cadence — fire overdue bed deadlines (replaces StartTimer 8/9).
+Function OnKillerScanDeadlines()
+	Float now = Utility.GetCurrentRealTime()
+	If BedOverlaysAtReal > 0.0 && now >= BedOverlaysAtReal
+		BedOverlaysAtReal = 0.0
+		If HasLiveBedCorpse()
+			MaybeApplyBedGiftDecayOverlays()
+		Else
+			Debug.Trace("PickmansWhisper: bed overlay deadline skip | no live corpse")
+		EndIf
+	EndIf
+	If BedDespawnAtReal > 0.0 && now >= BedDespawnAtReal
+		BedDespawnAtReal = 0.0
 		ClearBedCorpse(False)
 		BedAnchor = None
 		BedPresentedThisSleep = False
-		SetBedGiftStatus("despawned (timer)")
-	ElseIf aiTimerID == TIMER_BED_OVERLAYS
-		If HasLiveBedCorpse()
-			MaybeApplyBedGiftDecayOverlays()
-		EndIf
+		SetBedGiftStatus("despawned (KillerScan deadline)")
 	EndIf
-EndEvent
+EndFunction
 
 Function ScheduleBedGiftDecayOverlays()
-	CancelTimer(TIMER_BED_OVERLAYS)
-	StartTimer(BED_OVERLAY_DELAY, TIMER_BED_OVERLAYS)
+	BedOverlaysAtReal = Utility.GetCurrentRealTime() + BED_OVERLAY_DELAY
 EndFunction
 
 Function SetBedGiftStatus(String reason)
@@ -362,8 +368,8 @@ Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
 EndFunction
 
 Function ClearBedCorpse(Bool abStampCooldown = False)
-	CancelTimer(TIMER_BED_DESPAWN)
-	CancelTimer(TIMER_BED_OVERLAYS)
+	BedDespawnAtReal = 0.0
+	BedOverlaysAtReal = 0.0
 	BedCorpseWarmed = False
 	BedSpawnBusy = False
 	BedOverlaysApplied = False
@@ -394,8 +400,8 @@ Function PresentBedCorpseOnWake()
 	EndIf
 	BedPresentedThisSleep = True
 	BedCorpseWarmed = False
-	; Prefer decay already applied while disabled (warm / SleepStart). Cancel pending warm timer.
-	CancelTimer(TIMER_BED_OVERLAYS)
+	; Prefer decay already applied while disabled (warm / SleepStart). Clear pending overlay deadline.
+	BedOverlaysAtReal = 0.0
 	If BedCorpse.IsDisabled()
 		BedCorpse.Enable(False)
 	EndIf
@@ -415,9 +421,8 @@ Function PresentBedCorpseOnWake()
 		ScheduleBedGiftDecayOverlays()
 	EndIf
 	MaybeSpeakBedGiftWakeToast()
-	CancelTimer(TIMER_BED_DESPAWN)
-	StartTimer(BED_DESPAWN_SECONDS, TIMER_BED_DESPAWN)
-	SetBedGiftStatus("presented; despawn timer " + BED_DESPAWN_SECONDS + "s | " + LastBedGiftStatus)
+	BedDespawnAtReal = Utility.GetCurrentRealTime() + BED_DESPAWN_SECONDS
+	SetBedGiftStatus("presented; despawn deadline " + BED_DESPAWN_SECONDS + "s | " + LastBedGiftStatus)
 EndFunction
 
 ; Slice H — DeathMarks + Black Putrefaction. Prefer while disabled (pre-Enable).
@@ -451,7 +456,7 @@ Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndT
 		If HasLiveBedCorpse()
 			; Sleep fade — finish decay while still disabled if warm timer has not fired yet.
 			If !BedOverlaysApplied
-				CancelTimer(TIMER_BED_OVERLAYS)
+				BedOverlaysAtReal = 0.0
 				MaybeApplyBedGiftDecayOverlays()
 			EndIf
 			SetBedGiftStatus("sleep start — bed saved; overlays=" + BedOverlaysApplied + " | " + LastBedGiftStatus)

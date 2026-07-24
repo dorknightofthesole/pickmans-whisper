@@ -199,8 +199,11 @@ def test_wiring(bed: str, main: str) -> None:
         fail("HandlePlayerSleepStart must MaybeApplyBedGiftDecayOverlays if still pending")
     if "MaybeApplyBedGiftDecayOverlays" not in bed:
         fail("BedGift must still MaybeApplyBedGiftDecayOverlays")
-    if "aiTimerID == TIMER_BED_OVERLAYS" not in bed and "aiTimerID==TIMER_BED_OVERLAYS" not in bed.replace(" ", ""):
-        fail("BedGift OnTimer must handle TIMER_BED_OVERLAYS")
+    if "OnKillerScanDeadlines" not in bed or "BedOverlaysAtReal" not in bed:
+        fail("BedGift must OnKillerScanDeadlines + BedOverlaysAtReal (Killer Orchestrator)")
+    sched = extract_function(bed, "ScheduleBedGiftDecayOverlays")
+    if "BedOverlaysAtReal" not in sched or "StartTimer" in sched:
+        fail("ScheduleBedGiftDecayOverlays must set BedOverlaysAtReal deadline (no StartTimer)")
     maybe = extract_function(bed, "MaybeApplyBedGiftDecayOverlays")
     if "ApplyBedGiftDecayOverlays" not in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must call ApplyBedGiftDecayOverlays")
@@ -211,8 +214,8 @@ def test_wiring(bed: str, main: str) -> None:
     if "CreateBedCorpseAt" in maybe or "PlaceAtMe" in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must not touch spawn")
     clear = extract_function(bed, "ClearBedCorpse")
-    if "TIMER_BED_OVERLAYS" not in clear:
-        fail("ClearBedCorpse must CancelTimer TIMER_BED_OVERLAYS")
+    if "BedOverlaysAtReal" not in clear:
+        fail("ClearBedCorpse must clear BedOverlaysAtReal")
     if "BedOverlaysApplied = False" not in clear and "BedOverlaysApplied=False" not in clear.replace(" ", ""):
         fail("ClearBedCorpse must reset BedOverlaysApplied")
     if "Function CorpseDecay()" not in main:

@@ -49,10 +49,10 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - [x] **C1** — Periodic Garden of Eden living scan; default adult female non-essential (shared with B kill-watch / filters).
 - [x] **C2** — Soft toast comments on nearby **non-hostile** adult women (`NoticeLines.txt`, `{name}` when known). Success path calls `OnNoticeSpoken` (C3 hook). Poll debug dialogs optional (MCM Debug).
 - [x] **C3** — Hunger-staged whispers: five editable stage files (`NoticeLines_<Stage>.txt`) chosen by `HungerLevel` band — admiration → infatuation → jealousy → anger → kill-urge — with no-immediate-repeat selection. Files-only (no builtin fallback); GoE2 load + GoE string helpers; per-file MCM load status, load MessageBox, and stage dropdown / force toggle. **Verified in-game** (file load + notice toasts).
-- [x] **C4** — Approach / first-enter feel via ambient WorldScan path (dedicated 0.5s FindActors hammer rejected — silenced the quest). **Verified in-game** with always-on timer arming; auto MessageBoxes removed (MCM Scan nearby keeps its dialog).
-- [x] **WorldScan bus** — one scanner (`PickmansWhisperWorldScanScript`) `FindActors` once → snapshot → **direct** `VoiceScan.HandleWorldScanVoice` (sync), then `CallFunctionNoWait` knife/aim (Main) + overlays (CorpseDecay). Same-quest CustomEvent delivery was unreliable (whispers stayed dead). Contract: `tools/test_world_scan_bus.py`. **TODO (later):** true event-driven listeners so voice does not block the scan tick — see [TODO.md](../TODO.md) “WorldScan → true event bus”.
+- [x] **C4** — Approach / first-enter feel via ambient KillerScan path (dedicated 0.5s FindActors hammer rejected — silenced the quest). **Verified in-game** with always-on timer arming; auto MessageBoxes removed (MCM Scan nearby keeps its dialog).
+- [x] **Killer Orchestrator (v1.3.0)** — sole `PickmansWhisperKillerScanScript` → TargetSnapshot → Voice sync + NoWait knife/cadence/Victims/CorpseDecay(H+I)/BedGift. Replaces WorldScan + multi-timer arming. Contract: `tools/test_killer_scan_bus.py`. Victims MCM decay nudge parked.
 - [x] **C5** — Look-fixation POC (**additive — no change to ambient C2/C3 whispers**). Cap 32 FormIDs, save-persisted arrays. **Verified in-game** (incl. sleep recognition).
-  - [x] **P1** — Aim edge (GoE camera/activate — not fake `GetCurrentCrosshairRef`) → count + MCM Look fixation. Ambient WorldScan whispers unchanged; WorldScan re-arms before tick body (`tools/test_look_fixation.py`).
+  - [x] **P1** — Aim edge (GoE camera/activate — not fake `GetCurrentCrosshairRef`) → count + MCM Look fixation. Ambient KillerScan whispers; KillerScan re-arms before tick body (`tools/test_look_fixation.py`).
   - [x] **P2** — Voice by count: 1st silent / 2nd hunger-stage notice line / 3rd+ `RecognitionLines.txt` (`tools/test_recognition_lines.py`).
   - [x] **P3+P4** — Potential Victims (merged): MCM Victims page ↔ FormID table + F4SE `SetDisplayName` (world name) so `{name}` matches aim label; cap 32; lazy re-apply when seen; optional `VictimsHold` RefCollectionAlias (`tools/test_potential_victims.py`).
   - [x] **P5** — Sleep recognition: `SleepRecognitionLines.txt` when 3rd+ look and `GetSleepState() >= 3` (`tools/test_sleep_recognition.py`).
@@ -67,7 +67,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 
 - Map keys are `.xwm` under `Data/Sound/PickmansWhisper/`. Blank Calm/Restless/Hungry/Starving maps until clips exist.
 - Docs: [AUDIO.md](AUDIO.md), [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
-- Voice features require drawn Pickman's Blade (`IsVoiceWeaponReady` → `IsBladeEquipped`).
+- Voice features require owning Pickman's Blade (`IsVoiceWeaponReady` → `PlayerHasBlade`); kills / butcher still require it drawn (`IsBladeEquipped`).
 
 
 
@@ -119,7 +119,7 @@ Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Soft with I (FaceGen
 - [x] **P0.1** — MCM Debug wound lab (sticky corpse + template/tint/count apply). Verify in-game.
 - [x] **P0.2** — Wound Lab: Porcupine Scars/SkinTexture stepper + apply/all (stacks with DeathMarks). Soft dep `porcOverlays.esl`. Face lab: Scripted Face Tints Damage/Boxer bruises (`DecayFaceOverlays.txt`, soft `SFT.esp`).
 - [x] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Verify in-game.
-- [ ] **P2** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 240); `SyncDecayForKnifeCorpse` via WorldScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT face stays lab-only. Coded — verify in-game. See [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
+- [ ] **P2** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 240); `SyncDecayForKnifeCorpse` via KillerScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT face stays lab-only. Coded — verify in-game. See [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
 - [ ] **P3** — At max stage (4), toast (and optional audio) urging the player to eat her before she is too ripe.
 - [ ] **P4** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
 
@@ -141,7 +141,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 
 - **Pace:** climb from calm → desperate over at least ~3 game days; prefer ~1 week+ to reach 100% (tunable MCM / config). Stage bands stay the five C3 whisper stages; only the rise rate / thresholds stretch.
 - **Peak reward (TBD — draft):** waiting until high hunger (e.g. starving/desperate) before a valid blade kill grants a temporary bonus — candidate: **attribute bonuses that last until hunger drops back to stage 2 (restless)** (or similar clear exit). Exact bonuses / magnitude undecided; design before implement.
-- Do **not** break C3 stage file mapping or the verified WorldScan arming path while tuning rise rate.
+- Do **not** break C3 stage file mapping or the verified KillerScan arming path while tuning rise rate.
 - Soft-stack with Necromantic craving feel; no ESP master dependency.
 
 

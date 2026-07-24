@@ -194,12 +194,12 @@ def test_main_naming(text: str) -> None:
         fail("Main must keep TIMER_DECAY_ADVANCE declared (save OnTimer compatibility)")
     ok("Main Victims helpers for Push")
 
-    aim = extract_function(text, "OnWorldScanVictimsAim")
+    aim = extract_function(text, "OnKillerScanVictimsAim")
     if "NoteVictimsAimActor" not in aim:
-        fail("OnWorldScanVictimsAim must NoteVictimsAimActor")
-    knife_fn = extract_function(text, "HandleWorldScanKnifeAimWarm")
-    if "OnWorldScanVictimsAim" not in knife_fn:
-        fail("HandleWorldScanKnifeAimWarm must OnWorldScanVictimsAim")
+        fail("OnKillerScanVictimsAim must NoteVictimsAimActor")
+    knife_fn = extract_function(text, "HandleKillerScanKnifeAimWarm")
+    if "OnKillerScanVictimsAim" not in knife_fn:
+        fail("HandleKillerScanKnifeAimWarm must OnKillerScanVictimsAim")
     knife = extract_function(text, "ProcessKnifeKill")
     if "NoteVictimsAimActor" not in knife:
         fail("ProcessKnifeKill must NoteVictimsAimActor for Victims/decay MCM")
@@ -207,7 +207,7 @@ def test_main_naming(text: str) -> None:
     after_dbg = dbg.split("MCM.RefreshMenu()", 1)
     if len(after_dbg) < 2 or "PushVictimsPanelStrings" not in after_dbg[-1]:
         fail("RefreshDebugStatus must PushVictimsPanelStrings AFTER RefreshMenu (Victims wipe)")
-    ok("WorldScan / knife / Debug Victims wiring")
+    ok("KillerScan / knife / Debug Victims wiring")
 
 
 def test_victims_script(victims: str) -> None:
@@ -290,15 +290,15 @@ def test_victims_script(victims: str) -> None:
         fail("MCMRefreshVictimsPanel must Notification before MessageBox")
     if "FindActors(" in mcm_refresh:
         fail("MCMRefreshVictimsPanel must not FindActors")
-    if "NoteFromWorldScanSnapshot" not in victims:
-        fail("VictimsScript must NoteFromWorldScanSnapshot")
-    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperWorldScanScript.psc").read_text(
+    if "NoteFromKillerScanSnapshot" not in victims:
+        fail("VictimsScript must NoteFromKillerScanSnapshot")
+    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
         encoding="utf-8", errors="replace"
     )
     dispatch = extract_function(world, "DispatchListeners")
-    if "NoteFromWorldScanSnapshot" not in dispatch:
-        fail("WorldScan DispatchListeners must CallFunctionNoWait NoteFromWorldScanSnapshot")
-    ok("MCMRefreshVictimsPanel entry + WorldScan aim NoWait")
+    if "NoteFromKillerScanSnapshot" not in dispatch:
+        fail("KillerScan DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
+    ok("MCMRefreshVictimsPanel entry + KillerScan aim NoWait")
 
     mcm_fn = extract_function(victims, "MCMNameAimedVictim")
     if "ResolveVictimsAimActor" not in mcm_fn or "sVictimName:Victims" not in mcm_fn:
@@ -306,13 +306,10 @@ def test_victims_script(victims: str) -> None:
     ok("MCMNameAimedVictim wired")
 
     if "TIMER_DECAY_ADVANCE" not in victims:
-        fail("VictimsScript must declare TIMER_DECAY_ADVANCE")
-    if "aiTimerID == TIMER_DECAY_ADVANCE" not in victims:
-        fail("VictimsScript OnTimer must handle TIMER_DECAY_ADVANCE")
-    idx = victims.find("aiTimerID == TIMER_DECAY_ADVANCE")
-    if idx < 0 or "RunPendingDecayAdvance()" not in victims[idx : idx + 200]:
-        fail("Victims OnTimer TIMER_DECAY_ADVANCE must RunPendingDecayAdvance()")
-    ok("Victims decay advance timer")
+        fail("VictimsScript must declare TIMER_DECAY_ADVANCE (CancelTimer only)")
+    if "StartTimer(" in victims:
+        fail("VictimsScript must not StartTimer (nudge parked)")
+    ok("Victims decay advance timer parked")
 
 
 def test_mcm() -> None:

@@ -235,7 +235,7 @@ def test_lab_script(lab: str) -> None:
     if "GetDecayStageAllScars" not in decay_stage:
         fail("ApplyDecayStageOverlays must use GetDecayStageAllScars from ModConfig")
     if "ClearSkinBankOverlays" not in decay_stage:
-        fail("ApplyDecayStageOverlays must ClearSkinBankOverlays (Victims/WorldScan share path)")
+        fail("ApplyDecayStageOverlays must ClearSkinBankOverlays (Victims/KillerScan share path)")
     if "ApplyTintedAllSkinTemplatesKeepExisting" not in decay_stage:
         fail("ApplyDecayStageOverlays must ApplyTintedAllSkinTemplatesKeepExisting")
     if decay_stage.find("ClearSkinBankOverlays") > decay_stage.find(

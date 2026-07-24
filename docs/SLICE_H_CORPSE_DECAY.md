@@ -63,9 +63,9 @@ decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 
 **Kill path:** `ProcessKnifeKill` → `StampDecayKill` (FormID + kill game-time) → `SyncDecayForKnifeCorpse`. Killscan dead pass re-syncs when stage advances. Bed gift stays forced stage 4 (not in kill registry).
 
-**Tracked victims:** if she is in the Potential Victims FormID table and dead with no decay stamp, WorldScan → `CallFunctionNoWait("SyncOverlaysFromWorldScanSnapshot")` stamps **Freshly Deceased** without LooksMenu on the voice stack, then applies stage overlays from the WorldScan `ScanDead` snapshot (no second `FindActors`). Backoff 30s on apply failure. Never inside `ProcessKnifeKill` / VoiceScan (LooksMenu `Utility.Wait` starved Notice + Recognition). MCM copy says `no decay clock (Name her, then Refresh)` only for untracked corpses.
+**Tracked victims:** if she is in the Potential Victims FormID table and dead with no decay stamp, KillerScan → `CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot")` stamps **Freshly Deceased** without LooksMenu on the voice stack, then applies stage overlays from the KillerScan `ScanDead` TargetSnapshot (no second `FindActors`). Backoff 30s on apply failure. Never inside `ProcessKnifeKill` / VoiceScan (LooksMenu `Utility.Wait` starved Notice + Recognition). MCM copy says `no decay clock (Name her, then Refresh)` only for untracked corpses.
 
-**WorldScan bus:** `PickmansWhisperWorldScanScript` is the sole neighborhood `FindActors` producer. After snapshot it **directly** calls `VoiceScan.HandleWorldScanVoice` (sync; same-quest CustomEvent was silent), then `CallFunctionNoWait` Main knife/aim and CorpseDecay overlays.
+**Killer Orchestrator (v1.3.0):** `PickmansWhisperKillerScanScript` is the sole neighborhood `FindActors` producer. Voice sync first; knife/cadence/Victims/CorpseDecay NoWait. **Victims MCM decay Set/Reset overlay nudge is PARKED** — kill clock still updates; KillerScan applies overlays after MCM closes.
 
 Scripts must not bake a mirror of these RGBA/hours/skin lists. Missing/incomplete/unordered `startHours` fail loud. Wound Lab **Decay stage** stepper names must match ModConfig order; **Apply stage** reads ModConfig (reload via MCM Voice → Reload line banks). Wound Lab Tint A still tunes manual wound/skin/face Applies only.
 

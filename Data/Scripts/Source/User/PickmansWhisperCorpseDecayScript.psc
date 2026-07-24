@@ -57,15 +57,15 @@ PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
-PickmansWhisperWorldScanScript Function WorldScan()
-	Return (Self as Quest) as PickmansWhisperWorldScanScript
+PickmansWhisperKillerScanScript Function KillerScan()
+	Return (Self as Quest) as PickmansWhisperKillerScanScript
 EndFunction
 
 Float LastOverlaySyncReal = 0.0
 Float OVERLAY_SYNC_MIN_SECONDS = 8.0
 
 ; Victims MCM test harness: after ForceDecayKillClockToStage, drop rate-limit / fail backoff
-; so the next WorldScan snapshot can SyncDecayForKnifeCorpse instead of waiting 8–30s.
+; so the next KillerScan snapshot can SyncDecayForKnifeCorpse instead of waiting 8–30s.
 Function NoteForcedDecayClockForTest()
 	LastOverlaySyncReal = 0.0
 	PickmansWhisperMainQuestScript m = Main()
@@ -74,18 +74,25 @@ Function NoteForcedDecayClockForTest()
 	EndIf
 EndFunction
 
-; Kicked via WorldScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
-; Consumes WorldScan.ScanDead — never FindActors here.
-Function SyncOverlaysFromWorldScanSnapshot()
+; Kicked via KillerScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
+; Consumes KillerScan.ScanDead (TargetSnapshot) — never FindActors here. Dead-only feature.
+Function SyncOverlaysFromKillerScanSnapshot()
 	If Utility.IsInMenuMode()
+		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | in menu")
 		Return
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m || !m.BondStarted
+	If !m
+		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — Main missing")
+		Return
+	EndIf
+	If !m.BondStarted
+		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | not bonded")
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
 	If now < m.DecaySyncBackoffUntil
+		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | backoff")
 		Return
 	EndIf
 	If (now - LastOverlaySyncReal) < OVERLAY_SYNC_MIN_SECONDS
@@ -93,8 +100,9 @@ Function SyncOverlaysFromWorldScanSnapshot()
 	EndIf
 	LastOverlaySyncReal = now
 
-	PickmansWhisperWorldScanScript scan = WorldScan()
+	PickmansWhisperKillerScanScript scan = KillerScan()
 	If !scan
+		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — KillerScan missing")
 		Return
 	EndIf
 	Actor[] dead = scan.ScanDead
@@ -266,7 +274,7 @@ Function InvalidateDecayFaceArmorBanks()
 EndFunction
 
 ; Re-read DecayFaceStages.txt. Builds a TEMP map and only commits if all stages parse —
-; never leaves FaceStageArmoFids wiped mid-reload (that raced WorldScan + scar applies).
+; never leaves FaceStageArmoFids wiped mid-reload (that raced KillerScan + scar applies).
 ; none → 0 (strip masks); missing stage → fail without clobbering the live map.
 Bool Function ReloadDecayFaceStageMap()
 	PickmansWhisperMainQuestScript m = Main()
@@ -361,7 +369,7 @@ EndFunction
 ; DecayFaceArmorIds.txt + DecayFaceStages.txt — fail loud if missing/incomplete.
 Bool Function EnsureDecayFaceArmorBanks()
 	; Cache when valid. Do NOT re-read DecayFaceStages on every apply — that raced
-	; WorldScan/scar applies and wiped FaceStageArmoFids mid-flight (MISSING stage 0).
+	; KillerScan/scar applies and wiped FaceStageArmoFids mid-flight (MISSING stage 0).
 	If FaceArmorBanksLoaded && FaceArmorCount > 0 && FaceStageMapReady()
 		Return True
 	EndIf
@@ -1202,7 +1210,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 		SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " a=" + tintA + " | " + faceStatus + " | " + bodyStatus)
 		Return True
 	EndIf
-	; Face stuck; stamp success so WorldScan does not Strip+retry every sync (face thrash).
+	; Face stuck; stamp success so KillerScan does not Strip+retry every sync (face thrash).
 	SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " face ok | body skipped — " + bodyStatus)
 	Debug.Notification("Pickman's Whisper: body decay skipped — " + bodyStatus)
 	Debug.Trace("PickmansWhisper: WARN ApplyDecayStageOverlays body skipped — " + LastCorpseDecayStatus)
