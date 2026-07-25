@@ -1564,6 +1564,10 @@ Function StartBond(String reason)
 	EndIf
 	LastHungerPollGameTime = now
 	Debug.Trace("PickmansWhisper: bond started (" + reason + ")")
+	; Always-visible status toast — not gated by voice settings or the once-ever intro
+	; line, so re-bonding on a not-yet-bonded save is obvious instead of requiring an
+	; MCM Debug check every few seconds to see when it catches up.
+	Debug.Notification("Pickman's Whisper: bond active")
 	If !IntroToastShown
 		IntroToastShown = True
 		String line = PickTrustLine()
@@ -3750,6 +3754,11 @@ Function LoadModConfig()
 			PickmansWhisperCorpseDecayScript decay = (Self as Quest) as PickmansWhisperCorpseDecayScript
 			If decay
 				decay.InvalidateDecayFaceArmorBanks()
+				; Eager NoWait preload was tried here and reverted — it added a constantly
+				; re-competing background call (never once completed in testing) that
+				; correlated with much worse despawn delays (5-10s baseline -> 80-130s+).
+				; Face mask reliability is a dropped stretch goal; spawn/despawn reliability
+				; is not. Stay fully lazy — only load when an actual decay apply needs it.
 			EndIf
 		Else
 			Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage startHours must be nondecreasing 0..4 (live stages kept)")

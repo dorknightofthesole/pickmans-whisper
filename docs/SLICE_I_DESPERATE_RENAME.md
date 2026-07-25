@@ -30,4 +30,4 @@ Same spirit as notice/kill: adult female humans, no essential/story, no children
 
 ## Status
 
-I1/I2 implemented — **awaiting in-game confirm**. Do not mark Done until verified.
+**I1/I2 verified in-game** (world name showed ModConfig suffix while desperate). I3 (suffix bank / MCM toggle) still open.

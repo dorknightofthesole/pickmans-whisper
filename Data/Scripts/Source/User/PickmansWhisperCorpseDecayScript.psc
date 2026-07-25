@@ -607,6 +607,12 @@ Bool Function ReloadDecayFaceStageMap()
 EndFunction
 
 Bool FaceArmorLoadBusy = False ; blocks re-entrant wipe of FaceArmorLabels mid-parse
+; Can get stuck True forever if a save loads mid-call (the in-flight load that would
+; clear it is gone) — every later apply then silently skips the face ARMO (busy —
+; skip re-enter) for the rest of the session. Same class of bug as BedOverlaysBusy;
+; same fix: a real-time staleness check so a stuck flag clears instead of persisting.
+Float FaceArmorLoadBusySinceReal = 0.0
+Float FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS = 8.0
 
 ; DecayFaceArmorIds.txt + DecayFaceStages.txt — fail loud if missing/incomplete.
 Bool Function EnsureDecayFaceArmorBanks()
@@ -617,10 +623,18 @@ Bool Function EnsureDecayFaceArmorBanks()
 	EndIf
 	; Another apply is loading — do not reset arrays underneath it (known=[] race).
 	If FaceArmorLoadBusy
-		Debug.Trace("PickmansWhisper: EnsureDecayFaceArmorBanks busy — skip re-enter")
-		Return False
+		Float busyElapsed = Utility.GetCurrentRealTime() - FaceArmorLoadBusySinceReal
+		If busyElapsed <= FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS
+			Debug.Trace("PickmansWhisper: EnsureDecayFaceArmorBanks busy — skip re-enter (" + busyElapsed + "s/" + FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS + "s)")
+			Return False
+		EndIf
+		; Stuck true too long — most likely a save loaded mid-call and the in-flight
+		; load that would clear it is gone. Force-clear and proceed with a fresh load
+		; rather than skip the face ARMO for the rest of the session.
+		Debug.Trace("PickmansWhisper: EnsureDecayFaceArmorBanks busy watchdog — force clear after " + busyElapsed + "s")
 	EndIf
 	FaceArmorLoadBusy = True
+	FaceArmorLoadBusySinceReal = Utility.GetCurrentRealTime()
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
 		FaceArmorLoadStatus = "ERROR: Main missing"

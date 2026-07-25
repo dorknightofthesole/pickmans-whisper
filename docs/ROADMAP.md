@@ -13,7 +13,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`)                       | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md))             |
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
 | **H** | Corpse decay (body + face) → eat urge → reward | **P1 done**; next **P2** MCM stage change — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) · face art [Decay_Head_Guide.md](Decay_Head_Guide.md) |
-| **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix) | **Planned** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md) |
+| **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix) | **I1–I2 verified in-game** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md) |
 | **J** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
 | **K** | Corpse preserve sync with Necromantic | Planned |
 | **L** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
@@ -135,8 +135,8 @@ Design: [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md). Contract: `t
 
 At notice stage **desperate** (hunger band 4), the knife voice rewrites how nearby women read — world name + `{name}` in notice toasts.
 
-- [ ] **I1** — KillerScan `ScanAlive` → GoE2 `SetDisplayName` append ModConfig `desperateNameSuffix` (e.g. ` Dumb Bitch`). Idempotent; strip when stage drops. Skip essential / notice-reject. Logic on `PickmansWhisperDesperateRenameScript`.
-- [ ] **I2** — `GetActorDisplayName` / notice `{name}` show the suffixed label while desperate (toast matches mouseover).
+- [x] **I1** — KillerScan `ScanAlive` → GoE2 `SetDisplayName` append ModConfig `desperateNameSuffix` (e.g. ` Dumb Bitch`). Idempotent; strip when stage drops. Skip essential / notice-reject. Logic on `PickmansWhisperDesperateRenameScript`. **Verified in-game.**
+- [x] **I2** — `GetActorDisplayName` / notice `{name}` show the suffixed label while desperate (toast matches mouseover). **Verified in-game** (world name confirmed).
 - [ ] **I3** — Optional bank of suffixes / MCM toggle (later).
 
 Honor direction: never rename **essential** story NPCs. Editable suffix in `ModConfig.txt` only (no hard-coded line bank mirror).
