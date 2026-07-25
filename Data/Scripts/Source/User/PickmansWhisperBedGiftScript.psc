@@ -37,15 +37,21 @@ Bool BedCorpseWarmed = False
 Bool BedSpawnBusy = False
 Bool BedOverlaysApplied = False ; True once Black Putrefaction path ran (pre-Enable when possible)
 Bool BedOverlaysBusy = False ; LooksMenu apply in flight — blocks re-entry
+Float BedOverlaysBusySinceReal = 0.0 ; real-time BedOverlaysBusy went True; despawn timeout basis
 Float LastBedGiftGameTime = -999.0
 ; Despawn after this many KillerScan deadline pulses once presented (2nd pulse clears).
 Int BED_DESPAWN_SCANS = 2
 Int BedDespawnScanCount = -1 ; -1 = not armed; 0+ counting KillerScan iterations after present
 ; BedOverlaysBusy can get stuck True if a save loads mid-apply (the in-flight call that
-; would clear it is gone). Force-clear and despawn anyway after this many held pulses —
-; same watchdog pattern as KillerScanScript's BUSY_MAX_SKIPS.
-Int BED_DESPAWN_BUSY_MAX_HOLDS = 3
-Int BedDespawnBusyHoldCount = 0
+; would clear it is gone), or the apply can just be slow under load. While any corpse
+; is "live" (even dead-but-uncleared), MaybeWarmBedGiftBody/TrySpawnBedCorpse refuse to
+; make a new one — so a long timeout here doesn't just delay despawn, it blocks every
+; subsequent sleep from spawning ANY corpse until this one finally clears. Tried 45s:
+; textures got more time to finish, but spawn reliability (the higher priority) broke —
+; every sleep attempt just re-presented the same stuck corpse instead of a fresh one.
+; Reliable spawn/despawn matters more than textures finishing, so keep this short.
+Float BED_OVERLAY_BUSY_TIMEOUT_SECONDS = 8.0
+Int BedDespawnBusyHoldCount = 0 ; diagnostic only now — gating is by BedOverlaysBusySinceReal
 Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe; keeps KillerScan snappy
 Float BedOverlaysAtReal = 0.0
 Float BED_SPAWN_OFFSET_X = 0.0
@@ -119,11 +125,12 @@ Function OnKillerScanDeadlines()
 			If BedDespawnScanCount >= BED_DESPAWN_SCANS
 				If BedOverlaysBusy
 					BedDespawnBusyHoldCount += 1
-					If BedDespawnBusyHoldCount > BED_DESPAWN_BUSY_MAX_HOLDS
+					Float busyElapsed = now - BedOverlaysBusySinceReal
+					If busyElapsed > BED_OVERLAY_BUSY_TIMEOUT_SECONDS
 						; BedOverlaysBusy has been stuck true too long — most likely a save
 						; loaded mid-apply and the in-flight call that would clear it is
 						; gone. Force-clear and despawn anyway rather than deadlock forever.
-						Debug.Trace("PickmansWhisper: bed despawn busy watchdog — force clear after " + BedDespawnBusyHoldCount + " holds")
+						Debug.Trace("PickmansWhisper: bed despawn busy watchdog — force clear after " + busyElapsed + "s busy")
 						BedOverlaysBusy = False
 						BedDespawnBusyHoldCount = 0
 						ClearBedCorpse(False)
@@ -134,7 +141,7 @@ Function OnKillerScanDeadlines()
 						; LooksMenu apply is still in flight — deleting now yanks the actor
 						; out from under it. Hold at threshold and retry next pulse instead.
 						BedDespawnScanCount = BED_DESPAWN_SCANS
-						Debug.Trace("PickmansWhisper: bed despawn hold | overlay apply in flight (" + BedDespawnBusyHoldCount + "/" + BED_DESPAWN_BUSY_MAX_HOLDS + ")")
+						Debug.Trace("PickmansWhisper: bed despawn hold | overlay apply in flight (" + busyElapsed + "s/" + BED_OVERLAY_BUSY_TIMEOUT_SECONDS + "s)")
 					EndIf
 				Else
 					BedDespawnBusyHoldCount = 0
@@ -654,6 +661,7 @@ Function MaybeApplyBedGiftDecayOverlays()
 		Return
 	EndIf
 	BedOverlaysBusy = True
+	BedOverlaysBusySinceReal = Utility.GetCurrentRealTime()
 	; LooksMenu Prepare may Enable — restore park/disable so the player never sees a fresh body.
 	Bool keepParked = BedCorpseWarmed && !BedPresentedThisSleep
 	Bool keepDisabled = BedCorpse.IsDisabled() && !BedPresentedThisSleep
