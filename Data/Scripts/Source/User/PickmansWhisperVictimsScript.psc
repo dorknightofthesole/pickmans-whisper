@@ -4,7 +4,8 @@ Scriptname PickmansWhisperVictimsScript extends Quest
 ; MCM buttons CallFunction this script (not MainQuestScript).
 ; Aim cache filled from KillerScan / knife / Tick via Main façades → NoteVictimsAimActor.
 ; Naming table + decay clocks stay on Main; this script owns aim + MCM push.
-; Decay MCM nudge timer PARKED (Killer Orchestrator 1.3.0) — KillerScan owns overlay sync.
+; Decay advance timer still cancelled (no StartTimer here). H P2: Set/Reset only
+; move the kill clock; KillerScan → CorpseDecay SyncOverlays owns LooksMenu apply.
 
 String MOD_NAME = "PickmansWhisper"
 Int TIMER_DECAY_ADVANCE = 17 ; CancelTimer only (stale saves)
@@ -17,11 +18,18 @@ Actor PendingDecayAdvanceActor = None
 Int PendingDecayAdvanceStage = -1
 Int PendingDecayAdvanceFormId = 0
 Bool McmEventsRegistered = False
-; MCM can fire CallFunction dozens of times per click; ignore re-entry until MessageBox returns.
-Bool McmDecayButtonBusy = False
 
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
+EndFunction
+
+; Former Debug.MessageBox — no pause; full text in Papyrus.0.log (filter PickmansWhisper).
+Function DiagNotify(String msg)
+	If msg == ""
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: DIAG " + msg)
+	Debug.Notification(msg)
 EndFunction
 
 PickmansWhisperCorpseDecayScript Function CorpseDecay()
@@ -39,12 +47,13 @@ Event OnTimer(Int aiTimerID)
 EndEvent
 
 Function EnsureMcmEventsRegistered()
-	If McmEventsRegistered
-		Return
-	EndIf
+	; Always re-register — one-shot flag can leave open/close dead for the session.
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMMenuClose|PickmansWhisper", "OnMCMMenuClose")
-	McmEventsRegistered = True
+	If !McmEventsRegistered
+		McmEventsRegistered = True
+		Debug.Trace("PickmansWhisper: Victims MCM open/close events registered")
+	EndIf
 EndFunction
 
 ; Compat name — older callers / saves.
@@ -66,9 +75,12 @@ Function OnMCMMenuClose(String modName)
 	If modName != MOD_NAME
 		Return
 	EndIf
-	; Decay MCM nudge parked — KillerScan SyncOverlays applies after menu close.
 	ClearPendingDecayAdvance()
-	Debug.Trace("PickmansWhisper: Victims OnMCMMenuClose — decay nudge parked (Killer Orchestrator)")
+	; Set/Reset queued PendingAimedDecayActor while MCM was open — paint now (NoWait).
+	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+	If decay
+		decay.CallFunctionNoWait("RunPendingAimedDecayApply", None)
+	EndIf
 EndFunction
 
 ; Remember world aim — GetCameraTargetReference is usually None while Pause/MCM is open.
@@ -225,30 +237,36 @@ EndFunction
 Function MCMRefreshVictimsPanel()
 	Debug.Notification("PW Victims Refresh — CallFunction hit")
 	Debug.Trace("PickmansWhisper: MCMRefreshVictimsPanel OK")
-	; Aimed push + MessageBox first — never block on Main for the proof dialog.
+	; RefreshMenu reloads settings.ini and wipes live sDecayStage / Pick stage.
+	; Write aux SYNC (not CallFunctionNoWait) so Decay row + dialog match now.
+	Actor aimed = ResolveVictimsAimActor()
 	PushVictimsAimedOnly()
 	If MCM.IsInstalled()
 		MCM.RefreshMenu()
 		PushVictimsAimedOnly()
+		aimed = ResolveVictimsAimActor()
 	EndIf
-	String decayLine = "(pending Main)"
-	If MCM.IsInstalled()
-		decayLine = MCM.GetModSettingString(MOD_NAME, "sDecayStage:Victims")
-		If !decayLine
-			decayLine = "(empty — Main aux pending)"
+	PickmansWhisperMainQuestScript m = Main()
+	String decayLine = "(Main missing)"
+	If m
+		m.WriteVictimsMcmAuxRows()
+		decayLine = m.FormatDecayStageStatusForActor(aimed)
+		If MCM.IsInstalled() && decayLine
+			MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", decayLine)
 		EndIf
 	EndIf
-	Debug.MessageBox("Pickman's Whisper — Victims\n\nAimed:\n" + LastVictimsAimLine + "\n\nDecay:\n" + decayLine + "\n\ncacheId=" + LastVictimsAimId)
-	PickmansWhisperMainQuestScript m = Main()
-	If m
-		m.CallFunctionNoWait("WriteVictimsMcmAuxRows", None)
+	If !decayLine
+		decayLine = "(empty decay status)"
 	EndIf
+	Debug.Trace("PickmansWhisper: MCMRefreshVictimsPanel decayUI=" + decayLine)
+	Debug.Notification("PW Victims — " + LastVictimsAimLine)
+	DiagNotify("Pickman's Whisper — Victims\n\nAimed:\n" + LastVictimsAimLine + "\n\nDecay:\n" + decayLine + "\n\ncacheId=" + LastVictimsAimId)
 EndFunction
 
 Function MCMNameAimedVictim()
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
-		Debug.MessageBox("Pickman's Whisper — Apply name\n\nMain script missing.")
+		DiagNotify("Pickman's Whisper — Apply name\n\nMain script missing.")
 		Return
 	EndIf
 	Actor player = Game.GetPlayer()
@@ -261,7 +279,7 @@ Function MCMNameAimedVictim()
 			WriteVictimsAimedToMcm()
 			m.WriteVictimsStatusToMcm()
 		EndIf
-		Debug.MessageBox("Pickman's Whisper — Apply name\n\nNo aim cache.\nFace her in-world for ~2s (killscan), then open MCM and try again.")
+		DiagNotify("Pickman's Whisper — Apply name\n\nNo aim cache.\nFace her in-world for ~2s (killscan), then open MCM and try again.")
 		Return
 	EndIf
 	String name = ""
@@ -270,9 +288,9 @@ Function MCMNameAimedVictim()
 	EndIf
 	If m.ApplyVictimName(aimed, name)
 		String shown = m.TrimString(name)
-		Debug.MessageBox("Pickman's Whisper — Apply name\n\nShe is " + shown + " now.")
+		DiagNotify("Pickman's Whisper — Apply name\n\nShe is " + shown + " now.")
 	Else
-		Debug.MessageBox("Pickman's Whisper — Apply name\n\nFailed:\n" + m.LastVictimStatus)
+		DiagNotify("Pickman's Whisper — Apply name\n\nFailed:\n" + m.LastVictimStatus)
 	EndIf
 	RefreshVictimsPanel(True)
 EndFunction
@@ -319,9 +337,9 @@ Bool Function ResetAimedDecayKillClock()
 	EndIf
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If decay
-		decay.NoteForcedDecayClockForTest()
+		decay.NoteDecayClockChangedForSync()
 	EndIf
-	m.LastVictimStatus = "kill clock reset to now (stage 0 Freshly Deceased) — KillerScan will apply"
+	m.LastVictimStatus = "kill clock reset to now (stage 0 Freshly Deceased) — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: ResetAimedDecayKillClock ok id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -392,9 +410,9 @@ Bool Function PrepAimedDecayStage(Int targetStage)
 	EndIf
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If decay
-		decay.NoteForcedDecayClockForTest()
+		decay.NoteDecayClockChangedForSync()
 	EndIf
-	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — KillerScan will apply"
+	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: PrepAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -420,7 +438,7 @@ Bool Function QueueAimedDecayStage(Int targetStage)
 	PendingDecayAdvanceActor = aimed
 	PendingDecayAdvanceStage = targetStage
 	PendingDecayAdvanceFormId = formId
-	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — close MCM; KillerScan sync applies"
+	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: QueueAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -482,49 +500,47 @@ Bool Function AdvanceAimedDecayStage()
 EndFunction
 
 ; MCM test harness — murder time = now; stage selector → 0; KillerScan sync applies.
+; Idempotent — no busy flag (swallowing clicks hid real apply failures).
 Function MCMResetAimedDecayKillClock()
-	If McmDecayButtonBusy
-		Debug.Trace("PickmansWhisper: MCMResetAimedDecayKillClock ignored (busy)")
-		Return
-	EndIf
-	McmDecayButtonBusy = True
 	Debug.Notification("PW Victims — Reset decay stage CallFunction hit")
 	Debug.Trace("PickmansWhisper: MCMResetAimedDecayKillClock OK")
 	PickmansWhisperMainQuestScript m = Main()
 	ClearPendingDecayAdvance()
 	Bool ok = ResetAimedDecayKillClock()
 	Actor aimed = ResolveVictimsAimActor()
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If ok && decay
-		decay.NoteForcedDecayClockForTest()
-	EndIf
-	PushVictimsPanelStrings()
+	; RefreshMenu wipes live rows — push AFTER wipe (same order as OnMCMMenuOpen).
 	If MCM.IsInstalled() && m
+		MCM.RefreshMenu()
+		PushVictimsAimedOnly()
 		; Keep selector at 0; do not Resolve→sync stepper (can race with Set).
-		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", 0)
 		m.WriteVictimsStatusToMcm()
 		m.WriteDecayStageStatusToMcmForActor(aimed, False)
 		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", 0)
+	Else
+		PushVictimsAimedOnly()
+	EndIf
+	If ok && aimed
+		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+		If decay
+			decay.QueueAimedDecayApply(aimed)
+		Else
+			Debug.Trace("PickmansWhisper: ERROR MCMResetAimedDecayKillClock — CorpseDecay missing")
+		EndIf
 	EndIf
 	String status = "(Main missing)"
 	If m
 		status = m.LastVictimStatus
 	EndIf
 	If ok
-		Debug.MessageBox("Pickman's Whisper — Reset decay stage\n\n" + status + "\n\nKill clock set. MCM overlay nudge PARKED (v1.3.0 Killer Orchestrator). Close MCM — KillerScan applies overlays.")
+		DiagNotify("Pickman's Whisper — Reset decay stage\n\n" + status + "\n\nClose MCM — overlays apply to the aimed corpse within ~1s (stage 0 = no body skins).")
 	Else
-		Debug.MessageBox("Pickman's Whisper — Reset decay stage\n\nFailed / skipped:\n" + status)
+		DiagNotify("Pickman's Whisper — Reset decay stage\n\nFailed / skipped:\n" + status)
 	EndIf
-	McmDecayButtonBusy = False
 EndFunction
 
 ; MCM test harness — set kill age only; core KillerScan sync applies the stage.
+; Idempotent — double-click re-Preps the same stage; never swallow the click.
 Function MCMApplyAimedDecayStage()
-	If McmDecayButtonBusy
-		Debug.Trace("PickmansWhisper: MCMApplyAimedDecayStage ignored (busy)")
-		Return
-	EndIf
-	McmDecayButtonBusy = True
 	Debug.Notification("PW Victims — Set decay stage CallFunction hit")
 	PickmansWhisperMainQuestScript m = Main()
 	Int stage = 0
@@ -544,29 +560,37 @@ Function MCMApplyAimedDecayStage()
 	ClearPendingDecayAdvance()
 	Bool ok = PrepAimedDecayStage(stage)
 	Actor aimed = ResolveVictimsAimActor()
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If ok && decay
-		decay.NoteForcedDecayClockForTest()
-	EndIf
-	PushVictimsPanelStrings()
+	; RefreshMenu wipes live rows — push AFTER wipe so Decay stage + Pick stage update.
 	If MCM.IsInstalled() && m
+		MCM.RefreshMenu()
+		PushVictimsAimedOnly()
 		m.WriteVictimsStatusToMcm()
 		m.WriteDecayStageStatusToMcmForActor(aimed, False)
 		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", stage)
+	Else
+		PushVictimsAimedOnly()
+	EndIf
+	If ok && aimed
+		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+		If decay
+			decay.QueueAimedDecayApply(aimed)
+		Else
+			Debug.Trace("PickmansWhisper: ERROR MCMApplyAimedDecayStage — CorpseDecay missing")
+			Debug.Notification("Pickman's Whisper: CorpseDecay missing — rebuild ESP")
+		EndIf
 	EndIf
 	String status = "(Main missing)"
 	If m
 		status = m.LastVictimStatus
 	EndIf
 	If ok
-		Debug.MessageBox("Pickman's Whisper — Set decay stage\n\n" + status + "\n\nKill clock set. MCM overlay nudge PARKED (v1.3.0 Killer Orchestrator). Close MCM — KillerScan applies overlays.")
+		DiagNotify("Pickman's Whisper — Set decay stage\n\n" + status + "\n\nClose MCM — overlays apply to the aimed corpse within ~1s (not via KillerScan wait).")
 	Else
-		Debug.MessageBox("Pickman's Whisper — Set decay stage\n\nFailed / skipped:\n" + status)
+		DiagNotify("Pickman's Whisper — Set decay stage\n\nFailed / skipped:\n" + status)
 	EndIf
-	McmDecayButtonBusy = False
 EndFunction
 
-; Legacy +1 MCM — clock only (+1), then KillerScan sync.
+; Legacy +1 MCM — clock +1; KillerScan sync applies overlays.
 Function MCMAdvanceAimedDecayStage()
 	Debug.Notification("PW Victims — Advance decay clock CallFunction hit")
 	Debug.Trace("PickmansWhisper: MCMAdvanceAimedDecayStage OK")
@@ -574,22 +598,22 @@ Function MCMAdvanceAimedDecayStage()
 	ClearPendingDecayAdvance()
 	Bool ok = QueueAimedDecayAdvance()
 	Actor aimed = ResolveVictimsAimActor()
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If ok && decay
-		decay.NoteForcedDecayClockForTest()
-	EndIf
-	PushVictimsPanelStrings()
 	If MCM.IsInstalled() && m
+		MCM.RefreshMenu()
+		PushVictimsAimedOnly()
 		m.WriteVictimsStatusToMcm()
 		m.WriteDecayStageStatusToMcmForActor(aimed)
+	Else
+		PushVictimsAimedOnly()
 	EndIf
 	String status = "(Main missing)"
 	If m
 		status = m.LastVictimStatus
 	EndIf
 	If ok
-		Debug.MessageBox("Pickman's Whisper — Advance decay clock\n\n" + status + "\n\nMCM overlay nudge PARKED (v1.3.0). Close MCM — KillerScan applies overlays.")
+		DiagNotify("Pickman's Whisper — Advance decay clock\n\n" + status + "\n\nClose MCM — KillerScan applies overlays on the next sync.")
 	Else
-		Debug.MessageBox("Pickman's Whisper — Advance decay clock\n\nFailed / skipped:\n" + status)
+		DiagNotify("Pickman's Whisper — Advance decay clock\n\nFailed / skipped:\n" + status)
+
 	EndIf
 EndFunction

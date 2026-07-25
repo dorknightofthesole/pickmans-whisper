@@ -7,6 +7,8 @@
 # bedGiftCooldownDays — Slice G: game-days between bed gifts (0.5 ≈ 12h). Required; <=0 fails load.
 # bedGiftWoundAlpha — Slice H: LooksMenu opacity for DeathMarks wounds on bed gift (0–1).
 #   Wound RGB comes from decayStage4 (Black Putrefaction); then stage skins/scars apply.
+# desperateNameSuffix — Slice I: appended to nearby eligible NPC display names at desperate hunger.
+#   Leading space intentional (e.g. " Dumb Bitch"). Empty/missing = rename idle (no baked fallback).
 # namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
 #   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
 #   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
@@ -28,14 +30,20 @@ renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM m
 bedGiftWakeToast=A gift for when you close your eyes.
 bedGiftCooldownDays=0.5
 bedGiftWoundAlpha=0.40
+desperateNameSuffix= Dumb Bitch
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
 
 # skins=none → no body LooksMenu overlays (default body). Face masks: DecayFaceStages.txt.
-# Stages 0–1: no body change, no face mask (face stages also none).
+# SIMPLIFIED body paint (2026-07): one dirt carrier + stage RGBA only. No multi-skins / no scars
+# (scar spam hung Papyrus before stage 4 could finish). Face ARMO applied before body.
+# Stage 0: no body change. Face masks start at stage 2 (DecayFaceStages.txt).
 decayStage0=Freshly Deceased;0.650;0.520;0.480;1.0;0;none
-decayStage1=Pallor Mortis;0.300;0.750;0.720;1.0;0.25;none
-# Stage 2: first body change (veins + keeper layer) + Red face mask. Pallor is body none, so this must read clearly.
-decayStage2=Livor Mortis;0.480;0.140;0.300;1.0;2;SkinTexture_15+SkinTexture_09
-decayStage3=Putrefaction;0.369;0.451;0.318;1.0;48;SkinTexture_17+SkinTexture_18;scars
-decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;240;SkinTexture_03+SkinTexture_18;scars
+decayStage1=Pallor Mortis;0.300;0.750;0.720;1.0;0.25;SkinTexture_16
+decayStage2=Livor Mortis;0.480;0.140;0.300;1.0;2;SkinTexture_16
+decayStage3=Putrefaction;0.380;0.820;0.480;1.0;48;SkinTexture_16
+decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;240;SkinTexture_16
+# Retired multi-decal map (kept for reference — do not re-enable until paint path is stable):
+# decayStage2=Livor Mortis;0.480;0.140;0.300;1.0;2;SkinTexture_15+SkinTexture_09
+# decayStage3=Putrefaction;0.380;0.820;0.480;1.0;48;SkinTexture_16+SkinTexture_17+SkinTexture_18;scars
+# decayStage4=Black Putrefaction;0.149;0.118;0.102;1.0;240;SkinTexture_16+SkinTexture_03+SkinTexture_18;scars

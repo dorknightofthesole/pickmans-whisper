@@ -2,6 +2,7 @@ Scriptname PickmansWhisperCorpseDecayScript extends Quest
 {Slice H — corpse decay visuals via LooksMenu overlays.}
 
 ; Soft deps (no ESP master): LooksMenu.esp + DeadOverlays / porcOverlays.esl / SFT.esp.
+; Optional strip bank: CumOverlays.esp template ids (CumOverlayIds.txt) — PW never applies cum.
 ; Uses Overlays.Add (not AddEntry) so we can tint — AddEntry hardcodes rgba 0.
 ; Wound ids: DecayWoundOverlays.txt | Skin ids: DecaySkinOverlays.txt
 ; Face ids: DecayFaceOverlays.txt — SFT Damage FULL names (LooksMenu body overlays cannot paint faces).
@@ -20,7 +21,9 @@ String SKIN_FILE = "DecaySkinOverlays.txt"
 String FACE_FILE = "DecayFaceOverlays.txt"
 String FACE_STAGE_FILE = "DecayFaceStages.txt"
 String FACE_ARMOR_IDS_FILE = "DecayFaceArmorIds.txt"
+String CUM_FILE = "CumOverlayIds.txt"
 String CONFIG_PATH = ".\\Data\\PickmansWhisper\\config\\"
+String MOD_NAME = "PickmansWhisper"
 Int BED_GIFT_WOUND_COUNT = 6 ; doubled for coverage / progression look-test (was 3)
 ; Bed gift applies ModConfig decayStage4 (Black Putrefaction) after DeathMarks wounds.
 Int BED_GIFT_DECAY_STAGE = 4
@@ -40,6 +43,9 @@ Bool WoundBankLoaded = False
 String[] SkinTemplates
 Int SkinTemplateCount = 0
 Bool SkinBankLoaded = False
+String[] CumTemplates
+Int CumTemplateCount = 0
+Bool CumBankLoaded = False
 String[] FaceTemplates
 Int FaceTemplateCount = 0
 Bool FaceBankLoaded = False
@@ -57,21 +63,88 @@ PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
+; Former Debug.MessageBox — no pause; full text in Papyrus.0.log (filter PickmansWhisper).
+Function DiagNotify(String msg)
+	If msg == ""
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: DIAG " + msg)
+	Debug.Notification(msg)
+EndFunction
+
 PickmansWhisperKillerScanScript Function KillerScan()
 	Return (Self as Quest) as PickmansWhisperKillerScanScript
 EndFunction
 
 Float LastOverlaySyncReal = 0.0
 Float OVERLAY_SYNC_MIN_SECONDS = 8.0
+; CallFunctionNoWait + LooksMenu Utility.Wait re-enters this script — overlapping
+; SyncOverlays thrashed LastStage / never finished stage 4 Black. One flight at a time.
+Bool OverlaySyncBusy = False
+Float OverlaySyncBusySince = 0.0
+Float OVERLAY_SYNC_BUSY_MAX_SECONDS = 90.0
+; MCM Set/Reset queues THIS actor — paint on menu close / next sync (no feature StartTimer).
+Actor PendingAimedDecayActor = None
+Actor PendingDismemberStripActor = None
+Int AimedDecayApplyCode = 2 ; bump when apply path changes — prove PEX loaded in log
 
-; Victims MCM test harness: after ForceDecayKillClockToStage, drop rate-limit / fail backoff
-; so the next KillerScan snapshot can SyncDecayForKnifeCorpse instead of waiting 8–30s.
-Function NoteForcedDecayClockForTest()
+; Victims MCM Set/Reset moves the kill clock, then QueueAimedDecayApply paints that corpse
+; after MCM closes. Ambient KillerScan sync remains for natural hour progression.
+Function NoteDecayClockChangedForSync()
 	LastOverlaySyncReal = 0.0
 	PickmansWhisperMainQuestScript m = Main()
 	If m
 		m.DecaySyncBackoffUntil = 0.0
 	EndIf
+	Debug.Trace("PickmansWhisper: CorpseDecay NoteDecayClockChangedForSync — rate-limit/backoff cleared")
+EndFunction
+
+; MCM harness: latch aimed corpse; kick NoWait if already out of menus, else OnMCMMenuClose / Sync.
+Function QueueAimedDecayApply(Actor akCorpse)
+	If !akCorpse
+		Debug.Trace("PickmansWhisper: ERROR QueueAimedDecayApply — no corpse")
+		Return
+	EndIf
+	PendingAimedDecayActor = akCorpse
+	NoteDecayClockChangedForSync()
+	Debug.Trace("PickmansWhisper: QueueAimedDecayApply formId=" + akCorpse.GetFormID() + " code=" + AimedDecayApplyCode)
+	If !Utility.IsInMenuMode()
+		CallFunctionNoWait("RunPendingAimedDecayApply", None)
+	EndIf
+EndFunction
+
+; Victims OnMCMMenuClose + optional out-of-menu Queue — LooksMenu must not run under MCM Wait freeze.
+Function RunPendingAimedDecayApply()
+	Actor ak = PendingAimedDecayActor
+	If !ak
+		Debug.Trace("PickmansWhisper: AimedDecayApply skip | no pending corpse")
+		Return
+	EndIf
+	If Utility.IsInMenuMode()
+		Debug.Trace("PickmansWhisper: AimedDecayApply defer | still in menu formId=" + ak.GetFormID())
+		Return
+	EndIf
+	Float now = Utility.GetCurrentRealTime()
+	If OverlaySyncBusy
+		If (now - OverlaySyncBusySince) < OVERLAY_SYNC_BUSY_MAX_SECONDS
+			Debug.Trace("PickmansWhisper: AimedDecayApply defer | OverlaySyncBusy formId=" + ak.GetFormID())
+			Return
+		EndIf
+		Debug.Trace("PickmansWhisper: WARN AimedDecayApply force-clear OverlaySyncBusy after " + OVERLAY_SYNC_BUSY_MAX_SECONDS + "s")
+		OverlaySyncBusy = False
+	EndIf
+	PendingAimedDecayActor = None
+	OverlaySyncBusy = True
+	OverlaySyncBusySince = now
+	Int formId = ak.GetFormID()
+	Debug.Trace("PickmansWhisper: AimedDecayApply begin formId=" + formId + " code=" + AimedDecayApplyCode)
+	SyncDecayForKnifeCorpse(ak)
+	OverlaySyncBusy = False
+	PickmansWhisperMainQuestScript m = Main()
+	If m
+		m.WriteDecayStageStatusToMcmForActor(ak, False)
+	EndIf
+	Debug.Trace("PickmansWhisper: AimedDecayApply done formId=" + formId + " | " + LastCorpseDecayStatus)
 EndFunction
 
 ; Kicked via KillerScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
@@ -79,6 +152,12 @@ EndFunction
 Function SyncOverlaysFromKillerScanSnapshot()
 	If Utility.IsInMenuMode()
 		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | in menu")
+		Return
+	EndIf
+	; MCM Set left a pending aimed corpse — paint that one first (bypass ScanDead thrash).
+	If PendingAimedDecayActor
+		Debug.Trace("PickmansWhisper: CorpseDecay sync → AimedDecayApply pending formId=" + PendingAimedDecayActor.GetFormID())
+		RunPendingAimedDecayApply()
 		Return
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
@@ -91,23 +170,37 @@ Function SyncOverlaysFromKillerScanSnapshot()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
+	If OverlaySyncBusy
+		If (now - OverlaySyncBusySince) < OVERLAY_SYNC_BUSY_MAX_SECONDS
+			Debug.Trace("PickmansWhisper: CorpseDecay sync skip | already running")
+			Return
+		EndIf
+		Debug.Trace("PickmansWhisper: WARN CorpseDecay OverlaySyncBusy force-clear after " + OVERLAY_SYNC_BUSY_MAX_SECONDS + "s")
+		OverlaySyncBusy = False
+	EndIf
 	If now < m.DecaySyncBackoffUntil
 		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | backoff")
 		Return
 	EndIf
 	If (now - LastOverlaySyncReal) < OVERLAY_SYNC_MIN_SECONDS
+		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | rate-limit (" + OVERLAY_SYNC_MIN_SECONDS + "s)")
 		Return
 	EndIf
+	OverlaySyncBusy = True
+	OverlaySyncBusySince = now
 	LastOverlaySyncReal = now
 
 	PickmansWhisperKillerScanScript scan = KillerScan()
 	If !scan
 		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — KillerScan missing")
+		OverlaySyncBusy = False
 		Return
 	EndIf
 	Actor[] dead = scan.ScanDead
 	Int deadCount = scan.ScanDeadCount
 	If !dead || deadCount <= 0
+		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | ScanDead empty")
+		OverlaySyncBusy = False
 		Return
 	EndIf
 	Actor player = Game.GetPlayer()
@@ -115,8 +208,12 @@ Function SyncOverlaysFromKillerScanSnapshot()
 	If n > 16
 		n = 16
 	EndIf
+	Debug.Trace("PickmansWhisper: CorpseDecay sync begin dead=" + deadCount + " consider=" + n + " code=" + AimedDecayApplyCode)
 	Int i = 0
 	Bool anyFail = False
+	Int stamped = 0
+	Int appliedN = 0
+	Int unchangedN = 0
 	While i < n
 		Actor ak = dead[i]
 		If ak && ak != player && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
@@ -125,21 +222,34 @@ Function SyncOverlaysFromKillerScanSnapshot()
 				m.EnsureDecayForTrackedVictim(ak, False)
 			EndIf
 			If m.FindDecayKillSlot(id) >= 0
+				stamped += 1
 				Int want = m.ResolveDecayStageForKill(id)
 				Int before = m.GetDecayKillLastStage(id)
-				SyncDecayForKnifeCorpse(ak)
-				Int after = m.GetDecayKillLastStage(id)
-				If want >= 0 && before != want && after != want
-					anyFail = True
+				If want < 0
+					Debug.Trace("PickmansWhisper: CorpseDecay sync skip resolve formId=" + id)
+				ElseIf want == before
+					unchangedN += 1
+				Else
+					Debug.Trace("PickmansWhisper: CorpseDecay sync apply formId=" + id + " want=" + want + " last=" + before)
+					SyncDecayForKnifeCorpse(ak)
+					Int after = m.GetDecayKillLastStage(id)
+					If after == want
+						appliedN += 1
+					ElseIf before != want && after != want
+						anyFail = True
+						Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync apply failed formId=" + id + " want=" + want + " after=" + after + " | " + LastCorpseDecayStatus)
+					EndIf
 				EndIf
 			EndIf
 		EndIf
 		i += 1
 	EndWhile
+	Debug.Trace("PickmansWhisper: CorpseDecay sync done stamped=" + stamped + " applied=" + appliedN + " unchanged=" + unchangedN + " fail=" + (anyFail as Int))
 	If anyFail
 		m.DecaySyncBackoffUntil = now + 30.0
 		Debug.Trace("PickmansWhisper: decay overlay sync backoff 30s (LooksMenu apply failed — voice path stays free)")
 	EndIf
+	OverlaySyncBusy = False
 EndFunction
 
 Function SetCorpseDecayStatus(String reason)
@@ -215,6 +325,29 @@ Bool Function EnsureFaceBank()
 	Return True
 EndFunction
 
+; Soft strip bank for CumOverlays.esp — empty/missing is OK (no white-halo cleanup).
+Bool Function EnsureCumBank()
+	If CumBankLoaded && CumTemplateCount > 0
+		Return True
+	EndIf
+	If CumBankLoaded
+		Return False
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Debug.Trace("PickmansWhisper: EnsureCumBank skip — Main missing")
+		Return False
+	EndIf
+	CumTemplates = new String[64]
+	CumTemplateCount = m.LoadStageBankAt(CUM_FILE, CumTemplates, CONFIG_PATH)
+	CumBankLoaded = True
+	If CumTemplateCount <= 0
+		Debug.Trace("PickmansWhisper: CumOverlayIds empty/missing — cum stump strip disabled | " + m.GetLastStageLoadStatus())
+		Return False
+	EndIf
+	Return True
+EndFunction
+
 Int Function FindCharIndex(String s, String ch)
 	If !s || !ch
 		Return -1
@@ -230,18 +363,126 @@ Int Function FindCharIndex(String s, String ch)
 	Return -1
 EndFunction
 
+; Space-only edge trim. Do NOT use Main.TrimString — GetWords mangles key=value.
+; Trailing CR on CRLF lines is handled by ConfigLabelKey / ParsePositiveInt (digits prefix).
+String Function ConfigTrim(String s)
+	If !s || s == ""
+		Return ""
+	EndIf
+	Int len = GardenOfEden.StrLength(s)
+	Int start = 0
+	While start < len && GardenOfEden.SubStr(s, start, 1) == " "
+		start += 1
+	EndWhile
+	Int endPos = len
+	While endPos > start && GardenOfEden.SubStr(s, endPos - 1, 1) == " "
+		endPos -= 1
+	EndWhile
+	If start >= endPos
+		Return ""
+	EndIf
+	Return GardenOfEden.SubStr(s, start, endPos - start)
+EndFunction
+
+; Face color keys: keep letters only + lower — drops CRLF leftover CR/LF/TAB/digits noise.
+String Function ConfigLabelKey(String s)
+	If !s || s == ""
+		Return ""
+	EndIf
+	String out = ""
+	Int i = 0
+	Int n = GardenOfEden.StrLength(s)
+	While i < n
+		String c = GardenOfEden.SubStr(s, i, 1)
+		If c == "A" || c == "a"
+			out += "a"
+		ElseIf c == "B" || c == "b"
+			out += "b"
+		ElseIf c == "C" || c == "c"
+			out += "c"
+		ElseIf c == "D" || c == "d"
+			out += "d"
+		ElseIf c == "E" || c == "e"
+			out += "e"
+		ElseIf c == "F" || c == "f"
+			out += "f"
+		ElseIf c == "G" || c == "g"
+			out += "g"
+		ElseIf c == "H" || c == "h"
+			out += "h"
+		ElseIf c == "I" || c == "i"
+			out += "i"
+		ElseIf c == "J" || c == "j"
+			out += "j"
+		ElseIf c == "K" || c == "k"
+			out += "k"
+		ElseIf c == "L" || c == "l"
+			out += "l"
+		ElseIf c == "M" || c == "m"
+			out += "m"
+		ElseIf c == "N" || c == "n"
+			out += "n"
+		ElseIf c == "O" || c == "o"
+			out += "o"
+		ElseIf c == "P" || c == "p"
+			out += "p"
+		ElseIf c == "Q" || c == "q"
+			out += "q"
+		ElseIf c == "R" || c == "r"
+			out += "r"
+		ElseIf c == "S" || c == "s"
+			out += "s"
+		ElseIf c == "T" || c == "t"
+			out += "t"
+		ElseIf c == "U" || c == "u"
+			out += "u"
+		ElseIf c == "V" || c == "v"
+			out += "v"
+		ElseIf c == "W" || c == "w"
+			out += "w"
+		ElseIf c == "X" || c == "x"
+			out += "x"
+		ElseIf c == "Y" || c == "y"
+			out += "y"
+		ElseIf c == "Z" || c == "z"
+			out += "z"
+		EndIf
+		i += 1
+	EndWhile
+	Return out
+EndFunction
+
+; Compat name — label keys go through ConfigLabelKey (letters + lower only).
+String Function ConfigLowerAscii(String s)
+	Return ConfigLabelKey(s)
+EndFunction
+
 Int Function FindFaceArmorLabelIndex(String label)
-	If !label
+	String want = ConfigLowerAscii(ConfigTrim(label))
+	If want == ""
 		Return -1
 	EndIf
 	Int i = 0
 	While i < FaceArmorCount
-		If FaceArmorLabels[i] == label
+		If FaceArmorLabels[i] == want
 			Return i
 		EndIf
 		i += 1
 	EndWhile
 	Return -1
+EndFunction
+
+String Function FaceArmorLabelsDebugList()
+	String out = ""
+	Int i = 0
+	While i < FaceArmorCount
+		If i > 0
+			out += ","
+		EndIf
+		out += FaceArmorLabels[i]
+		i += 1
+	EndWhile
+	Return out
 EndFunction
 
 ; True when FaceStageArmoFids has a valid row for every stage (0 = none is valid).
@@ -260,16 +501,15 @@ Bool Function FaceStageMapReady()
 EndFunction
 
 ; Drop cached face banks so next Ensure re-reads DecayFaceArmorIds + DecayFaceStages.
+; Only flips the "needs refresh" flag. Must NOT touch FaceArmorLoadBusy / FaceArmorCount /
+; FaceArmorLabels / FaceStageArmoFids directly — this runs on every LoadModConfig (i.e.
+; every game load), and an EnsureDecayFaceArmorBanks call already in flight elsewhere
+; reads those same arrays. Wiping them out from under it produced "UNKNOWN label ...
+; known=[]" when a reload landed mid-apply. Setting FaceArmorBanksLoaded=False alone is
+; enough to force the next Ensure call to do a full, properly-guarded reload.
 Function InvalidateDecayFaceArmorBanks()
 	FaceArmorBanksLoaded = False
-	FaceArmorCount = 0
 	FaceArmorLoadStatus = "invalidated"
-	FaceStageArmoFids = new Int[5]
-	Int i = 0
-	While i < DECAY_STAGE_COUNT
-		FaceStageArmoFids[i] = -1
-		i += 1
-	EndWhile
 	Debug.Trace("PickmansWhisper: decay face armor banks invalidated")
 EndFunction
 
@@ -313,7 +553,7 @@ Bool Function ReloadDecayFaceStageMap()
 	Int mapped = 0
 	Int i = 0
 	While i < stageRaw.Length
-		String sline = m.TrimString(stageRaw[i])
+		String sline = ConfigTrim(stageRaw[i])
 		i += 1
 		If sline == ""
 			; skip
@@ -322,8 +562,8 @@ Bool Function ReloadDecayFaceStageMap()
 		Else
 			Int seq = FindCharIndex(sline, "=")
 			If seq > 0
-				String stageStr = m.TrimString(GardenOfEden.SubStr(sline, 0, seq))
-				String label = m.TrimString(GardenOfEden.SubStr(sline, seq + 1, -1))
+				String stageStr = ConfigTrim(GardenOfEden.SubStr(sline, 0, seq))
+				String label = ConfigLowerAscii(ConfigTrim(GardenOfEden.SubStr(sline, seq + 1, -1)))
 				Int stage = m.ParsePositiveInt(stageStr)
 				If stageStr == "0"
 					stage = 0
@@ -335,7 +575,7 @@ Bool Function ReloadDecayFaceStageMap()
 					Else
 						Int li = FindFaceArmorLabelIndex(label)
 						If li < 0
-							FaceArmorLoadStatus = "UNKNOWN label " + label + " (stage " + stage + ")"
+							FaceArmorLoadStatus = "UNKNOWN label " + label + " (stage " + stage + ") known=[" + FaceArmorLabelsDebugList() + "]"
 							SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus + " — rebuild ESP / check " + FACE_ARMOR_IDS_FILE)
 							Debug.Notification("Pickman's Whisper: face stage " + stage + " label " + label + " has no ARMO")
 							Debug.Trace("PickmansWhisper: ERROR face stage map — " + FaceArmorLoadStatus)
@@ -366,6 +606,8 @@ Bool Function ReloadDecayFaceStageMap()
 	Return True
 EndFunction
 
+Bool FaceArmorLoadBusy = False ; blocks re-entrant wipe of FaceArmorLabels mid-parse
+
 ; DecayFaceArmorIds.txt + DecayFaceStages.txt — fail loud if missing/incomplete.
 Bool Function EnsureDecayFaceArmorBanks()
 	; Cache when valid. Do NOT re-read DecayFaceStages on every apply — that raced
@@ -373,10 +615,17 @@ Bool Function EnsureDecayFaceArmorBanks()
 	If FaceArmorBanksLoaded && FaceArmorCount > 0 && FaceStageMapReady()
 		Return True
 	EndIf
+	; Another apply is loading — do not reset arrays underneath it (known=[] race).
+	If FaceArmorLoadBusy
+		Debug.Trace("PickmansWhisper: EnsureDecayFaceArmorBanks busy — skip re-enter")
+		Return False
+	EndIf
+	FaceArmorLoadBusy = True
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
 		FaceArmorLoadStatus = "ERROR: Main missing"
 		SetCorpseDecayStatus(FaceArmorLoadStatus)
+		FaceArmorLoadBusy = False
 		Return False
 	EndIf
 	FaceArmorLabels = new String[16]
@@ -390,6 +639,7 @@ Bool Function EnsureDecayFaceArmorBanks()
 		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus + " — rebuild ESP")
 		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " missing — rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR " + FACE_ARMOR_IDS_FILE + " missing at " + CONFIG_PATH)
+		FaceArmorLoadBusy = False
 		Return False
 	EndIf
 
@@ -399,11 +649,12 @@ Bool Function EnsureDecayFaceArmorBanks()
 		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
 		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " empty — rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR " + FACE_ARMOR_IDS_FILE + " empty")
+		FaceArmorLoadBusy = False
 		Return False
 	EndIf
 	Int i = 0
 	While i < idRaw.Length && FaceArmorCount < FACE_ARMOR_MAX
-		String line = m.TrimString(idRaw[i])
+		String line = ConfigTrim(idRaw[i])
 		i += 1
 		If line == ""
 			; skip
@@ -412,16 +663,18 @@ Bool Function EnsureDecayFaceArmorBanks()
 		Else
 			Int eq = FindCharIndex(line, "=")
 			If eq > 0
-				String label = m.TrimString(GardenOfEden.SubStr(line, 0, eq))
-				String val = m.TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				String label = ConfigLowerAscii(ConfigTrim(GardenOfEden.SubStr(line, 0, eq)))
+				String val = ConfigTrim(GardenOfEden.SubStr(line, eq + 1, -1))
 				Int comma = FindCharIndex(val, ",")
 				If label != "" && comma > 0
-					String armoStr = m.TrimString(GardenOfEden.SubStr(val, comma + 1, -1))
+					String armoStr = ConfigTrim(GardenOfEden.SubStr(val, comma + 1, -1))
 					Int armoFid = m.ParsePositiveInt(armoStr)
 					If armoFid > 0
 						FaceArmorLabels[FaceArmorCount] = label
 						FaceArmorArmoFids[FaceArmorCount] = armoFid
 						FaceArmorCount += 1
+					Else
+						Debug.Trace("PickmansWhisper: WARN face ARMO id skip label=" + label + " bad armoFid from " + armoStr)
 					EndIf
 				EndIf
 			EndIf
@@ -432,14 +685,18 @@ Bool Function EnsureDecayFaceArmorBanks()
 		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
 		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " has no ARMO rows")
 		Debug.Trace("PickmansWhisper: ERROR " + FACE_ARMOR_IDS_FILE + " parsed 0 ARMOs")
+		FaceArmorLoadBusy = False
 		Return False
 	EndIf
+	Debug.Trace("PickmansWhisper: face ARMO ids loaded n=" + FaceArmorCount + " labels=[" + FaceArmorLabelsDebugList() + "]")
 
 	If !ReloadDecayFaceStageMap()
+		FaceArmorLoadBusy = False
 		Return False
 	EndIf
 	FaceArmorBanksLoaded = True
-	Debug.Trace("PickmansWhisper: decay face armor banks loaded — " + FaceArmorLoadStatus)
+	FaceArmorLoadBusy = False
+	Debug.Trace("PickmansWhisper: decay face armor banks loaded — " + FaceArmorLoadStatus + " stageFids Green(3)=" + FaceStageArmoFids[3] + " Black(4)=" + FaceStageArmoFids[4])
 	Return True
 EndFunction
 
@@ -525,13 +782,17 @@ Bool Function ApplyDecayFaceArmorForStage(Actor akCorpse, Int aiStage)
 		akCorpse.EquipItem(armor, False, True)
 		worn = akCorpse.IsEquipped(armor)
 	EndIf
+	; Refresh equipment 3D — without this, corpses often keep the ARMO in inventory only
+	; (loot shows PW DecayFace Green while the head still looks vanilla).
+	akCorpse.QueueUpdate(True, 0)
+	worn = akCorpse.IsEquipped(armor)
 	If worn
 		SetCorpseDecayStatus("face ARMO stage " + aiStage + " fid=" + fid + " equipped")
 		Debug.Trace("PickmansWhisper: decay face ARMO equipped stage=" + aiStage + " fid=" + fid)
 	Else
-		; Inventory has it; visuals may still show. Do not fail the whole decay stage on IsEquipped.
+		; Inventory has it; visuals may still show after QueueUpdate. Do not fail the stage.
 		SetCorpseDecayStatus("face ARMO stage " + aiStage + " fid=" + fid + " in inventory (IsEquipped=0 on corpse)")
-		Debug.Trace("PickmansWhisper: WARN decay face ARMO IsEquipped=0 on corpse stage=" + aiStage + " fid=" + fid + " count=" + held + " — kept (dead IsEquipped often lies)")
+		Debug.Trace("PickmansWhisper: WARN decay face ARMO IsEquipped=0 on corpse stage=" + aiStage + " fid=" + fid + " count=" + held + " — QueueUpdate done (dead IsEquipped often lies)")
 	EndIf
 	Return True
 EndFunction
@@ -859,14 +1120,15 @@ Function ApplyTintedTemplateN(Actor akCorpse, String templateId, Int aiCount, Fl
 	SetCorpseDecayStatus(statusPrefix + " " + applied + "/" + n + "x " + templateId + " sex=" + sexLabel + " uid=" + lastUid + " a=" + afA)
 EndFunction
 
-Function ApplyTintedAllTemplates(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA, Int aiPriority, String statusPrefix, Bool abClearMatching = True)
+; Returns how many Overlays.Add calls returned a positive uid.
+Int Function ApplyTintedAllTemplates(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA, Int aiPriority, String statusPrefix, Bool abClearMatching = True)
 	If !akCorpse
 		SetCorpseDecayStatus("skip: no corpse")
-		Return
+		Return 0
 	EndIf
 	If !templates || aiTemplateCount <= 0
 		SetCorpseDecayStatus("skip: empty overlay bank")
-		Return
+		Return 0
 	EndIf
 	PrepareCorpseForOverlays(akCorpse)
 	Bool isFemale = IsFemaleActor(akCorpse)
@@ -911,6 +1173,7 @@ Function ApplyTintedAllTemplates(Actor akCorpse, String[] templates, Int aiTempl
 		clearLabel = "keep"
 	EndIf
 	SetCorpseDecayStatus(statusPrefix + " ALL " + applied + " (" + aiTemplateCount + "x" + times + ") " + clearLabel + " sex=" + sexLabel + " uid=" + lastUid + " a=" + afA)
+	Return applied
 EndFunction
 
 ; P0.1 wound lab — clear wound bank only (keeps Porcupine skin overlays).
@@ -941,6 +1204,25 @@ Function ClearSkinBankOverlays(Actor akCorpse, String[] bank, Int bankCount)
 	Overlays.Update(akCorpse)
 EndFunction
 
+; Strip CumOverlays templates (LooksMenu only — no CumOverlays.esp master required).
+Function ClearCumBankOverlays(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	If !Game.IsPluginInstalled(PLUGIN_LOOKSMENU)
+		Return
+	EndIf
+	If !EnsureCumBank()
+		Return
+	EndIf
+	PrepareCorpseForOverlays(akCorpse)
+	Bool isFemale = IsFemaleActor(akCorpse)
+	RemoveMatchingOverlays(akCorpse, isFemale, CumTemplates, CumTemplateCount)
+	; CumOverlays tags some entries with the other sex slot — clear both cheaply.
+	RemoveMatchingOverlays(akCorpse, !isFemale, CumTemplates, CumTemplateCount)
+	Overlays.Update(akCorpse)
+EndFunction
+
 ; Drop every LooksMenu overlay before Disable/Delete — heavy stage stacks can stall MCM CallFunction on Clear/Spawn.
 Function StripAllOverlaysForActor(Actor akCorpse)
 	If !akCorpse
@@ -964,19 +1246,19 @@ Function ApplyTintedSkinTemplateN(Actor akCorpse, String templateId, Int aiCount
 	ApplyTintedTemplateN(akCorpse, templateId, aiCount, afR, afG, afB, afA, SKIN_PRIORITY, clearBank, clearCount, "lab skin")
 EndFunction
 
-Function ApplyTintedAllSkinTemplates(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA)
+Int Function ApplyTintedAllSkinTemplates(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA)
 	If !SoftSkinDepsReady()
-		Return
+		Return 0
 	EndIf
-	ApplyTintedAllTemplates(akCorpse, templates, aiTemplateCount, aiTimesEach, afR, afG, afB, afA, SKIN_PRIORITY, "lab skin", True)
+	Return ApplyTintedAllTemplates(akCorpse, templates, aiTemplateCount, aiTimesEach, afR, afG, afB, afA, SKIN_PRIORITY, "lab skin", True)
 EndFunction
 
 ; Additive Porcupine apply — never RemoveMatchingOverlays (keeps SkinTexture_* already on the body).
-Function ApplyTintedAllSkinTemplatesKeepExisting(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA)
+Int Function ApplyTintedAllSkinTemplatesKeepExisting(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA)
 	If !SoftSkinDepsReady()
-		Return
+		Return 0
 	EndIf
-	ApplyTintedAllTemplates(akCorpse, templates, aiTemplateCount, aiTimesEach, afR, afG, afB, afA, SKIN_PRIORITY, "lab skin", False)
+	Return ApplyTintedAllTemplates(akCorpse, templates, aiTemplateCount, aiTimesEach, afR, afG, afB, afA, SKIN_PRIORITY, "lab skin", False)
 EndFunction
 
 ; Face lab — SFT Damage / Boxer headparts (DecayFaceOverlays.txt FULL names).
@@ -1123,8 +1405,79 @@ Bool Function IsScarSkinTemplate(String templateId)
 	Return GardenOfEden.SubStr(templateId, 0, 6) == "Scars_"
 EndFunction
 
+; True when head + four limbs are still attached. LooksMenu body overlays glow at
+; stump UV edges after Dismember (decay tint = green; cum overlays = white).
+Bool Function IsCorpseLimbsIntact(Actor akCorpse)
+	If !akCorpse
+		Return False
+	EndIf
+	If akCorpse.IsDismembered("Head1")
+		Return False
+	EndIf
+	If akCorpse.IsDismembered("LeftArm1")
+		Return False
+	EndIf
+	If akCorpse.IsDismembered("RightArm1")
+		Return False
+	EndIf
+	If akCorpse.IsDismembered("LeftLeg1")
+		Return False
+	EndIf
+	If akCorpse.IsDismembered("RightLeg1")
+		Return False
+	EndIf
+	Return True
+EndFunction
+
+; Strip Porcupine decay + CumOverlays after butcher — stump UV glows (green / white).
+Function StripBodyDecayOverlaysForDismember(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	Bool strippedSkin = False
+	If EnsureSkinBank()
+		ClearSkinBankOverlays(akCorpse, SkinTemplates, SkinTemplateCount)
+		strippedSkin = True
+	Else
+		Debug.Trace("PickmansWhisper: StripBodyDecayOverlaysForDismember skin skip | " + LastCorpseDecayStatus)
+	EndIf
+	Bool strippedCum = False
+	If EnsureCumBank()
+		ClearCumBankOverlays(akCorpse)
+		strippedCum = True
+	EndIf
+	SetCorpseDecayStatus("body/cum overlays stripped — limbs missing (stump halo) skin=" + (strippedSkin as Int) + " cum=" + (strippedCum as Int))
+	Debug.Trace("PickmansWhisper: StripBodyDecayOverlaysForDismember formId=" + akCorpse.GetFormID() + " skin=" + (strippedSkin as Int) + " cum=" + (strippedCum as Int))
+EndFunction
+
+Function QueueStripBodyDecayAfterDismember(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	PendingDismemberStripActor = akCorpse
+	CallFunctionNoWait("RunPendingDismemberStrip", None)
+EndFunction
+
+Function RunPendingDismemberStrip()
+	Actor ak = PendingDismemberStripActor
+	PendingDismemberStripActor = None
+	If ak
+		StripBodyDecayOverlaysForDismember(ak)
+	EndIf
+EndFunction
+
+; MCM Victims — Corpse decay visuals (default OFF). Stage clock advances either way.
+Bool Function IsDecayVisualsEnabled()
+	If !MCM.IsInstalled()
+		Return False
+	EndIf
+	Return MCM.GetModSettingBool(MOD_NAME, "bDecayVisuals:Victims")
+EndFunction
+
 ; ModConfig decayStageN SkinTextures (+ scars if flagged) at stage RGBA. Soft deps; fail loud.
-Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
+; Returns True when paint succeeds OR visuals are MCM-off (so Sync can still stamp LastStage).
+; abForcePaint=True: bed gift vignette — paint even when bDecayVisuals is off.
+Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForcePaint = False)
 	If !akCorpse
 		SetCorpseDecayStatus("skip: no corpse")
 		Return False
@@ -1134,10 +1487,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 		SetCorpseDecayStatus("ERROR: Main script missing — cannot apply decay stage")
 		Return False
 	EndIf
-	If !m.DecayStagesReady()
-		m.LoadModConfig()
-	EndIf
-	If !m.DecayStagesReady()
+	If !m.EnsureDecayStagesLoaded()
 		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
 		Debug.Notification("Pickman's Whisper: decay stages not loaded — check ModConfig.txt")
 		Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — " + LastCorpseDecayStatus)
@@ -1147,19 +1497,55 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 		SetCorpseDecayStatus("ERROR: decay stage index " + aiStage)
 		Return False
 	EndIf
-	; Body LooksMenu overlays FIRST, face ARMO LAST.
-	; Overlays.Update (clear/add skins) unequips slot-54 face decals — that looked like
-	; "face changed once, then snapped back" when face was applied before the body pass.
+	If !abForcePaint && !IsDecayVisualsEnabled()
+		String stageNameOff = m.GetDecayStageName(aiStage)
+		SetCorpseDecayStatus("stage " + aiStage + " " + stageNameOff + " — visuals OFF (MCM; clock still advances)")
+		Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays skip paint — visuals OFF stage=" + aiStage + " formId=" + akCorpse.GetFormID())
+		Return True
+	EndIf
+	Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays begin stage=" + aiStage + " formId=" + akCorpse.GetFormID() + " force=" + (abForcePaint as Int))
+	; Bed gift (force paint): IsDismembered errors on parked/disabled NPCs false-trigger
+	; "limbs missing" and strip body textures — always paint body for vignette.
+	Bool limbsIntact = True
+	If !abForcePaint
+		limbsIntact = IsCorpseLimbsIntact(akCorpse)
+		If !limbsIntact
+			Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays body blocked — limbs missing formId=" + akCorpse.GetFormID())
+		EndIf
+	EndIf
+	; Face ARMO FIRST — if LooksMenu body work stalls, mask is already on.
+	; Re-equip face after body (Overlays.Update can strip slot-54).
 	Float tintR = m.GetDecayStageTintR(aiStage)
 	Float tintG = m.GetDecayStageTintG(aiStage)
 	Float tintB = m.GetDecayStageTintB(aiStage)
 	Float tintA = m.GetDecayStageTintA(aiStage)
 	String stageName = m.GetDecayStageName(aiStage)
+	Bool faceOk = False
+	String faceStatus = "face skipped — head missing"
+	Bool headOk = abForcePaint || !akCorpse.IsDismembered("Head1")
+	If headOk
+		faceOk = ApplyDecayFaceArmorForStage(akCorpse, aiStage)
+		faceStatus = LastCorpseDecayStatus
+		Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays face-first stage=" + aiStage + " ok=" + (faceOk as Int) + " | " + faceStatus)
+	Else
+		Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays face skip — Head1 missing formId=" + akCorpse.GetFormID())
+	EndIf
+
 	Bool bodyOk = False
 	String bodyStatus = ""
 	Int skinCount = 0
 	Int scarCount = 0
-	If !EnsureSkinBank()
+	Int appliedUids = 0
+	If !limbsIntact
+		; Clear prior decay skins + cum so stump edges lose overlay glow (green / white).
+		If EnsureSkinBank() && SoftSkinDepsReady()
+			ClearSkinBankOverlays(akCorpse, SkinTemplates, SkinTemplateCount)
+		EndIf
+		ClearCumBankOverlays(akCorpse)
+		bodyOk = True
+		bodyStatus = "body skipped — limbs missing (stump halo; decay+cum cleared)"
+		Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays stage=" + aiStage + " " + stageName + " — " + bodyStatus)
+	ElseIf !EnsureSkinBank()
 		bodyStatus = LastCorpseDecayStatus
 	ElseIf !SoftSkinDepsReady()
 		bodyStatus = LastCorpseDecayStatus
@@ -1176,80 +1562,99 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage)
 			EndIf
 			s += 1
 		EndWhile
-		If m.GetDecayStageAllScars(aiStage)
-			Int i = 0
-			While i < SkinTemplateCount
-				String id = SkinTemplates[i]
-				If IsScarSkinTemplate(id)
-					stageBank[n] = id
-					n += 1
-					scarCount += 1
-				EndIf
-				i += 1
-			EndWhile
-		EndIf
-		; skins=none (or empty after fill) → clear prior body overlays; leave default body.
+		; Scars disabled for stage apply — ModConfig no longer sets scars; keep code path inert
+		; so a stray scars flag cannot reintroduce 20-overlay hangs.
 		ClearSkinBankOverlays(akCorpse, SkinTemplates, SkinTemplateCount)
 		If n <= 0
 			bodyOk = True
 			bodyStatus = "body default (skins=none)"
 			Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays stage=" + aiStage + " " + stageName + " — no body skins")
 		Else
-			ApplyTintedAllSkinTemplatesKeepExisting(akCorpse, stageBank, n, 1, tintR, tintG, tintB, tintA)
+			appliedUids = ApplyTintedAllSkinTemplatesKeepExisting(akCorpse, stageBank, n, 1, tintR, tintG, tintB, tintA)
 			bodyOk = True
 			bodyStatus = LastCorpseDecayStatus
+			Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays stage=" + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " rgb=" + tintR + "," + tintG + "," + tintB + " a=" + tintA + " appliedUids=" + appliedUids)
+			If appliedUids <= 0
+				Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — LooksMenu Add returned 0 uids (templates missing or wrong sex?)")
+			EndIf
 		EndIf
 	EndIf
 
-	; Slice I face decal — after LooksMenu Updates so it is not stripped.
-	If !ApplyDecayFaceArmorForStage(akCorpse, aiStage)
-		Return False
+	; LooksMenu Update may have stripped the face mask — put it back (head still present).
+	If abForcePaint || !akCorpse.IsDismembered("Head1")
+		Bool faceOkAfter = ApplyDecayFaceArmorForStage(akCorpse, aiStage)
+		If faceOkAfter
+			faceOk = True
+			faceStatus = LastCorpseDecayStatus
+		EndIf
 	EndIf
-	String faceStatus = LastCorpseDecayStatus
+
 	If bodyOk
-		SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " a=" + tintA + " | " + faceStatus + " | " + bodyStatus)
+		If !faceOk && (abForcePaint || !akCorpse.IsDismembered("Head1"))
+			SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " rgb=" + tintR + "," + tintG + "," + tintB + " a=" + tintA + " | body ok | face FAILED — " + faceStatus)
+			Debug.Notification("Pickman's Whisper: body decay applied; face mask failed — " + faceStatus)
+			Debug.Trace("PickmansWhisper: WARN ApplyDecayStageOverlays face failed — " + LastCorpseDecayStatus)
+		Else
+			SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " rgb=" + tintR + "," + tintG + "," + tintB + " a=" + tintA + " uids=" + appliedUids + " | " + faceStatus + " | " + bodyStatus)
+		EndIf
 		Return True
 	EndIf
-	; Face stuck; stamp success so KillerScan does not Strip+retry every sync (face thrash).
-	SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " face ok | body skipped — " + bodyStatus)
-	Debug.Notification("Pickman's Whisper: body decay skipped — " + bodyStatus)
-	Debug.Trace("PickmansWhisper: WARN ApplyDecayStageOverlays body skipped — " + LastCorpseDecayStatus)
-	Return True
+	If faceOk
+		SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " face ok | body skipped — " + bodyStatus)
+		Debug.Notification("Pickman's Whisper: body decay skipped — " + bodyStatus)
+		Debug.Trace("PickmansWhisper: WARN ApplyDecayStageOverlays body skipped — " + LastCorpseDecayStatus)
+		Return True
+	EndIf
+	SetCorpseDecayStatus("ERROR: stage " + aiStage + " body+face failed | body=" + bodyStatus + " | face=" + faceStatus)
+	Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — " + LastCorpseDecayStatus)
+	Return False
 EndFunction
 
 ; Slice H P2 — re-apply ModConfig stage if stamped knife kill advanced. Trace only.
 Function SyncDecayForKnifeCorpse(Actor akCorpse)
 	If !akCorpse
+		Debug.Trace("PickmansWhisper: SyncDecay skip | no corpse")
 		Return
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
+		Debug.Trace("PickmansWhisper: ERROR SyncDecayForKnifeCorpse — Main missing")
 		Return
 	EndIf
 	Int formId = akCorpse.GetFormID()
 	If formId == 0 || m.FindDecayKillSlot(formId) < 0
+		Debug.Trace("PickmansWhisper: SyncDecay skip | no kill slot formId=" + formId)
 		Return
 	EndIf
-	If !m.DecayStagesReady()
-		m.LoadModConfig()
-	EndIf
-	If !m.DecayStagesReady()
+	If !m.EnsureDecayStagesLoaded()
 		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
 		Debug.Trace("PickmansWhisper: ERROR SyncDecayForKnifeCorpse — " + LastCorpseDecayStatus)
 		Return
 	EndIf
 	Int stage = m.ResolveDecayStageForKill(formId)
 	If stage < 0
+		Debug.Trace("PickmansWhisper: SyncDecay skip | resolve failed formId=" + formId)
 		Return
 	EndIf
 	Int last = m.GetDecayKillLastStage(formId)
 	If stage == last
+		Debug.Trace("PickmansWhisper: SyncDecay skip | stage==last stage=" + stage + " formId=" + formId)
 		Return
 	EndIf
+	Debug.Trace("PickmansWhisper: SyncDecayForKnifeCorpse apply stage=" + stage + " last=" + last + " formId=" + formId)
 	If ApplyDecayStageOverlays(akCorpse, stage)
-		m.SetDecayKillLastStage(formId, stage)
-		SetCorpseDecayStatus("knife sync stage " + stage + " " + m.GetDecayStageName(stage) + " formId=" + formId + " | " + LastCorpseDecayStatus)
-		Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
+		; MCM may ForceDecay mid-LooksMenu Wait — only stamp LastStage if clock still matches.
+		Int stageNow = m.ResolveDecayStageForKill(formId)
+		If stageNow == stage
+			m.SetDecayKillLastStage(formId, stage)
+			SetCorpseDecayStatus("knife sync stage " + stage + " " + m.GetDecayStageName(stage) + " formId=" + formId + " | " + LastCorpseDecayStatus)
+			Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
+		Else
+			SetCorpseDecayStatus("knife sync aborted (clock moved during apply) was=" + stage + " now=" + stageNow + " formId=" + formId)
+			Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
+		EndIf
+	Else
+		Debug.Trace("PickmansWhisper: ERROR SyncDecayForKnifeCorpse ApplyDecayStageOverlays failed stage=" + stage + " formId=" + formId + " | " + LastCorpseDecayStatus)
 	EndIf
 EndFunction
 
@@ -1266,8 +1671,9 @@ Function ApplyBedGiftDecayOverlays(Actor akCorpse)
 		Debug.Trace("PickmansWhisper: ERROR ApplyBedGiftDecayOverlays — Main missing")
 		Return
 	EndIf
-	If !m.DecayStagesReady()
-		m.LoadModConfig()
+	; Bed gift vignette always paints (DeathMarks + Black stage) — not gated by bDecayVisuals.
+	If !m.EnsureDecayStagesLoaded()
+		; fall through to wounds-only if stages unavailable
 	EndIf
 	Float woundA = m.GetBedGiftWoundAlpha()
 	Int stage = BED_GIFT_DECAY_STAGE
@@ -1276,7 +1682,7 @@ Function ApplyBedGiftDecayOverlays(Actor akCorpse)
 		; DeathMarks first; darken via stage RGB, opacity from ModConfig.
 		ApplyDecayWoundOverlaysTinted(akCorpse, BED_GIFT_WOUND_COUNT, m.GetDecayStageTintR(stage), m.GetDecayStageTintG(stage), m.GetDecayStageTintB(stage), woundA)
 		woundStatus = LastCorpseDecayStatus
-		ApplyDecayStageOverlays(akCorpse, stage)
+		ApplyDecayStageOverlays(akCorpse, stage, True)
 		SetCorpseDecayStatus("bed gift | " + woundStatus + " | " + LastCorpseDecayStatus)
 		Return
 	EndIf
@@ -1295,14 +1701,14 @@ EndFunction
 Function DebugForceCorpseDecayOverlays()
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
-		Debug.MessageBox("Pickman's Whisper\n\nMain script missing.")
+		DiagNotify("Pickman's Whisper\n\nMain script missing.")
 		Return
 	EndIf
 	Actor aimed = m.GetLookAimActor()
 	If !aimed || aimed == Game.GetPlayer()
-		Debug.MessageBox("Pickman's Whisper\n\nAim / face a corpse (or look then open MCM), then retry.")
+		DiagNotify("Pickman's Whisper\n\nAim / face a corpse (or look then open MCM), then retry.")
 		Return
 	EndIf
 	ApplyBedGiftDecayOverlays(aimed)
-	Debug.MessageBox("Pickman's Whisper\n\nDecay overlays forced (bed gift path).\n" + LastCorpseDecayStatus)
+	DiagNotify("Pickman's Whisper\n\nDecay overlays forced (bed gift path).\n" + LastCorpseDecayStatus)
 EndFunction

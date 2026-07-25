@@ -130,28 +130,10 @@ def test_parse_shipped_modconfig() -> None:
 
     expected = {
         0: ("Freshly Deceased", 0.650, 0.520, 0.480, 1.0, 0.0, [], False),
-        1: ("Pallor Mortis", 0.300, 0.750, 0.720, 1.0, 0.25, [], False),
-        2: ("Livor Mortis", 0.480, 0.140, 0.300, 1.0, 2.0, ["SkinTexture_15", "SkinTexture_09"], False),
-        3: (
-            "Putrefaction",
-            0.369,
-            0.451,
-            0.318,
-            1.0,
-            48.0,
-            ["SkinTexture_17", "SkinTexture_18"],
-            True,
-        ),
-        4: (
-            "Black Putrefaction",
-            0.149,
-            0.118,
-            0.102,
-            1.0,
-            240.0,
-            ["SkinTexture_03", "SkinTexture_18"],
-            True,
-        ),
+        1: ("Pallor Mortis", 0.300, 0.750, 0.720, 1.0, 0.25, ["SkinTexture_16"], False),
+        2: ("Livor Mortis", 0.480, 0.140, 0.300, 1.0, 2.0, ["SkinTexture_16"], False),
+        3: ("Putrefaction", 0.380, 0.820, 0.480, 1.0, 48.0, ["SkinTexture_16"], False),
+        4: ("Black Putrefaction", 0.149, 0.118, 0.102, 1.0, 240.0, ["SkinTexture_16"], False),
     }
     for idx, (name, r, g, b, a, start_h, skins, scars) in expected.items():
         got = stages[idx]
@@ -170,10 +152,13 @@ def test_parse_shipped_modconfig() -> None:
             fail(f"stage {idx} skins: {got['skins']} != {skins}")
         if got["scars"] != scars:
             fail(f"stage {idx} scars: {got['scars']} != {scars}")
-    if stages[0]["skins_raw"] != "none" or stages[1]["skins_raw"] != "none":
-        fail("stages 0–1 must use skins=none (no body change)")
-    if stages[2]["skins"] != ["SkinTexture_15", "SkinTexture_09"]:
-        fail("stage 2 Livor must use SkinTexture_15+SkinTexture_09 (visible vs Pallor none)")
+    if stages[0]["skins_raw"] != "none":
+        fail("stage 0 Freshly must use skins=none (just killed, default body)")
+    for idx in (1, 2, 3, 4):
+        if stages[idx]["skins"] != ["SkinTexture_16"]:
+            fail(f"stage {idx} must be dirt/tint carrier SkinTexture_16 only")
+        if stages[idx]["scars"]:
+            fail(f"stage {idx} must not enable scars (simplified body)")
     starts = [stages[i]["start_hours"] for i in range(5)]
     if starts != list(SHIPPED_START_HOURS):
         fail(f"startHours {starts} != locked {list(SHIPPED_START_HOURS)}")
@@ -248,8 +233,25 @@ def test_papyrus_wiring() -> None:
         fail("ParseDecayStageValue must read startHours=fields[5] skins=fields[6]")
     if 'skins == "none"' not in parse and "skins == \"none\"" not in parse:
         fail("ParseDecayStageValue must accept skins=none")
-    if "DecayStageStartHours" not in parse:
-        fail("ParseDecayStageValue must store DecayStageStartHours")
+    if "PendingDecayStageStartHours" not in parse:
+        fail("ParseDecayStageValue must store PendingDecayStageStartHours (atomic commit)")
+    if "TrimString" in extract_function(main, "SplitByChar"):
+        fail("SplitByChar must not TrimString/GetWords (mangles decayStage fields)")
+    if "ConfigFieldTrim" not in extract_function(main, "SplitByChar"):
+        fail("SplitByChar must ConfigFieldTrim (space-only)")
+    load = extract_function(main, "LoadModConfig")
+    if "ClearPendingDecayStages" not in load:
+        fail("LoadModConfig must ClearPendingDecayStages (not wipe live mid-load)")
+    if "ClearDecayStages(" in load:
+        fail("LoadModConfig must not ClearDecayStages (Sync race)")
+    if "CommitPendingDecayStages" not in load:
+        fail("LoadModConfig must CommitPendingDecayStages when all 5 parse OK")
+    if "ModConfigLoadBusy" not in load:
+        fail("LoadModConfig must ModConfigLoadBusy guard against nested reload")
+    if "ConfigFieldTrim" not in load:
+        fail("LoadModConfig must ConfigFieldTrim key/val (not TrimString on decayStage lines)")
+    if "EnsureDecayStagesLoaded" not in main:
+        fail("Main must EnsureDecayStagesLoaded for Sync/apply")
     fill = extract_function(main, "FillDecayStageSkins")
     if 'raw == "none"' not in fill:
         fail("FillDecayStageSkins must treat skins=none as empty body bank")
@@ -269,6 +271,24 @@ def test_papyrus_wiring() -> None:
         fail("ApplyDecayStageOverlays must clear body and succeed when skins=none")
     if "ClearSkinBankOverlays" not in stage_apply:
         fail("ApplyDecayStageOverlays must ClearSkinBankOverlays before apply/none")
+    if "EnsureDecayStagesLoaded" not in stage_apply:
+        fail("ApplyDecayStageOverlays must EnsureDecayStagesLoaded (no nested LoadModConfig race)")
+    if "appliedUids" not in stage_apply:
+        fail("ApplyDecayStageOverlays must Trace appliedUids (paint proof)")
+    if "ApplyDecayStageOverlays begin stage=" not in stage_apply:
+        fail("ApplyDecayStageOverlays must Trace begin before LooksMenu work (prove stage 4 started)")
+    if "face-first" not in stage_apply:
+        fail("ApplyDecayStageOverlays must face-first (mask before LooksMenu body)")
+    if stage_apply.find("ApplyDecayFaceArmorForStage") > stage_apply.find(
+        "ApplyTintedAllSkinTemplatesKeepExisting"
+    ):
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage before body tint")
+    if "IsScarSkinTemplate" in stage_apply:
+        fail("ApplyDecayStageOverlays must not expand scars into stage bank (hang)")
+    if "IsCorpseLimbsIntact" not in stage_apply:
+        fail("ApplyDecayStageOverlays must gate body paint on IsCorpseLimbsIntact")
+    if "ClearCumBankOverlays" not in stage_apply:
+        fail("ApplyDecayStageOverlays must ClearCumBankOverlays when limbs missing")
     bed_apply = extract_function(decay, "ApplyBedGiftDecayOverlays")
     if "ApplyDecayStageOverlays" not in bed_apply:
         fail("ApplyBedGiftDecayOverlays must call ApplyDecayStageOverlays")

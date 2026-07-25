@@ -173,6 +173,11 @@ REQUIRED_NATIVES = [
         "ObjectReference.GetValue",
     ),
     (
+        "ObjectReference.psc",
+        r"Float\s+Function\s+GetBaseValue\s*\(",
+        "ObjectReference.GetBaseValue",
+    ),
+    (
         "Game.psc",
         r"Function\s+FadeOutGame\s*\(\s*Bool\s+\w+\s*,\s*Bool\s+\w+\s*,\s*Float\s+\w+\s*,\s*Float\s+\w+",
         "FadeOutGame(abFadingOut, abBlackFade, afSecsBeforeFade, afFadeDuration, ...)",

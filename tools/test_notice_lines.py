@@ -457,18 +457,18 @@ def test_psc_contracts() -> None:
     elif "SubStr(s, 0," not in lead.group(1):
         errors.append("StripLeadingNameSeparator must use SubStr prefix checks (not StrFind==0)")
 
-    # Load-trace MessageBox is MCM "Test notice file load" only — not init/load.
+    # Load-trace DiagNotify is MCM "Test notice file load" only — not init/load.
     rns = re.search(r"Function ReportNoticeLoadStatus\(\)(.*?)EndFunction", text, re.S)
     if not rns:
-        errors.append("ReportNoticeLoadStatus missing (MCM button MessageBox)")
-    elif "Debug.MessageBox(" not in rns.group(1) or "NoticeLoadDiag" not in rns.group(1):
-        errors.append("ReportNoticeLoadStatus must MessageBox NoticeLoadDiag")
+        errors.append("ReportNoticeLoadStatus missing (MCM button DiagNotify)")
+    elif "DiagNotify(" not in rns.group(1) or "NoticeLoadDiag" not in rns.group(1):
+        errors.append("ReportNoticeLoadStatus must DiagNotify NoticeLoadDiag")
     oqi = re.search(r"Event OnQuestInit\(\)(.*?)EndEvent", text, re.S)
     if oqi and "ReportNoticeLoadStatus()" in oqi.group(1):
-        errors.append("OnQuestInit must not ReportNoticeLoadStatus (no launch MessageBox)")
+        errors.append("OnQuestInit must not ReportNoticeLoadStatus (no launch diag dump)")
     hgr = re.search(r"Function HandleGameResume\(String reason\)(.*?)EndFunction", text, re.S)
     if hgr and "ReportNoticeLoadStatus()" in hgr.group(1):
-        errors.append("HandleGameResume must not ReportNoticeLoadStatus (no launch MessageBox)")
+        errors.append("HandleGameResume must not ReportNoticeLoadStatus (no launch diag dump)")
     # Reload on MCM open (Necromantic OnMCMMenuOpen pattern).
     mcm_open = re.search(r"Function OnMCMMenuOpen\(String modName\)(.*?)EndFunction", text, re.S)
     if not mcm_open:
@@ -512,7 +512,7 @@ def test_psc_contracts() -> None:
     if "WriteNearbyStatusToMcm()" not in text:
         errors.append("Refresh/pick path must call WriteNearbyStatusToMcm()")
 
-    # On-demand: reload + full load-trace MessageBox (Necromantic ShowConfigLoadInfo).
+    # On-demand: reload + full load-trace DiagNotify (Necromantic ShowConfigLoadInfo).
     dtnf = re.search(r"Function DebugTestNoticeFiles\(\)(.*?)EndFunction", text, re.S)
     if not dtnf:
         errors.append("DebugTestNoticeFiles probe missing (on-demand GoE2 file check)")
@@ -521,7 +521,7 @@ def test_psc_contracts() -> None:
         if "LoadNoticeLines()" not in body:
             errors.append("DebugTestNoticeFiles must reload via LoadNoticeLines")
         if "ReportNoticeLoadStatus()" not in body:
-            errors.append("DebugTestNoticeFiles must show ReportNoticeLoadStatus MessageBox")
+            errors.append("DebugTestNoticeFiles must show ReportNoticeLoadStatus DiagNotify")
         if "Debug.Notification(" not in body:
             errors.append("DebugTestNoticeFiles must toast a found/not-found summary")
 
@@ -631,9 +631,9 @@ def test_psc_contracts() -> None:
             errors.append("MaybeSpeakNoticeLine must deliver via SpeakNoticeToTarget or ToastNoticeLine")
         if re.search(r"If IsNoticePollDebugEnabled\(\)\s*\n\s*NoticeCoolCount\s*=\s*0", body):
             errors.append("MaybeSpeakNoticeLine must not clear cooldowns only when notice-poll debug is on")
-        # Ambient loop: toast only — MessageBox is MCM Scan button UX, not the poll.
-        if "ShowNoticePollDialog(" in body or "Debug.MessageBox(" in body:
-            errors.append("MaybeSpeakNoticeLine must not MessageBox (dialog is MCM Scan nearby only)")
+        # Ambient loop: toast only — DiagNotify is MCM Scan button UX, not the poll.
+        if "ShowNoticePollDialog(" in body or "Debug.MessageBox(" in body or "DiagNotify(" in body:
+            errors.append("MaybeSpeakNoticeLine must not MessageBox/DiagNotify (MCM Scan nearby only)")
         empty_guard = re.search(
             r"If !line \|\| GardenOfEden\.StrLength\(line\) < 1(.*?)EndIf", body, re.S
         )
@@ -665,8 +665,8 @@ def test_psc_contracts() -> None:
         pbody = probe.group(1)
         if "MarkNoticeCooldown" in pbody:
             errors.append("DebugScanNearbyNpcs must not call MarkNoticeCooldown (probe must not starve auto poll)")
-        if "Debug.MessageBox(" not in pbody:
-            errors.append("DebugScanNearbyNpcs must keep MessageBox (MCM Scan nearby button UX)")
+        if "DiagNotify(" not in pbody:
+            errors.append("DebugScanNearbyNpcs must DiagNotify (MCM Scan nearby; no pause)")
 
     if errors:
         raise AssertionError("PSC contract failures:\n  - " + "\n  - ".join(errors))
@@ -947,9 +947,14 @@ def test_runtime_loops_armed_without_mcm() -> None:
 
 
 def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
-    """Auto paths (load + notice loop): no MessageBox. MCM Debug buttons keep theirs."""
+    """Auto paths: no modal MessageBox. MCM Debug uses DiagNotify (toast + Papyrus log)."""
     text = PSC.read_text(encoding="utf-8", errors="replace")
     errors: list[str] = []
+
+    if "Function DiagNotify(" not in text:
+        errors.append("Main must define DiagNotify (Trace + Notification; no MessageBox pause)")
+    if "Debug.MessageBox(" in text:
+        errors.append("Main must not Debug.MessageBox (use DiagNotify)")
 
     speak = re.search(r"Function MaybeSpeakNoticeLine\(String source\)(.*?)EndFunction", text, re.S)
     if not speak:
@@ -960,21 +965,21 @@ def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
             errors.append("MaybeSpeakNoticeLine must still ToastNoticeLine")
         if "ShowNoticePollDialog(" in body:
             errors.append("MaybeSpeakNoticeLine must not call ShowNoticePollDialog")
-        if "Debug.MessageBox(" in body:
-            errors.append("MaybeSpeakNoticeLine must not Debug.MessageBox")
+        if "Debug.MessageBox(" in body or "DiagNotify(" in body:
+            errors.append("MaybeSpeakNoticeLine must not MessageBox/DiagNotify")
 
     run = re.search(
         r"Function HandleKillerScanKnifeAimWarm\(\)(.*?)EndFunction",
         text,
         re.S,
     )
-    if run and "Debug.MessageBox(" in run.group(1):
-        errors.append("HandleKillerScanKnifeAimWarm must not MessageBox (heartbeat is ToastDebug only)")
+    if run and ("Debug.MessageBox(" in run.group(1) or "DiagNotify(" in run.group(1)):
+        errors.append("HandleKillerScanKnifeAimWarm must not MessageBox/DiagNotify (heartbeat is ToastDebug only)")
 
 
     arm_ann = re.search(r"Function AnnounceKillScanArmed\(\)(.*?)EndFunction", text, re.S)
-    if arm_ann and "Debug.MessageBox(" in arm_ann.group(1):
-        errors.append("AnnounceKillScanArmed must not MessageBox (fires on load/arm)")
+    if arm_ann and ("Debug.MessageBox(" in arm_ann.group(1) or "DiagNotify(" in arm_ann.group(1)):
+        errors.append("AnnounceKillScanArmed must not MessageBox/DiagNotify (fires on load/arm)")
 
     for name, pattern in (
         ("OnQuestInit", r"Event OnQuestInit\(\)(.*?)EndEvent"),
@@ -990,18 +995,18 @@ def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
     probe = re.search(r"Function DebugScanNearbyNpcs\(\)(.*?)EndFunction", text, re.S)
     if not probe:
         errors.append("DebugScanNearbyNpcs missing")
-    elif "Debug.MessageBox(" not in probe.group(1):
-        errors.append("DebugScanNearbyNpcs must keep Debug.MessageBox for MCM button")
+    elif "DiagNotify(" not in probe.group(1):
+        errors.append("DebugScanNearbyNpcs must DiagNotify for MCM button (no pause)")
 
     dtnf = re.search(r"Function DebugTestNoticeFiles\(\)(.*?)EndFunction", text, re.S)
     if not dtnf:
         errors.append("DebugTestNoticeFiles missing")
     elif "ReportNoticeLoadStatus()" not in dtnf.group(1):
-        errors.append("DebugTestNoticeFiles must still call ReportNoticeLoadStatus (MCM load dialog)")
+        errors.append("DebugTestNoticeFiles must still call ReportNoticeLoadStatus (MCM load diag)")
 
     rns = re.search(r"Function ReportNoticeLoadStatus\(\)(.*?)EndFunction", text, re.S)
-    if not rns or "Debug.MessageBox(" not in rns.group(1):
-        errors.append("ReportNoticeLoadStatus must still MessageBox when MCM button calls it")
+    if not rns or "DiagNotify(" not in rns.group(1):
+        errors.append("ReportNoticeLoadStatus must DiagNotify when MCM button calls it")
 
     if errors:
         raise AssertionError("ambient dialog UX failures:\n  - " + "\n  - ".join(errors))
@@ -1130,7 +1135,7 @@ def main() -> int:
     print("  cadence: killscan <10s; hunger ~1/game hour; fixation separate")
     print("  C4 parked: ambient killscan ToastNoticeLine only (C3 restore)")
     print("  runtime loops: ArmRuntimeLoops on OnInit + alias/game load (not MCM-only)")
-    print("  ambient UX: no MessageBox in notice loop; MCM Scan nearby keeps dialog")
+    print("  ambient UX: no MessageBox in notice loop; MCM Scan nearby uses DiagNotify")
     print("  files-only notice banks: builtins retired, per-file MCM load status + error toast")
     print("  stage control: MCM dropdown + force toggle; GetNoticeStage honors override")
     print("  no dead config: every shipped .txt is read by the quest script")

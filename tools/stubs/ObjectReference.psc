@@ -23,6 +23,8 @@ Bool Function IsDisabled() Native
 Bool Function Is3DLoaded() Native
 Bool Function HasKeyword(Keyword akKeyword) Native
 Float Function GetValue(ActorValue akAV) Native
+; FO4 native — base AV before ModValue / temp modifiers.
+Float Function GetBaseValue(ActorValue akAV) Native
 Function SetValue(ActorValue akAV, Float afValue) Native
 Function ModValue(ActorValue akAV, Float afAmount) Native
 Float Function GetHeadingAngle(ObjectReference akOther) Native

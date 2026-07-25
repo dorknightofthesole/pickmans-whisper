@@ -76,8 +76,8 @@ def test_psc(text: str) -> None:
         fail("DebugPlayTestWhisper must cast to Sound")
     if ".Play(" not in fn and "snd.Play(" not in fn:
         fail("DebugPlayTestWhisper must call Sound.Play")
-    if "Debug.MessageBox" not in fn:
-        fail("DebugPlayTestWhisper must MessageBox diagnostics (instance id / xwm)")
+    if "DiagNotify(" not in fn:
+        fail("DebugPlayTestWhisper must DiagNotify diagnostics (instance id / xwm)")
     if "DoesFileExist" not in fn:
         fail("DebugPlayTestWhisper must check loose EndIt.xwm via DoesFileExist")
     if "instanceId=" not in fn and "instanceId" not in fn:
@@ -85,7 +85,7 @@ def test_psc(text: str) -> None:
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "DebugPlayTestWhisper" in notice or "FID_WHISPER_ENDIT" in notice:
         fail("MaybeSpeakNoticeLine must stay free of D0-POC audio ownership")
-    ok("DebugPlayTestWhisper wired + MessageBox diagnostics; notice path untouched")
+    ok("DebugPlayTestWhisper wired + DiagNotify diagnostics; notice path untouched")
 
 
 def test_mcm() -> None:

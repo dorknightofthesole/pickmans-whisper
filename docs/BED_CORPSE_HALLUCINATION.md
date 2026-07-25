@@ -14,12 +14,13 @@ Ephemeral vignette — `DiamondCityResidentF01NoodleMarket` (unnamed female Resi
 
 | Topic | Choice |
 |-------|--------|
-| Despawn | Real-time timer (~6s after present) |
+| Despawn | KillerScan pulse count (`BED_DESPAWN_SCANS = 2`) after present |
 | Beat | Pure vignette: `BondStarted` + MCM `bBedGift` + `ModConfig.txt` `bedGiftCooldownDays` (default `0.5` ≈ 12h; Debug **Bed gift every sleep** bypasses; default ON) |
 | Hunger | No gate, no satiation (`KillSilent` credit suppressed; body never enters kill-watch) |
-| One body | **Single gameplay spawn**: killscan `MaybeWarmBedGiftBody` only. SleepStart saves bed; SleepStop Present or skip. No retries. |
+| One body | **Primary spawn**: killscan `MaybeWarmBedGiftBody` every tick while bonded. **SleepStart fallback** place+disable only (no Pose/LooksMenu on sleep stack). Present poses on wake. Despawn pulses sync on KillerScan. |
+| Overlay timer | **Experiment:** BedGift one-shot `TIMER_BED_OVERLAYS` (does not reschedule). KillerScan / Present only **arm** it. Recurring timer remains KillerScan-only. |
 | Spawn form | `Fallout4.esm` `DiamondCityResidentF01NoodleMarket` (`0x4DEC`, unnamed Resident; kill via `KillSilent(player)`) |
-| Placement | Prefer `SnapIntoInteraction(bed)` → `Utility.Wait(0.5)` → `KillSilent` → strip. Fallback: `KillSilent` + `SetPosition` + ragdoll. |
+| Placement | Prefer `Enable` → wait `Is3DLoaded` → `SnapIntoInteraction(bed)` → `Utility.Wait(0.5)` → `KillSilent` → strip. Fallback if no 3D / snap fails: `KillSilent` + `SetPosition` + ragdoll (never call Snap without 3D). |
 | Gear | `UnequipAll` + `RemoveAllItems` (before snap + after kill) |
 | Sleep hook | **PlayerAlias** `RegisterForPlayerSleep` |
 | Voice | Optional `ModConfig.txt` → `bedGiftWakeToast`; requires voice + blade |
@@ -38,17 +39,19 @@ Slice H: decay applies **before Enable** when possible — deferred timer after 
 While awake (killscan) — ONLY PlaceAtMe site
   → MaybeWarmBedGiftBody → PlaceAtMe DiamondCityResidentF01NoodleMarket (alive)
   → ghost + park disabled under player
-  → schedule TIMER_BED_OVERLAYS (decay while still disabled)
+  → ScheduleBedGiftDecayOverlays (BedOverlaysAtReal); KillerScan arms one-shot TIMER_BED_OVERLAYS
 
 OnPlayerSleepStart
-  → save BedAnchor only (never PlaceAtMe)
-  → if decay still pending: apply now (sleep fade; keep disabled)
+  → save BedAnchor; TrySpawn fallback if warm missed (place+disable only)
+  → schedule overlays if still pending (no LooksMenu on sleep stack)
 
 OnPlayerSleepStop
-  → if BedCorpse: Enable (already decayed) → SnapIntoInteraction → Wait → KillSilent → strip
-  → else: skip (no retry)
-  → toast → ~6s despawn
+  → if BedCorpse: Enable → wait Is3DLoaded → SnapIntoInteraction → Wait → KillSilent → strip
+  → clear BedOverlaysApplied → KickBedOverlayOnesHot (paint AFTER pose; oneshot OnTimer)
+  → toast → despawn on 2nd KillerScan pulse
 ```
+
+After deploy: quit FO4 to desktop so old suspended stacks (e.g. retired `BedDespawnAtReal`) die.
 
 ---
 
@@ -56,6 +59,6 @@ OnPlayerSleepStop
 
 1. Bonded → walk ~10s → sleep → wake with corpse posed on bed (or ragdoll fallback).
 2. On snap fail: always get toast `bed SnapIntoInteraction FAILED — ragdoll fallback` (not debug-gated).
-3. ~6s later she despawns.
+3. On the **2nd KillerScan** deadline pulse after present, she despawns.
 4. Debug force/clear work.
 5. Wake toast only when blade drawn + voice on.

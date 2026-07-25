@@ -55,7 +55,39 @@ def extract_function(text: str, name: str) -> str:
     return m.group(0)
 
 
+def parse_positive_int_mirror(s: str) -> int:
+    """Mirror Main.ParsePositiveInt — digits prefix; trailing junk ignored."""
+    if not s:
+        return -1
+    n = 0
+    got = False
+    for c in s:
+        if c.isdigit():
+            got = True
+            n = n * 10 + int(c)
+        elif got:
+            return n
+        else:
+            return -1
+    return n if got else -1
+
+
+def config_label_key_mirror(s: str) -> str:
+    """Mirror CorpseDecay.ConfigLabelKey — letters only, lower."""
+    return "".join(c.lower() for c in s if c.isalpha())
+
+
 def main() -> None:
+    if parse_positive_int_mirror("2135\r") != 2135:
+        fail("ParsePositiveInt mirror must accept trailing CR (CRLF face ids)")
+    if parse_positive_int_mirror("2137") != 2137:
+        fail("ParsePositiveInt mirror clean int")
+    if config_label_key_mirror("Green\r") != "green":
+        fail("ConfigLabelKey mirror must drop CR on Green")
+    if config_label_key_mirror("none") != "none":
+        fail("ConfigLabelKey mirror must keep none")
+    ok("CRLF-safe face id / label parse mirrors")
+
     if not STAGES.is_file():
         fail(f"missing {STAGES.relative_to(ROOT)}")
     stage_map: dict[int, str] = {}
@@ -110,6 +142,20 @@ def main() -> None:
         fail("EnsureDecayFaceArmorBanks must ReloadDecayFaceStageMap when cache cold")
     if "Debug.Notification" not in ensure or "Debug.Trace" not in ensure:
         fail("EnsureDecayFaceArmorBanks must fail loud")
+    if "ConfigTrim" not in ensure or "ConfigLowerAscii" not in ensure:
+        fail("EnsureDecayFaceArmorBanks must ConfigTrim + ConfigLowerAscii (not TrimString/GetWords)")
+    if "m.TrimString" in ensure:
+        fail("EnsureDecayFaceArmorBanks must not TrimString face id lines (GetWords mangles key=value)")
+    if "FaceArmorLabelsDebugList" not in ensure:
+        fail("EnsureDecayFaceArmorBanks must Trace loaded labels")
+    if "ConfigLabelKey" not in decay:
+        fail("CorpseDecay must ConfigLabelKey (letters-only — drops CRLF \\r on face labels)")
+    label_key = extract_function(decay, "ConfigLabelKey")
+    if 'c == "A"' not in label_key or 'c == "a"' not in label_key:
+        fail("ConfigLabelKey must accept upper and lower letters only")
+    lower = extract_function(decay, "ConfigLowerAscii")
+    if "ConfigLabelKey" not in lower:
+        fail("ConfigLowerAscii must route through ConfigLabelKey")
     reload_map = extract_function(decay, "ReloadDecayFaceStageMap")
     if 'label == "none"' not in reload_map:
         fail("ReloadDecayFaceStageMap must accept face label none")
@@ -117,6 +163,15 @@ def main() -> None:
         fail("ReloadDecayFaceStageMap must GetLinesFromFile stage map")
     if "nextFids" not in reload_map:
         fail("ReloadDecayFaceStageMap must build temp nextFids then commit (no live wipe race)")
+    if "ConfigTrim" not in reload_map or "ConfigLowerAscii" not in reload_map:
+        fail("ReloadDecayFaceStageMap must ConfigTrim + ConfigLowerAscii labels")
+    if "m.TrimString" in reload_map:
+        fail("ReloadDecayFaceStageMap must not TrimString stage lines")
+    if "known=[" not in reload_map:
+        fail("ReloadDecayFaceStageMap UNKNOWN label must dump known= labels")
+    find_label = extract_function(decay, "FindFaceArmorLabelIndex")
+    if "ConfigLowerAscii" not in find_label:
+        fail("FindFaceArmorLabelIndex must case-fold labels")
     if "InvalidateDecayFaceArmorBanks" not in decay:
         fail("CorpseDecay must InvalidateDecayFaceArmorBanks for ModConfig hot-reload")
     main = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc").read_text(
@@ -143,6 +198,8 @@ def main() -> None:
         fail("face ARMO must stay playable/removable (no abPreventRemoval=true)")
     if "GetItemCount(armor)" not in apply_face:
         fail("ApplyDecayFaceArmorForStage must GetItemCount (dead IsEquipped is unreliable)")
+    if "QueueUpdate(True" not in apply_face:
+        fail("ApplyDecayFaceArmorForStage must QueueUpdate after EquipItem (corpse inventory-only bug)")
     if "Return False" in apply_face and "IsEquipped(armor)" in apply_face:
         # Must not abort stage solely because IsEquipped is false on corpses.
         if re.search(
@@ -156,6 +213,16 @@ def main() -> None:
     stage_apply = extract_function(decay, "ApplyDecayStageOverlays")
     if "ApplyDecayFaceArmorForStage" not in stage_apply:
         fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage")
+    if "face FAILED" not in stage_apply and "face failed after body" not in stage_apply:
+        fail("ApplyDecayStageOverlays must keep body success when face ARMO fails (tint must stamp)")
+    if "Return False" in stage_apply:
+        # Face-only failure must not Return False after bodyOk
+        face_fail_blocks_body = re.search(
+            r"If !ApplyDecayFaceArmorForStage\([^\)]*\)\s*\n\s*Return False",
+            stage_apply,
+        )
+        if face_fail_blocks_body:
+            fail("ApplyDecayStageOverlays must not Return False solely on face failure after body apply")
     ok("ApplyDecayStageOverlays wires face stage equip")
 
     for path in (PS1, SH):

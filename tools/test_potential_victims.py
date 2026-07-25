@@ -295,18 +295,29 @@ def test_victims_script(victims: str) -> None:
     ok("Push deadlock-safe (aimed local; Main aux NoWait)")
 
     mcm_refresh = extract_function(victims, "MCMRefreshVictimsPanel")
-    if "MessageBox" not in mcm_refresh:
-        fail("MCMRefreshVictimsPanel must MessageBox")
+    if "DiagNotify(" not in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must DiagNotify (no MessageBox pause)")
+    if "Debug.MessageBox(" in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must not MessageBox")
     if "Debug.Notification" not in mcm_refresh:
         fail("MCMRefreshVictimsPanel must Notification immediately")
     if "PushVictimsAimedOnly" not in mcm_refresh:
         fail("MCMRefreshVictimsPanel must PushVictimsAimedOnly (not Main-bound Push)")
     note_i = mcm_refresh.find("Debug.Notification")
-    box_i = mcm_refresh.find("Debug.MessageBox")
+    box_i = mcm_refresh.find("DiagNotify(")
     if note_i < 0 or box_i < 0 or note_i > box_i:
-        fail("MCMRefreshVictimsPanel must Notification before MessageBox")
+        fail("MCMRefreshVictimsPanel must Notification before DiagNotify")
     if "FindActors(" in mcm_refresh:
         fail("MCMRefreshVictimsPanel must not FindActors")
+    # RefreshMenu wipes sDecayStage to settings.ini — sync aux write AFTER wipe, before DiagNotify.
+    if "WriteVictimsMcmAuxRows()" not in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must sync WriteVictimsMcmAuxRows after RefreshMenu (not only NoWait)")
+    if "CallFunctionNoWait(\"WriteVictimsMcmAuxRows\"" in mcm_refresh:
+        fail("MCMRefreshVictimsPanel must not NoWait aux write (UI stayed on settings.ini defaults)")
+    aux_i = mcm_refresh.find("WriteVictimsMcmAuxRows()")
+    refresh_i = mcm_refresh.find("MCM.RefreshMenu()")
+    if refresh_i < 0 or aux_i < 0 or aux_i < refresh_i or aux_i > box_i:
+        fail("MCMRefreshVictimsPanel must RefreshMenu → WriteVictimsMcmAuxRows → DiagNotify")
     if "NoteFromKillerScanSnapshot" not in victims:
         fail("VictimsScript must NoteFromKillerScanSnapshot")
     world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
@@ -416,8 +427,10 @@ def test_mcm() -> None:
     ):
         if quoted not in victims_page:
             fail(f"Victims help text must quote button name {quoted}")
-    if "several seconds" not in victims_page:
-        fail("Victims decay help must mention several seconds for overlays")
+    if "within about a second" not in victims_page and "several seconds" not in victims_page:
+        fail("Victims decay help must mention overlay apply timing (~1s)")
+    if "bDecayVisuals:Victims" not in victims_page:
+        fail("Victims page must include Corpse decay visuals switcher")
 
     data = json.loads(cfg)
     missing_script = 0
@@ -455,6 +468,13 @@ def test_mcm() -> None:
     ini = MCM_SETTINGS.read_text(encoding="utf-8")
     if "[Victims]" not in ini or "sVictimName=" not in ini:
         fail("settings.ini missing [Victims]")
+    if "bDecayVisuals=0" not in ini:
+        fail("settings.ini must default bDecayVisuals=0 (corpse decay visuals off)")
+    mcm_cfg = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    if '"id": "bDecayVisuals:Victims"' not in mcm_cfg:
+        fail("MCM config.json must expose bDecayVisuals:Victims under Decay section")
     ok("settings.ini [Victims]")
 
 

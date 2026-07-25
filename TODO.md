@@ -39,16 +39,28 @@
 
 - [x] **G1** Bed corpse hallucination (sleep spawn + look-away despawn) — see docs/BED_CORPSE_HALLUCINATION.md (`tools/test_bed_hallucination.py`); verify in-game
 
+## Slice H — corpse decay (body + face) / consume
+
+See docs/SLICE_H_CORPSE_DECAY.md · face art docs/Decay_Head_Guide.md (former Slice I merged here).
+
+- [x] **P0.1** Wound lab (sticky corpse + DeathMarks tint/count)
+- [x] **P0.2** Porcupine skin + SFT face lab steppers
+- [x] **P1** Bed-gift DeathMarks overlays (verified in-game)
+- [ ] **P2** Deliver working Corpse Decay stage change in MCM (Victims Set/Reset/Advance → visible body+face)
+- [ ] **P3** Kill stamp + ModConfig `startHours` stage clock (coded — verify in-game)
+- [ ] **P4** Peak-stage eat-urge toast (+ optional audio)
+- [ ] **P5** Eat reward + clear from Potential Victims
+- [ ] **P6** Face decal art finish (stages 1–4; stage 0 verified)
+
 ## Later
 
 - [ ] **Prune unused Caprica stubs** — after the FO4/F4SE/GoE honesty audit, `tools/stubs/` still keeps every type Caprica may need (inheritance, param types, soft deps). Do a **compile-driven** orphan pass later: remove only stubs proven unnecessary (not a text-scan guess). Keep the live `test_stub_natives.py` source check; never reintroduce fake/Skyrim natives to silence Caprica.
 - [ ] **KillerScan → true event bus** — revisit main scan dispatch. Today: sync `VoiceScan.HandleKillerScanVoice`, then `CallFunctionNoWait` knife/overlays (same-quest CustomEvent was unreliable). Goal: scanner publishes once; listeners subscribe without blocking the scan timer. Prove delivery in-game + Papyrus log before ripping out direct calls. See ROADMAP Slice C KillerScan note.
-- [ ] **H** Corpse decay / consume + victim places — see docs/SLICE_H_CORPSE_DECAY.md
 - [ ] **I** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
-- [ ] Corpse hold sync with Necromantic (J)
-- [ ] Lady Killer / Black Widow soft gates; Cannibal stretch (K)
-- [ ] Witnesses / killer rumors (L)
-- [ ] Infamy whispers (M)
+- [ ] **J** Corpse hold / preserve sync with Necromantic
+- [ ] **K** Lady Killer / Black Widow soft gates; Cannibal stretch
+- [ ] **L** Witnesses / killer rumors
+- [ ] **M** Infamy whispers
 
 ## LoversLab release / visibility
 

@@ -1,6 +1,6 @@
-# Slice H — corpse decay / consume + victim places
+# Slice H — corpse decay (body + face) / consume + victim places
 
-Soft ties to **I** (FaceGen-preserving face decals — [Decay_Head_Guide.md](Decay_Head_Guide.md); slot 54 ARMO, not slot 32), **K** (preserve), **L** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
+**Merged former Slice I** (FaceGen-preserving slot-54 face decals) into this slice. Face art guide: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft ties to **J** (preserve), **K** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
 
 ## Visual path status
 
@@ -31,13 +31,15 @@ Soft ties to **I** (FaceGen-preserving face decals — [Decay_Head_Guide.md](Dec
 - [x] **P0.1** — MCM Debug wound lab: sticky bed corpse (no auto-despawn), wound template menu, tint R/G/B/A sliders, apply count, Apply. Separate `PickmansWhisperDecayWoundLabScript` (fork of bed spawn; does not refactor BedGift).
 - [x] **P0.2** — Wound Lab Porcupine skin: Scars + SkinTexture stepper + apply/all from `DecaySkinOverlays.txt` (soft `porcOverlays.esl`). Stacks with DeathMarks. Face lab uses Scripted Face Tints Damage/Boxer set (`DecayFaceOverlays.txt`, soft `SFT.esp`).
 - [x] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Soft-fail loud if LooksMenu or DeadOverlays missing. Verified in-game.
-- [ ] **P2** — Stamp game-time on Pickman’s Blade kills; deepen overlays via ModConfig **startHours** thresholds + locked stage tint/skins; tracked victims without a stamp start at Freshly Deceased (coded — verify in-game).
-- [ ] **P3** — At max stage (4 / Black Putrefaction), toast (and optional audio) urging the player to eat her before she is too ripe.
-- [ ] **P4** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
+- [ ] **P2** — **Deliver working Corpse Decay stage change in MCM** (Victims Set / Reset = kill clock only; KillerScan → `SyncOverlaysFromKillerScanSnapshot` applies). Stage 0 body `none`; Pallor (1) = tinted `SkinTexture_16`. Implemented — awaiting in-game confirm.
+- [ ] **P3** — Stamp game-time on Pickman’s Blade kills; deepen overlays via ModConfig **startHours** thresholds + locked stage tint/skins/face ARMO; tracked victims without a stamp start at Freshly Deceased (coded — verify in-game).
+- [ ] **P4** — At max stage (4 / Black Putrefaction), toast (and optional audio) urging the player to eat her before she is too ripe.
+- [ ] **P5** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
+- [ ] **P6** — Face decal art finish (stages 1–4 toward putrefaction; stage 0 verified). Hard no slot-32 FaceGen swap. See [Decay_Head_Guide.md](Decay_Head_Guide.md).
 
 Mark each phase Done only after in-game confirm.
 
-## Locked stage tint + SkinTexture map (P2)
+## Locked stage tint + SkinTexture map (P3 clock)
 
 **Single source:** `Data/PickmansWhisper/config/ModConfig.txt` keys `decayStage0`…`decayStage4`.
 
@@ -56,20 +58,26 @@ decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 | Stage | Name | R | G | B | A | Start (h) | Skins | Scars |
 |------:|------|--:|--:|--:|--:|----------:|-------|:-----:|
 | 0 | Freshly Deceased | 0.650 | 0.520 | 0.480 | 1.0 | 0 | `none` (default body) | — |
-| 1 | Pallor Mortis | 0.300 | 0.750 | 0.720 | 1.0 | 0.25 (15 min) | `none` (default body) | — |
-| 2 | Livor Mortis | 0.480 | 0.140 | 0.300 | 1.0 | 2 | `15`+`09` | — |
-| 3 | Putrefaction | 0.369 | 0.451 | 0.318 | 1.0 | 48 (2 d) | `17`+`18` | all |
-| 4 | Black Putrefaction | 0.149 | 0.118 | 0.102 | 1.0 | 240 (10 d) | `03`+`18` | all |
+| 1 | Pallor Mortis | 0.300 | 0.750 | 0.720 | 1.0 | 0.25 (15 min) | `SkinTexture_16` dirt/tint only | — |
+| 2 | Livor Mortis | 0.480 | 0.140 | 0.300 | 1.0 | 2 | `SkinTexture_16` dirt/tint only | — |
+| 3 | Putrefaction | 0.380 | 0.820 | 0.480 | 1.0 | 48 (2 d) | `SkinTexture_16` dirt/tint only | — |
+| 4 | Black Putrefaction | 0.149 | 0.118 | 0.102 | 1.0 | 240 (10 d) | `SkinTexture_16` dirt/tint only | — |
+
+**Simplified body paint:** face ARMO first, then one dirt carrier + stage RGBA. Multi-skin / scars map retired (hung Papyrus before stage 4 finished).
+
+**Intact limbs only (body overlays):** LooksMenu body skins glow at dismember UV edges (decay tint → green halo; CumOverlays → white). Body decay applies only when head + four limbs are attached (`IsCorpseLimbsIntact`). Missing limbs → clear PW body skins **and** CumOverlays templates from `CumOverlayIds.txt` (face ARMO still if head present). Butcher (`SeverCorpseLimb`) queues `StripBodyDecayOverlaysForDismember` after `Dismember`. PW does not apply cum — strip only (soft dep).
+
+**MCM `bDecayVisuals:Victims` (default OFF):** when off, knife sync / Set stage still advance the murder clock and stage labels; knife/MCM `ApplyDecayStageOverlays` paint is skipped. **Bed gift** still paints DeathMarks + Black stage (vignette). Turn on for world-corpse decay visuals; load **Real HD Faces after** Pickman's Whisper if both are used.
 
 **Kill path:** `ProcessKnifeKill` → `StampDecayKill` (FormID + kill game-time) → `SyncDecayForKnifeCorpse`. Killscan dead pass re-syncs when stage advances. Bed gift stays forced stage 4 (not in kill registry).
 
 **Tracked victims:** if she is in the Potential Victims FormID table and dead with no decay stamp, KillerScan → `CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot")` stamps **Freshly Deceased** without LooksMenu on the voice stack, then applies stage overlays from the KillerScan `ScanDead` TargetSnapshot (no second `FindActors`). Backoff 30s on apply failure. Never inside `ProcessKnifeKill` / VoiceScan (LooksMenu `Utility.Wait` starved Notice + Recognition). MCM copy says `no decay clock (Name her, then Refresh)` only for untracked corpses.
 
-**Killer Orchestrator (v1.3.0):** `PickmansWhisperKillerScanScript` is the sole neighborhood `FindActors` producer. Voice sync first; knife/cadence/Victims/CorpseDecay NoWait. **Victims MCM decay Set/Reset overlay nudge is PARKED** — kill clock still updates; KillerScan applies overlays after MCM closes.
+**Killer Orchestrator (v1.3.0):** `PickmansWhisperKillerScanScript` is the sole neighborhood `FindActors` producer. Voice sync first; knife/cadence/Victims/CorpseDecay NoWait. **H P2:** Victims MCM Set/Reset moves the kill clock only; overlays apply via KillerScan → `SyncOverlaysFromKillerScanSnapshot` (no MCM ForceApply path).
 
 Scripts must not bake a mirror of these RGBA/hours/skin lists. Missing/incomplete/unordered `startHours` fail loud. Wound Lab **Decay stage** stepper names must match ModConfig order; **Apply stage** reads ModConfig (reload via MCM Voice → Reload line banks). Wound Lab Tint A still tunes manual wound/skin/face Applies only.
 
-## Locked face bruises (P2) — SFT Damage / Boxer
+## Locked face bruises (lab) — SFT Damage / Boxer
 
 Wound Lab “apply all face” applies **all** SFT Damage Boxer headparts from `DecayFaceOverlays.txt`:
 
@@ -78,7 +86,7 @@ Wound Lab “apply all face” applies **all** SFT Damage Boxer headparts from `
 - Boxer - Black Eye
 - Boxer - Fat Lip
 
-**Not on knife-kill sync in P2** — lab `Resurrect`/`ChangeHeadPart` is unsafe on world corpses (lab-only). Soft dep `SFT.esp`.
+**Not on knife-kill sync in P3** — lab `Resurrect`/`ChangeHeadPart` is unsafe on world corpses (lab-only). Soft dep `SFT.esp`. Stage face **ARMO** (slot 54) rides the decay clock separately from these Boxer headparts.
 
 ## P0.2 in-game notes — Porcupine SkinTexture shortlist (lab browse)
 
@@ -92,9 +100,9 @@ Wound Lab look-test keepers (superset of the locked stage map above):
 | SkinTexture_07 | Keeper (lab) — not on locked 0–2 map anymore |
 | SkinTexture_09 | Keeper |
 | SkinTexture_13 | Keeper |
-| SkinTexture_15 | Has veins — **stage 2** Livor (with 09; first body change; 0–1 are body `none`) |
-| SkinTexture_16 | Good **early** texture (lab; not on locked 0–1 map) |
-| SkinTexture_17 | Good **late** texture — **stage 3** (with 18) |
+| SkinTexture_15 | Has veins — **stage 2** Livor (with 09) |
+| SkinTexture_16 | Good **early** texture — **stage 1** Pallor (carrier for cyan/green tint `0.300;0.750;0.720`) |
+| SkinTexture_17 | Late mottling — **stage 3** (with 16 carrier + 18) |
 | SkinTexture_18 | Really good — **stages 3 and 4** (layered) |
 
 Not listed above: leave out of gameplay shortlist for now (still in `DecaySkinOverlays.txt` for lab).
@@ -102,5 +110,5 @@ Not listed above: leave out of gameplay shortlist for now (still in `DecaySkinOv
 ## Soft rules
 
 - Do **not** decay essential/protected story NPCs (none should be victims anyway).
-- Soft with J: preserved / Necromantic-held corpses pause or reset the decay clock (P2+).
-- Cap stays **32** unless J raises hold limits.
+- Soft with **J**: preserved / Necromantic-held corpses pause or reset the decay clock (P3+).
+- Cap stays **32** unless **J** raises hold limits.

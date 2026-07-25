@@ -12,8 +12,8 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **E** | Named-victim kill voice + soft Necromantic intimacy hooks                      | **Done** — E1–E5                                                                             |
 | **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`)                       | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md))             |
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
-| **H** | Corpse decay (LooksMenu + ROF DeadOverlays → eat urge → reward) | P1 done; P2 kill stamp + startHours coded — verify — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) |
-| **I** | Face decay without replacing FaceGen (slot 54 decal ARMO) | **P0 art** — stage 0 works; stages 1–4 tint WIP — [Decay_Head_Guide.md](Decay_Head_Guide.md) |
+| **H** | Corpse decay (body + face) → eat urge → reward | **P1 done**; next **P2** MCM stage change — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) · face art [Decay_Head_Guide.md](Decay_Head_Guide.md) |
+| **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix) | **Planned** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md) |
 | **J** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
 | **K** | Corpse preserve sync with Necromantic | Planned |
 | **L** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
@@ -50,7 +50,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - [x] **C2** — Soft toast comments on nearby **non-hostile** adult women (`NoticeLines.txt`, `{name}` when known). Success path calls `OnNoticeSpoken` (C3 hook). Poll debug dialogs optional (MCM Debug).
 - [x] **C3** — Hunger-staged whispers: five editable stage files (`NoticeLines_<Stage>.txt`) chosen by `HungerLevel` band — admiration → infatuation → jealousy → anger → kill-urge — with no-immediate-repeat selection. Files-only (no builtin fallback); GoE2 load + GoE string helpers; per-file MCM load status, load MessageBox, and stage dropdown / force toggle. **Verified in-game** (file load + notice toasts).
 - [x] **C4** — Approach / first-enter feel via ambient KillerScan path (dedicated 0.5s FindActors hammer rejected — silenced the quest). **Verified in-game** with always-on timer arming; auto MessageBoxes removed (MCM Scan nearby keeps its dialog).
-- [x] **Killer Orchestrator (v1.3.0)** — sole `PickmansWhisperKillerScanScript` → TargetSnapshot → Voice sync + NoWait knife/cadence/Victims/CorpseDecay(H+I)/BedGift. Replaces WorldScan + multi-timer arming. Contract: `tools/test_killer_scan_bus.py`. Victims MCM decay nudge parked.
+- [x] **Killer Orchestrator (v1.3.0)** — sole `PickmansWhisperKillerScanScript` → TargetSnapshot → Voice sync + NoWait knife/cadence/Victims/CorpseDecay(H)/BedGift. Replaces WorldScan + multi-timer arming. Contract: `tools/test_killer_scan_bus.py`. Victims MCM decay Set/Reset overlay nudge parked → **H P2**.
 - [x] **C5** — Look-fixation POC (**additive — no change to ambient C2/C3 whispers**). Cap 32 FormIDs, save-persisted arrays. **Verified in-game** (incl. sleep recognition).
   - [x] **P1** — Aim edge (GoE camera/activate — not fake `GetCurrentCrosshairRef`) → count + MCM Look fixation. Ambient KillerScan whispers; KillerScan re-arms before tick body (`tools/test_look_fixation.py`).
   - [x] **P2** — Voice by count: 1st silent / 2nd hunger-stage notice line / 3rd+ `RecognitionLines.txt` (`tools/test_recognition_lines.py`).
@@ -110,30 +110,38 @@ Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contrac
 
 
 
-## Slice H — corpse decay / consume + victim places
+## Slice H — corpse decay (body + face) / consume + victim places
 
-Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Soft with I (FaceGen-preserving face decay), K (preserve), and L (Cannibal). Cap aligns with Victims (32).
+Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft with **K** (preserve) and **L** (Cannibal). Cap aligns with Victims (32).
 
-**Visual:** LooksMenu overlays + **ROF DeadOverlays** DeathMarks (`DecayWoundOverlays.txt`). `PlayImpactEffect` **retired**. Soft deps — no ROF/LooksMenu ESP master. SPID not required.
+**Merged former face-only slice** (FaceGen-preserving slot-54 face decals) into this slice — body overlays + face ARMO share the same stage clock.
+
+**Visual:** LooksMenu overlays + **ROF DeadOverlays** DeathMarks (`DecayWoundOverlays.txt`) + slot-54 face decal ARMO (`DecayFaceStages.txt`). `PlayImpactEffect` **retired**. Soft deps — no ROF/LooksMenu ESP master. SPID not required.
 
 - [x] **P0.1** — MCM Debug wound lab (sticky corpse + template/tint/count apply). Verify in-game.
 - [x] **P0.2** — Wound Lab: Porcupine Scars/SkinTexture stepper + apply/all (stacks with DeathMarks). Soft dep `porcOverlays.esl`. Face lab: Scripted Face Tints Damage/Boxer bruises (`DecayFaceOverlays.txt`, soft `SFT.esp`).
 - [x] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Verify in-game.
-- [ ] **P2** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 240); `SyncDecayForKnifeCorpse` via KillerScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT face stays lab-only. Coded — verify in-game. See [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
-- [ ] **P3** — At max stage (4), toast (and optional audio) urging the player to eat her before she is too ripe.
-- [ ] **P4** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
+- [ ] **P2** — **Deliver working Corpse Decay stage change in MCM** (Set/Reset = kill clock; KillerScan sync applies overlays). Stage 0 body none; Pallor (1) tinted SkinTexture_16. Implemented — awaiting in-game confirm.
+- [ ] **P3** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 240); `SyncDecayForKnifeCorpse` via KillerScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT Boxer face stays lab-only; stage face ARMO rides the clock. Coded — verify in-game.
+- [ ] **P4** — At max stage (4), toast (and optional audio) urging the player to eat her before she is too ripe.
+- [ ] **P5** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
+- [ ] **P6** — Face decal art finish: photo-edit stage-0 DDS toward putrefaction; **one asset set per ModConfig stage 0–4** (stage 0 verified in-game). Hard no slot-32 FaceGen swap. ESP builder must preserve ARMO FormIDs. Guide: [Decay_Head_Guide.md](Decay_Head_Guide.md).
 
-Victim **places** (last-known cell/label) remain a tangential foundation for unloaded refs / MCM — not required for P1–P4 visuals.
+Victim **places** (last-known cell/label) remain a tangential foundation for unloaded refs / MCM — not required for P1–P5 visuals.
 
-## Slice I — face decay without replacing FaceGen
+## Slice I — desperate hunger rename (knife voice)
 
-**P0 art verified (in-game):** multi-layer face **decals** as ARMA/ARMO on biped **54** (not slot 32). FaceGen identity kept. Author guide: [Decay_Head_Guide.md](Decay_Head_Guide.md).
+Design: [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md). Contract: `tools/test_desperate_rename.py`.
 
-- **Hard no:** FaceGen Head (slot 32) full-head replacement → identical BaseFemaleHead on every corpse.
-- **Working recipe:** BGSM Decal + alpha blend; NIF NiAlphaProperty flags **4844**; shader Decal / no ZBuffer_Write; Outfit Studio segment Object Code **25** (Head/Hair); CK ARMA+ARMO on **54**.
-- **Author next:** photo-edit stage-0 DDS toward putrefaction; **one asset set per ModConfig stage 0–4** (stage 0 done). Extra decals optional on the same layering rules (one BGSM per shape).
-- **Script later:** equip/swap/strip stage ARMO on knife-tracked (optional bed-gift) corpses from H stage clock. Fail loud if FormID missing. Do not resurrect for this path.
-- **ESP caution:** uild_hunger_spell_esp.py / deploy can overwrite CK-added ARMO — preserve FormIDs in the builder before relying on script equip.
+At notice stage **desperate** (hunger band 4), the knife voice rewrites how nearby women read — world name + `{name}` in notice toasts.
+
+- [ ] **I1** — KillerScan `ScanAlive` → GoE2 `SetDisplayName` append ModConfig `desperateNameSuffix` (e.g. ` Dumb Bitch`). Idempotent; strip when stage drops. Skip essential / notice-reject. Logic on `PickmansWhisperDesperateRenameScript`.
+- [ ] **I2** — `GetActorDisplayName` / notice `{name}` show the suffixed label while desperate (toast matches mouseover).
+- [ ] **I3** — Optional bank of suffixes / MCM toggle (later).
+
+Honor direction: never rename **essential** story NPCs. Editable suffix in `ModConfig.txt` only (no hard-coded line bank mirror).
+
+
 
 ## Slice J — slow hunger + peak wait rewards
 
@@ -151,7 +159,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - `HeldCorpses[]` + soft claim token on knife-kill victims.
 - Compatible with Necromantic holds; no ESP master dependency.
 - Ephemeral bed-hallucination corpses (Slice G) are **not** long-term hold targets.
-- Soft with **H** / **I**: preserved / claimed corpses pause or reset decay (and face-decay stage).
+- Soft with **H**: preserved / claimed corpses pause or reset decay (body + face stage).
 
 
 
@@ -160,7 +168,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Soft-gate or enhance via Lady Killer / Black Widow.
 - Optional Cannibal; stretch butcher-shop cell.
 - Occult Pact bridges documented only until that mod exists.
-- Soft with **H**: Cannibal / blade-eat consume path that clears Victims (clear face-decay visuals first).
+- Soft with **H**: Cannibal / blade-eat consume path that clears Victims (clear body + face decay visuals first).
 
 
 
@@ -194,8 +202,8 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 - Named-kill / Necromantic hooks (E): soft stub + CustomEvents; no `Necromantic.esp` master.
 - Corpse sever (F): limb-under-reticule unavailable in Papyrus; MSG menu + `Dismember` must leave gore pieces (no force-explode / no BloodyMess gib).
 - Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
-- Corpse decay / places (H): unloaded Actor refs; decay vs K preserve race; eat must clear Victims without orphaning place data; exterior place labels are fuzzy.
-- Face decay (I): slot-54 decal ARMO preserves FaceGen; stage tints + ESP/builder merge; equip on ragdolls; strip on consume/despawn.
+- Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; decay vs K preserve race; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn.
+- Desperate rename (I): GoE2 display names vs Potential Victims overrides; strip cleanly when hunger drops; never touch essentials.
 - Hunger pacing (J): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (M): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 

@@ -1,0 +1,20 @@
+---
+description: Knife hunger AGI/CHA ModValue must not go past -2 vs base
+globs: Data/Scripts/Source/User/PickmansWhisperMainQuestScript.psc
+alwaysApply: false
+---
+
+# Hunger SPECIAL floor (−2)
+
+Knife hunger withdrawal may `ModValue` AGI/CHA by **−1** once while addicted.
+
+## Rule
+
+- Before any hunger `ModValue(av, -1.0)`, check net delta: `GetValue(av) - GetBaseValue(av)`.
+- If **either** AGI or CHA delta is already **≤ −2**, do **not** decrement further.
+- Trace the skip (`mod already <= -2 vs base`). Still mark bookkeeping so Sync does not spam retries.
+- Do not invent a second −1 stack to “catch up.” Repair stacks via MCM `RepairHungerSpecialStacks`.
+
+## Contract
+
+`tools/test_hunger_special_penalty.py` locks the floor helpers and `ApplyHungerStatPenalty` skip path.

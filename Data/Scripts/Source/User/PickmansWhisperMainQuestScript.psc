@@ -99,6 +99,8 @@ Int LastHungerBand = 0 ; 0/25/50/70/90
 Bool HungerWasSated
 Bool Property HungerAddictionApplied = False Auto
 Bool Property HungerStatPenaltyApplied = False Auto
+; How many ModValue(-1) pairs this mod has applied (0 or 1). Survives loads; blocks re-apply.
+Int Property HungerSpecialPenaltyDepth = 0 Auto
 Spell KnifeHungerSpell
 MagicEffect KnifeHungerAgiEffect
 MagicEffect KnifeHungerChaEffect
@@ -258,11 +260,13 @@ Int RECOGNITION_NAME_PROMPT_AT = 3
 ; Loaded from ModConfig.txt — files-only, no baked mirror.
 String RenamePromptFemaleNPC = ""
 String BedGiftWakeToast = "" ; Slice G optional wake toast
+String DesperateNameSuffix = "" ; Slice I — ModConfig desperateNameSuffix (empty = rename idle)
 Float BedGiftCooldownDays = -1.0 ; Slice G from ModConfig; -1 = missing/invalid
 Float BedGiftWoundAlpha = -1.0 ; Slice H bed DeathMarks opacity; -1 = missing/invalid
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
 String Property ModConfigLoadStatus = "" Auto
+Bool ModConfigLoadBusy = False ; nested LoadModConfig forbidden (Sync must not clear live stages)
 ; Slice H P2 — decayStage0..4 from ModConfig (name;r;g;b;a;startHours;skins[+…];scars?).
 Int DECAY_STAGE_COUNT = 5
 String[] DecayStageNames
@@ -274,6 +278,16 @@ Float[] DecayStageStartHours ; game-hours after kill when stage begins
 String[] DecayStageSkinsRaw ; e.g. SkinTexture_07 or SkinTexture_17+SkinTexture_18
 Bool[] DecayStageAllScars
 Int DecayStagesLoadedCount = 0
+; Pending arrays — LoadModConfig commits only when all 5 parse OK (live stages stay valid mid-load).
+String[] PendingDecayStageNames
+Float[] PendingDecayStageTintR
+Float[] PendingDecayStageTintG
+Float[] PendingDecayStageTintB
+Float[] PendingDecayStageTintA
+Float[] PendingDecayStageStartHours
+String[] PendingDecayStageSkinsRaw
+Bool[] PendingDecayStageAllScars
+Int PendingDecayStagesFilled = 0
 ; Knife-kill decay registry (credited ProcessKnifeKill only). Cap + FIFO eviction.
 Int DECAY_KILL_MAX = 32
 Int[] DecayKillIds
@@ -435,6 +449,7 @@ Function HandleGameResume(String reason)
 	EnsureSeverLimbMenu()
 	ResyncDrawnBladeState()
 	RefreshBladeOwnershipFromEquip()
+	ReconcileHungerSpecialPenaltyFlags()
 	SyncHungerAddictionSpell()
 	LastNoticeToastRealTime = 0.0
 	LastNoticeDiagRealTime = 0.0
@@ -543,11 +558,11 @@ EndFunction
 Function TrySeverAimedCorpse(Bool abIgnoreMenuMode = False)
 	; Do not soft-fail on IsInMenuMode for the hotkey — some HUD mods leave it sticky.
 	If NecroSceneActive
-		Debug.Notification("Pickman's Whisper: butcher unavailable during Necromantic scene")
+		DiagNotify("Pickman's Whisper: butcher unavailable during Necromantic scene")
 		Return
 	EndIf
 	If !IsBladeEquipped()
-		Debug.Notification("Pickman's Whisper: draw Pickman's Blade for the butcher menu")
+		DiagNotify("Pickman's Whisper: draw Pickman's Blade for the butcher menu")
 		Return
 	EndIf
 	If !PlayerRef
@@ -555,19 +570,19 @@ Function TrySeverAimedCorpse(Bool abIgnoreMenuMode = False)
 	EndIf
 	Actor aimed = ResolveSeverCorpseAim(abIgnoreMenuMode)
 	If !aimed
-		Debug.Notification("Pickman's Whisper: aim / face a corpse for the butcher menu")
+		DiagNotify("Pickman's Whisper: aim / face a corpse for the butcher menu")
 		Return
 	EndIf
 	EnsureSeverLimbMenu()
 	If !SeverLimbMenu
-		Debug.Notification("Pickman's Whisper: butcher menu missing — rebuild ESP")
+		DiagNotify("Pickman's Whisper: butcher menu missing — rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR TrySeverAimedCorpse no MSG 0x806")
 		Return
 	EndIf
 	Int btn = SeverLimbMenu.Show()
 	; 0 Head / 1 LArm / 2 RArm / 3 LLeg / 4 RLeg / 5 Cancel
 	If btn < 0
-		Debug.Notification("Pickman's Whisper: butcher Show failed (btn=" + btn + ")")
+		DiagNotify("Pickman's Whisper: butcher Show failed (btn=" + btn + ")")
 		Debug.Trace("PickmansWhisper: ERROR SeverLimbMenu.Show returned " + btn)
 		Return
 	EndIf
@@ -631,6 +646,11 @@ Function SeverCorpseLimb(Actor ak, String partName)
 	ak.Dismember(partName, False, True, False)
 	Debug.Notification("Pickman's Whisper: severed " + partName)
 	Debug.Trace("PickmansWhisper: severed " + partName + " id=0x" + GardenOfEden.GetHexFormID(ak))
+	; LooksMenu body overlays glow at stump edges — strip PW decay skins after butcher.
+	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+	If decay
+		decay.QueueStripBodyDecayAfterDismember(ak)
+	EndIf
 EndFunction
 
 ; MCM Debug — open butcher menu (uses victims aim cache while MCM is open).
@@ -644,16 +664,16 @@ Function DebugTestSeverAimedHead()
 		PlayerRef = Game.GetPlayer()
 	EndIf
 	If !IsBladeEquipped()
-		Debug.MessageBox("Pickman's Whisper\n\nDraw Pickman's Blade first.")
+		DiagNotify("Pickman's Whisper\n\nDraw Pickman's Blade first.")
 		Return
 	EndIf
 	Actor aimed = ResolveSeverCorpseAim(True)
 	If !aimed
-		Debug.MessageBox("Pickman's Whisper\n\nAim / face a dead adult female (or look then open MCM), then retry.")
+		DiagNotify("Pickman's Whisper\n\nAim / face a dead adult female (or look then open MCM), then retry.")
 		Return
 	EndIf
 	SeverCorpseLimb(aimed, "Head1")
-	Debug.MessageBox("Pickman's Whisper\n\nSever head requested on aimed corpse.")
+	DiagNotify("Pickman's Whisper\n\nSever head requested on aimed corpse.")
 EndFunction
 
 ; Soft E2 — register Necromantic scene CustomEvents when plugin present.
@@ -730,7 +750,9 @@ Function HandleKillerScanKnifeAimWarm()
 	EndIf
 	ProcessKnifeCreditFromKillerScan(scan)
 	OnKillerScanVictimsAim(scan)
-	If BondStarted && (scan.ScanTick % 5) == 0
+	; Every completed tick while bonded — warm is cheap once BedCorpse exists.
+	; Throttling to %5 missed warm when KillerScan busy-skipped those ticks (sleep → no body).
+	If BondStarted
 		PickmansWhisperBedGiftScript bed = BedGift()
 		If bed
 			bed.CallFunctionNoWait("MaybeWarmBedGiftBody", None)
@@ -1503,6 +1525,15 @@ Function ToastDebug(String msg)
 	EndIf
 EndFunction
 
+; Former Debug.MessageBox — no pause; full text in Papyrus.0.log (filter PickmansWhisper).
+Function DiagNotify(String msg)
+	If msg == ""
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: DIAG " + msg)
+	Debug.Notification(msg)
+EndFunction
+
 ; Blade status toast (load/scene) — debug only
 Function ToastBladeDetectStatus(String context)
 	Bool owned = OwnedPickmansBlade || HasTemplateBlade() || PlayerHasBlade()
@@ -1601,7 +1632,7 @@ Function ShowNoticePollDialog(String body)
 	LastNoticeDiagRealTime = now
 	DEBUG_BUILD = "C2-stable"
 	Debug.Trace("PickmansWhisper: notice pipe | " + body)
-	Debug.MessageBox(body)
+	DiagNotify(body)
 EndFunction
 
 Function WriteNearbyStatusToMcm()
@@ -1960,25 +1991,32 @@ String Function GetActorDisplayName(Actor ak)
 	If !ak
 		Return ""
 	EndIf
+	String label = ""
 	String overrideName = GetVictimOverrideName(ak)
 	If overrideName
 		; Lazy re-apply after load (ExtraTextDisplayData can drop; FormID table persists).
 		EnsureVictimDisplayName(ak)
-		Return overrideName
+		label = overrideName
+	Else
+		String disp = ak.GetDisplayName()
+		If disp
+			label = disp
+		Else
+			ActorBase base = ak.GetLeveledActorBase()
+			If base
+				label = base.GetName()
+			EndIf
+		EndIf
 	EndIf
-	String disp = ak.GetDisplayName()
-	If disp
-		Return disp
-	EndIf
-	ActorBase base = ak.GetLeveledActorBase()
-	If !base
+	If !label
 		Return ""
 	EndIf
-	String n = base.GetName()
-	If n == ""
-		Return ""
+	; Slice I — toast {name} matches desperate world suffix while stage 4.
+	PickmansWhisperDesperateRenameScript dr = DesperateRename()
+	If dr
+		Return dr.MaybeSuffixDisplayName(ak, label)
 	EndIf
-	Return n
+	Return label
 EndFunction
 
 ; --- C5 P3+P4 Potential Victims ------------------------------------------------
@@ -2217,7 +2255,9 @@ Function WriteDecayStageStatusToMcmForActor(Actor ak, Bool abSyncStepper = True)
 		Return
 	EndIf
 	If ak
-		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForActor(ak))
+		String line = FormatDecayStageStatusForActor(ak)
+		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", line)
+		Debug.Trace("PickmansWhisper: WriteDecayStageStatus aim id=0x" + GardenOfEden.GetHexFormID(ak) + " syncStepper=" + abSyncStepper + " | " + line)
 		If abSyncStepper
 			SyncVictimDecayStageStepper(ak.GetFormID())
 		EndIf
@@ -2226,13 +2266,16 @@ Function WriteDecayStageStatusToMcmForActor(Actor ak, Bool abSyncStepper = True)
 	EnsureDecayKillLists()
 	If DecayKillSlotCount > 0
 		Int lastId = DecayKillIds[DecayKillSlotCount - 1]
-		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", FormatDecayStageStatusForFormId(lastId, "last kill") + " (no aim)")
+		String line = FormatDecayStageStatusForFormId(lastId, "last kill") + " (no aim)"
+		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", line)
+		Debug.Trace("PickmansWhisper: WriteDecayStageStatus no-aim lastId=" + lastId + " syncStepper=" + abSyncStepper + " | " + line)
 		If abSyncStepper
 			SyncVictimDecayStageStepper(lastId)
 		EndIf
 		Return
 	EndIf
 	MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", "(no aim / no knife kills tracked)")
+	Debug.Trace("PickmansWhisper: WriteDecayStageStatus empty (no aim / no knife kills)")
 EndFunction
 
 ; Keep Victims "Pick stage" stepper aligned with the aimed / last-kill clock.
@@ -2312,10 +2355,10 @@ Function MCMQuestPing()
 	EndIf
 	Debug.Notification("PW QUEST PING — CallFunction hit MainQuestScript")
 	Debug.Trace("PickmansWhisper: MCMQuestPing OK")
-	Debug.MessageBox("Pickman's Whisper — QUEST PING\n\nCallFunction reached PickmansWhisperMainQuestScript.\nBond=" + BondStarted + " killsTracked=" + DecayKillSlotCount + " cacheId=" + cacheId + "\n" + victimsBit)
+	DiagNotify("Pickman's Whisper — QUEST PING\n\nCallFunction reached PickmansWhisperMainQuestScript.\nBond=" + BondStarted + " killsTracked=" + DecayKillSlotCount + " cacheId=" + cacheId + "\n" + victimsBit)
 EndFunction
 
-; MCM Debug — one MessageBox with every gate that can silence whispers.
+; MCM Debug — DiagNotify with every gate that can silence whispers.
 Function DebugVoicePathDump()
 	If !PlayerRef
 		PlayerRef = Game.GetPlayer()
@@ -2356,7 +2399,7 @@ Function DebugVoicePathDump()
 	body += "Hunger cooldown left (game h): " + hoursLeft + "\n"
 	body += "\nPapyrus log (if enabled):\nDocuments\\My Games\\Fallout4\\Logs\\Script\\Papyrus.0.log\nFilter: PickmansWhisper"
 	Debug.Trace("PickmansWhisper: VoicePathDump | " + body)
-	Debug.MessageBox(body)
+	DiagNotify(body)
 EndFunction
 
 ; Façade — MCM CallFunction targets VictimsScript (own lock). Kept for old configs.
@@ -2367,7 +2410,7 @@ Function MCMRefreshVictimsPanel()
 	Else
 		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR MCMRefreshVictimsPanel — VictimsScript missing")
-		Debug.MessageBox("Pickman's Whisper — Victims\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper — Victims\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -2442,7 +2485,7 @@ Function MCMApplyAimedDecayStage()
 	Else
 		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR MCMApplyAimedDecayStage — VictimsScript missing")
-		Debug.MessageBox("Pickman's Whisper — Set decay stage\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper — Set decay stage\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -2453,7 +2496,7 @@ Function MCMResetAimedDecayKillClock()
 	Else
 		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR MCMResetAimedDecayKillClock — VictimsScript missing")
-		Debug.MessageBox("Pickman's Whisper — Reset decay stage\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper — Reset decay stage\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -2464,7 +2507,7 @@ Function MCMAdvanceAimedDecayStage()
 	Else
 		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR MCMAdvanceAimedDecayStage — VictimsScript missing")
-		Debug.MessageBox("Pickman's Whisper — Advance decay\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper — Advance decay\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -2475,7 +2518,7 @@ Function MCMNameAimedVictim()
 	Else
 		Debug.Notification("PW Victims — VictimsScript missing; rebuild ESP")
 		Debug.Trace("PickmansWhisper: ERROR MCMNameAimedVictim — VictimsScript missing")
-		Debug.MessageBox("Pickman's Whisper — Apply name\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper — Apply name\n\nVictimsScript missing on Main quest.\nRebuild / reinstall PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -3181,6 +3224,27 @@ Function LoadLineBanks()
 EndFunction
 
 ; Split s on single-char sep into out[]; returns field count (capped at out.Length).
+; Space-only trim for ModConfig fields. Never TrimString/GetWords here — GetWords
+; mangles semicolon / dotted values (decayStage RGBA + skins).
+String Function ConfigFieldTrim(String s)
+	If !s || s == ""
+		Return ""
+	EndIf
+	Int len = GardenOfEden.StrLength(s)
+	Int start = 0
+	While start < len && GardenOfEden.SubStr(s, start, 1) == " "
+		start += 1
+	EndWhile
+	Int endPos = len
+	While endPos > start && GardenOfEden.SubStr(s, endPos - 1, 1) == " "
+		endPos -= 1
+	EndWhile
+	If start >= endPos
+		Return ""
+	EndIf
+	Return GardenOfEden.SubStr(s, start, endPos - start)
+EndFunction
+
 Int Function SplitByChar(String s, String sep, String[] out)
 	If !out || !sep || GardenOfEden.StrLength(sep) != 1
 		Return 0
@@ -3209,13 +3273,30 @@ Int Function SplitByChar(String s, String sep, String[] out)
 			If flen < 0
 				flen = 0
 			EndIf
-			out[n] = TrimString(GardenOfEden.SubStr(s, start, flen))
+			out[n] = ConfigFieldTrim(GardenOfEden.SubStr(s, start, flen))
 			n += 1
 			start = i + 1
 		EndIf
 		i += 1
 	EndWhile
 	Return n
+EndFunction
+
+Bool Function IsModConfigLoadBusy()
+	Return ModConfigLoadBusy
+EndFunction
+
+; Sync / apply: use live stages if ready; otherwise one load (never nested).
+Bool Function EnsureDecayStagesLoaded()
+	If DecayStagesReady()
+		Return True
+	EndIf
+	If ModConfigLoadBusy
+		Debug.Trace("PickmansWhisper: EnsureDecayStagesLoaded skip — LoadModConfig in progress")
+		Return False
+	EndIf
+	LoadModConfig()
+	Return DecayStagesReady()
 EndFunction
 
 Function EnsureDecayStageArrays()
@@ -3231,24 +3312,56 @@ Function EnsureDecayStageArrays()
 	EndIf
 EndFunction
 
-Function ClearDecayStages()
-	EnsureDecayStageArrays()
-	DecayStagesLoadedCount = 0
+Function EnsurePendingDecayStageArrays()
+	If !PendingDecayStageNames || PendingDecayStageNames.Length != DECAY_STAGE_COUNT
+		PendingDecayStageNames = new String[5]
+		PendingDecayStageTintR = new Float[5]
+		PendingDecayStageTintG = new Float[5]
+		PendingDecayStageTintB = new Float[5]
+		PendingDecayStageTintA = new Float[5]
+		PendingDecayStageStartHours = new Float[5]
+		PendingDecayStageSkinsRaw = new String[5]
+		PendingDecayStageAllScars = new Bool[5]
+	EndIf
+EndFunction
+
+Function ClearPendingDecayStages()
+	EnsurePendingDecayStageArrays()
+	PendingDecayStagesFilled = 0
 	Int i = 0
 	While i < DECAY_STAGE_COUNT
-		DecayStageNames[i] = ""
-		DecayStageTintR[i] = 0.0
-		DecayStageTintG[i] = 0.0
-		DecayStageTintB[i] = 0.0
-		DecayStageTintA[i] = 0.0
-		DecayStageStartHours[i] = -1.0
-		DecayStageSkinsRaw[i] = ""
-		DecayStageAllScars[i] = False
+		PendingDecayStageNames[i] = ""
+		PendingDecayStageTintR[i] = 0.0
+		PendingDecayStageTintG[i] = 0.0
+		PendingDecayStageTintB[i] = 0.0
+		PendingDecayStageTintA[i] = 0.0
+		PendingDecayStageStartHours[i] = -1.0
+		PendingDecayStageSkinsRaw[i] = ""
+		PendingDecayStageAllScars[i] = False
 		i += 1
 	EndWhile
 EndFunction
 
-; Parse name;r;g;b;a;startHours;skins[+…];scars? — returns True if stored at aiStage.
+; Commit pending → live only after a complete good parse (never wipe live mid-load).
+Function CommitPendingDecayStages()
+	EnsureDecayStageArrays()
+	EnsurePendingDecayStageArrays()
+	Int i = 0
+	While i < DECAY_STAGE_COUNT
+		DecayStageNames[i] = PendingDecayStageNames[i]
+		DecayStageTintR[i] = PendingDecayStageTintR[i]
+		DecayStageTintG[i] = PendingDecayStageTintG[i]
+		DecayStageTintB[i] = PendingDecayStageTintB[i]
+		DecayStageTintA[i] = PendingDecayStageTintA[i]
+		DecayStageStartHours[i] = PendingDecayStageStartHours[i]
+		DecayStageSkinsRaw[i] = PendingDecayStageSkinsRaw[i]
+		DecayStageAllScars[i] = PendingDecayStageAllScars[i]
+		i += 1
+	EndWhile
+	DecayStagesLoadedCount = DECAY_STAGE_COUNT
+EndFunction
+
+; Parse name;r;g;b;a;startHours;skins[+…];scars? into Pending* (not live).
 ; skins=none means no body overlays (default body; face still applies).
 Bool Function ParseDecayStageValue(Int aiStage, String val)
 	If aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
@@ -3257,7 +3370,7 @@ Bool Function ParseDecayStageValue(Int aiStage, String val)
 	If !val || val == ""
 		Return False
 	EndIf
-	EnsureDecayStageArrays()
+	EnsurePendingDecayStageArrays()
 	String[] fields = new String[9]
 	Int n = SplitByChar(val, ";", fields)
 	If n < 7
@@ -3290,14 +3403,14 @@ Bool Function ParseDecayStageValue(Int aiStage, String val)
 			Return False
 		EndIf
 	EndIf
-	DecayStageNames[aiStage] = name
-	DecayStageTintR[aiStage] = r
-	DecayStageTintG[aiStage] = g
-	DecayStageTintB[aiStage] = b
-	DecayStageTintA[aiStage] = a
-	DecayStageStartHours[aiStage] = startH
-	DecayStageSkinsRaw[aiStage] = skins
-	DecayStageAllScars[aiStage] = scars
+	PendingDecayStageNames[aiStage] = name
+	PendingDecayStageTintR[aiStage] = r
+	PendingDecayStageTintG[aiStage] = g
+	PendingDecayStageTintB[aiStage] = b
+	PendingDecayStageTintA[aiStage] = a
+	PendingDecayStageStartHours[aiStage] = startH
+	PendingDecayStageSkinsRaw[aiStage] = skins
+	PendingDecayStageAllScars[aiStage] = scars
 	Return True
 EndFunction
 
@@ -3313,6 +3426,18 @@ Bool Function DecayStageHoursOrdered()
 	Int i = 1
 	While i < DECAY_STAGE_COUNT
 		If DecayStageStartHours[i] < DecayStageStartHours[i - 1]
+			Return False
+		EndIf
+		i += 1
+	EndWhile
+	Return True
+EndFunction
+
+Bool Function PendingDecayStageHoursOrdered()
+	EnsurePendingDecayStageArrays()
+	Int i = 1
+	While i < DECAY_STAGE_COUNT
+		If PendingDecayStageStartHours[i] < PendingDecayStageStartHours[i - 1]
 			Return False
 		EndIf
 		i += 1
@@ -3508,14 +3633,21 @@ EndFunction
 
 ; ModConfig.txt — key=value prompts / toggles. Files-only (no baked mirror).
 ; E4/E5: intimacy toast+audio live in necromantic/Intimacy_*_Named.txt / *_Audio.txt.
+; Decay stages: parse into Pending* then Commit — never Clear live mid-load (Sync race).
 Function LoadModConfig()
+	If ModConfigLoadBusy
+		Debug.Trace("PickmansWhisper: LoadModConfig skipped — already in progress")
+		Return
+	EndIf
+	ModConfigLoadBusy = True
 	RenamePromptFemaleNPC = ""
 	BedGiftWakeToast = ""
 	BedGiftCooldownDays = -1.0
 	BedGiftWoundAlpha = -1.0
+	DesperateNameSuffix = ""
 	NamedKillToast = ""
 	NamedKillAudio = ""
-	ClearDecayStages()
+	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
 	ModConfigLoadStatus = "READ FAILED (GoE2 missing?)"
@@ -3523,17 +3655,20 @@ Function LoadModConfig()
 	If !GardenOfEden2.DoesFileExist(fileName, path)
 		ModConfigLoadStatus = "MISSING FILE (" + path + fileName + ")"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+		ModConfigLoadBusy = False
 		Return
 	EndIf
 	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
 	If !raw || raw.Length == 0
 		ModConfigLoadStatus = "EMPTY/UNREADABLE"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+		ModConfigLoadBusy = False
 		Return
 	EndIf
 	Int i = 0
 	While i < raw.Length
-		String line = TrimString(raw[i])
+		; Space-only trim — GetWords/TrimString mangles decayStage semicolon values.
+		String line = ConfigFieldTrim(raw[i])
 		i += 1
 		If line == ""
 			; skip
@@ -3550,12 +3685,15 @@ Function LoadModConfig()
 				li += 1
 			EndWhile
 			If eq > 0
-				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
-				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				String key = ConfigFieldTrim(GardenOfEden.SubStr(line, 0, eq))
+				String val = ConfigFieldTrim(GardenOfEden.SubStr(line, eq + 1, -1))
 				If key == "renamePromptFemaleNPC"
 					RenamePromptFemaleNPC = val
 				ElseIf key == "bedGiftWakeToast"
 					BedGiftWakeToast = val
+				ElseIf key == "desperateNameSuffix"
+					; Keep leading/trailing spaces — " Dumb Bitch" is intentional.
+					DesperateNameSuffix = GardenOfEden.SubStr(line, eq + 1, -1)
 				ElseIf key == "bedGiftCooldownDays"
 					If val && GardenOfEden.StrLength(val) > 0
 						Float days = val as Float
@@ -3597,20 +3735,27 @@ Function LoadModConfig()
 	Int filled = 0
 	Int si = 0
 	While si < DECAY_STAGE_COUNT
-		If DecayStageNames[si] != "" && DecayStageSkinsRaw[si] != "" && DecayStageStartHours[si] >= 0.0
+		If PendingDecayStageNames[si] != "" && PendingDecayStageSkinsRaw[si] != "" && PendingDecayStageStartHours[si] >= 0.0
 			filled += 1
 		EndIf
 		si += 1
 	EndWhile
+	PendingDecayStagesFilled = filled
+	Bool stagesOk = False
 	If filled == DECAY_STAGE_COUNT
-		DecayStagesLoadedCount = DECAY_STAGE_COUNT
-		If !DecayStageHoursOrdered()
-			Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage startHours must be nondecreasing 0..4")
-			DecayStagesLoadedCount = 0
+		If PendingDecayStageHoursOrdered()
+			CommitPendingDecayStages()
+			stagesOk = True
+			; Face banks only when stages actually committed (not mid-flight wipe).
+			PickmansWhisperCorpseDecayScript decay = (Self as Quest) as PickmansWhisperCorpseDecayScript
+			If decay
+				decay.InvalidateDecayFaceArmorBanks()
+			EndIf
+		Else
+			Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage startHours must be nondecreasing 0..4 (live stages kept)")
 		EndIf
 	Else
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage0..4 incomplete (" + filled + "/" + DECAY_STAGE_COUNT + ")")
-		DecayStagesLoadedCount = 0
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage0..4 incomplete (" + filled + "/" + DECAY_STAGE_COUNT + ") — live stages kept")
 	EndIf
 	String status = ""
 	If RenamePromptFemaleNPC
@@ -3628,26 +3773,31 @@ Function LoadModConfig()
 	If NamedKillToast
 		status += "namedKill "
 	EndIf
-	If DecayStagesReady()
+	If stagesOk
 		status += "decayStages "
 	EndIf
 	If status != ""
-		ModConfigLoadStatus = TrimString(status) + "ok"
+		ModConfigLoadStatus = ConfigFieldTrim(status) + "ok"
 		Debug.Trace("PickmansWhisper: ModConfig ready | " + ModConfigLoadStatus)
 	Else
 		ModConfigLoadStatus = "no known keys"
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
 	EndIf
-	; DecayFaceStages / armor id cache must re-read after ModConfig deploy/hot-reload.
-	PickmansWhisperCorpseDecayScript decay = (Self as Quest) as PickmansWhisperCorpseDecayScript
-	If decay
-		decay.InvalidateDecayFaceArmorBanks()
-	EndIf
+	ModConfigLoadBusy = False
 EndFunction
 
 ; Exposed for BedGiftScript wake toast (ModConfig bedGiftWakeToast).
 String Function GetBedGiftWakeToast()
 	Return BedGiftWakeToast
+EndFunction
+
+; Slice I — ModConfig desperateNameSuffix (may include leading space). Empty = idle.
+String Function GetDesperateNameSuffix()
+	Return DesperateNameSuffix
+EndFunction
+
+PickmansWhisperDesperateRenameScript Function DesperateRename()
+	Return (Self as Quest) as PickmansWhisperDesperateRenameScript
 EndFunction
 
 ; Exposed for BedGiftScript cooldown (ModConfig bedGiftCooldownDays). <=0 = missing/invalid.
@@ -3823,7 +3973,7 @@ Function DebugForceBedGift()
 	If bed
 		bed.DebugForceBedGift()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nBedGift script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper\n\nBedGift script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -3832,7 +3982,7 @@ Function DebugClearBedGift()
 	If bed
 		bed.DebugClearBedGift()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nBedGift script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nBedGift script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3847,7 +3997,7 @@ Function DebugForceCorpseDecayOverlays()
 	If decay
 		decay.DebugForceCorpseDecayOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -3862,7 +4012,7 @@ Function DebugSpawnWoundLabCorpse()
 	If lab
 		lab.DebugSpawnWoundLabCorpse()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
 	EndIf
 EndFunction
 
@@ -3871,7 +4021,7 @@ Function DebugClearWoundLabCorpse()
 	If lab
 		lab.DebugClearWoundLabCorpse()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3880,7 +4030,7 @@ Function DebugApplyWoundLabOverlays()
 	If lab
 		lab.DebugApplyWoundLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3889,7 +4039,7 @@ Function DebugApplyAllWoundLabOverlays()
 	If lab
 		lab.DebugApplyAllWoundLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3898,7 +4048,7 @@ Function DebugApplySkinLabOverlays()
 	If lab
 		lab.DebugApplySkinLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3907,7 +4057,7 @@ Function DebugApplyAllSkinLabOverlays()
 	If lab
 		lab.DebugApplyAllSkinLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3916,7 +4066,7 @@ Function DebugApplyAllScarLabOverlays()
 	If lab
 		lab.DebugApplyAllScarLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3925,7 +4075,7 @@ Function DebugApplyDecayStageLab()
 	If lab
 		lab.DebugApplyDecayStageLab()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3934,7 +4084,7 @@ Function DebugApplyFaceLabOverlays()
 	If lab
 		lab.DebugApplyFaceLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -3943,7 +4093,7 @@ Function DebugApplyAllFaceLabOverlays()
 	If lab
 		lab.DebugApplyAllFaceLabOverlays()
 	Else
-		Debug.MessageBox("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf
 EndFunction
 
@@ -4309,6 +4459,7 @@ Function LoadWhisperSndrIds()
 	Debug.Trace("PickmansWhisper: WhisperSndrIds loaded " + WhisperSndrCount)
 EndFunction
 
+; Digits only; trailing junk (CRLF leftover \r, spaces) ignored after the first digit.
 Int Function ParsePositiveInt(String s)
 	If !s
 		Return -1
@@ -4319,6 +4470,7 @@ Int Function ParsePositiveInt(String s)
 	If len <= 0
 		Return -1
 	EndIf
+	Bool gotDigit = False
 	While i < len
 		String c = GardenOfEden.SubStr(s, i, 1)
 		Int d = -1
@@ -4344,11 +4496,18 @@ Int Function ParsePositiveInt(String s)
 			d = 9
 		EndIf
 		If d < 0
+			If gotDigit
+				Return n
+			EndIf
 			Return -1
 		EndIf
+		gotDigit = True
 		n = n * 10 + d
 		i += 1
 	EndWhile
+	If !gotDigit
+		Return -1
+	EndIf
 	Return n
 EndFunction
 
@@ -4534,7 +4693,7 @@ EndFunction
 Function ReportNoticeLoadStatus()
 	String msg = "PICKMANS WHISPER NOTICE LOAD || " + NoticeLoadDiag
 	Debug.Trace("PickmansWhisper notice load: " + msg)
-	Debug.MessageBox(msg)
+	DiagNotify(msg)
 EndFunction
 
 ; Space-joined list of stages whose file did not load (count <= 0), else "".
@@ -6288,8 +6447,50 @@ String Function FormatSpecialSnapshot()
 	Return "AGI=" + (agi as Int) + " CHA=" + (cha as Int)
 EndFunction
 
+; Net ModValue/temp delta vs base. Negative = reduced vs GetBaseValue.
+Float Function GetSpecialModDelta(ActorValue av)
+	If !PlayerRef || !av
+		Return 0.0
+	EndIf
+	Return PlayerRef.GetValue(av) - PlayerRef.GetBaseValue(av)
+EndFunction
+
+; Hard floor: never ModValue(-1) when AGI or CHA is already -2 (or worse) vs base.
+Bool Function IsSpecialModAtMinusTwoFloor(ActorValue av)
+	Return GetSpecialModDelta(av) <= -2.0
+EndFunction
+
+; Align flags with depth after load / script updates so Sync never ModValue twice.
+Function ReconcileHungerSpecialPenaltyFlags()
+	If HungerSpecialPenaltyDepth < 0
+		HungerSpecialPenaltyDepth = 0
+	EndIf
+	If HungerSpecialPenaltyDepth > 1
+		; Cap bookkeeping at 1 going forward; extras need RepairHungerSpecialStacks.
+		Debug.Trace("PickmansWhisper: hunger SPECIAL depth was " + HungerSpecialPenaltyDepth + " — capping bookkeeping at 1")
+		HungerSpecialPenaltyDepth = 1
+	EndIf
+	If HungerSpecialPenaltyDepth > 0
+		HungerStatPenaltyApplied = True
+	ElseIf HungerStatPenaltyApplied
+		; Pre-depth saves: flag said applied — assume exactly one live ModValue pair.
+		HungerSpecialPenaltyDepth = 1
+		Debug.Trace("PickmansWhisper: hunger SPECIAL depth reconciled from flag → 1")
+	EndIf
+EndFunction
+
 Function ApplyHungerStatPenalty()
-	If !PlayerRef || HungerStatPenaltyApplied
+	If !PlayerRef
+		Return
+	EndIf
+	ReconcileHungerSpecialPenaltyFlags()
+	; Idempotent — never ModValue again while depth already accounts for a live penalty.
+	If HungerStatPenaltyApplied || HungerSpecialPenaltyDepth > 0 || HungerAddictionApplied
+		HungerStatPenaltyApplied = True
+		If HungerSpecialPenaltyDepth < 1
+			HungerSpecialPenaltyDepth = 1
+		EndIf
+		Debug.Trace("PickmansWhisper: SPECIAL -1 skipped (already applied depth=" + HungerSpecialPenaltyDepth + ") " + FormatSpecialSnapshot())
 		Return
 	EndIf
 	ActorValue avAgi = Game.GetForm(0x000002C7) as ActorValue
@@ -6299,6 +6500,15 @@ Function ApplyHungerStatPenalty()
 	EndIf
 	If !avCha
 		avCha = Game.GetFormFromFile(0x000002C5, "Fallout4.esm") as ActorValue
+	EndIf
+	; Floor: if either SPECIAL is already -2 (or worse) vs base, do not decrement further.
+	If (avAgi && IsSpecialModAtMinusTwoFloor(avAgi)) || (avCha && IsSpecialModAtMinusTwoFloor(avCha))
+		HungerStatPenaltyApplied = True
+		If HungerSpecialPenaltyDepth < 1
+			HungerSpecialPenaltyDepth = 1
+		EndIf
+		Debug.Trace("PickmansWhisper: SPECIAL -1 skipped (mod already <= -2 vs base) " + FormatSpecialSnapshot() + " agiDelta=" + GetSpecialModDelta(avAgi) + " chaDelta=" + GetSpecialModDelta(avCha))
+		Return
 	EndIf
 	If avAgi
 		PlayerRef.ModValue(avAgi, -1.0)
@@ -6306,13 +6516,22 @@ Function ApplyHungerStatPenalty()
 	If avCha
 		PlayerRef.ModValue(avCha, -1.0)
 	EndIf
+	HungerSpecialPenaltyDepth = 1
 	HungerStatPenaltyApplied = True
 	Debug.Trace("PickmansWhisper: SPECIAL -1 applied " + FormatSpecialSnapshot())
 EndFunction
 
 Function ClearHungerStatPenalty()
-	If !PlayerRef || !HungerStatPenaltyApplied
+	If !PlayerRef
 		Return
+	EndIf
+	ReconcileHungerSpecialPenaltyFlags()
+	Int n = HungerSpecialPenaltyDepth
+	If n < 1 && !HungerStatPenaltyApplied && !HungerAddictionApplied
+		Return
+	EndIf
+	If n < 1
+		n = 1
 	EndIf
 	ActorValue avAgi = Game.GetForm(0x000002C7) as ActorValue
 	ActorValue avCha = Game.GetForm(0x000002C5) as ActorValue
@@ -6322,14 +6541,19 @@ Function ClearHungerStatPenalty()
 	If !avCha
 		avCha = Game.GetFormFromFile(0x000002C5, "Fallout4.esm") as ActorValue
 	EndIf
-	If avAgi
-		PlayerRef.ModValue(avAgi, 1.0)
-	EndIf
-	If avCha
-		PlayerRef.ModValue(avCha, 1.0)
-	EndIf
+	Int i = 0
+	While i < n
+		If avAgi
+			PlayerRef.ModValue(avAgi, 1.0)
+		EndIf
+		If avCha
+			PlayerRef.ModValue(avCha, 1.0)
+		EndIf
+		i += 1
+	EndWhile
+	HungerSpecialPenaltyDepth = 0
 	HungerStatPenaltyApplied = False
-	Debug.Trace("PickmansWhisper: SPECIAL +1 restored " + FormatSpecialSnapshot())
+	Debug.Trace("PickmansWhisper: SPECIAL +" + n + " restored " + FormatSpecialSnapshot())
 EndFunction
 
 Bool Function ApplyHungerAddictionStandIn(Bool abAnnounce)
@@ -6344,8 +6568,10 @@ Bool Function ApplyHungerAddictionStandIn(Bool abAnnounce)
 	If KnifeHungerGlobal
 		KnifeHungerGlobal.SetValue(0.0)
 	EndIf
-	If !HungerStatPenaltyApplied
+	If !HungerStatPenaltyApplied && HungerSpecialPenaltyDepth <= 0
 		ApplyHungerStatPenalty()
+	Else
+		ReconcileHungerSpecialPenaltyFlags()
 	EndIf
 	If HungerStatPenaltyApplied && abAnnounce
 		Debug.Notification("Pickman's Whisper: knife hunger withdrawal AGI/CHA -1")
@@ -6375,17 +6601,76 @@ Function SyncHungerAddictionSpell()
 	If !PlayerRef
 		Return
 	EndIf
+	ReconcileHungerSpecialPenaltyFlags()
 	Bool want = IsHungerUnlocked() && IsHungerAddictionSpellEnabled() && HungerLevel >= GetHungerAddictedThreshold() && !IsHungerSated()
 	If want
-		If !HungerStatPenaltyApplied
+		If !HungerStatPenaltyApplied && HungerSpecialPenaltyDepth <= 0
 			ApplyHungerAddictionStandIn(!HungerAddictionApplied)
 		EndIf
-		HungerAddictionApplied = HungerStatPenaltyApplied
-	ElseIf HungerStatPenaltyApplied || HungerAddictionApplied
+		HungerAddictionApplied = HungerStatPenaltyApplied || HungerSpecialPenaltyDepth > 0
+		HungerStatPenaltyApplied = HungerAddictionApplied
+	ElseIf HungerStatPenaltyApplied || HungerAddictionApplied || HungerSpecialPenaltyDepth > 0
 		ClearHungerAddictionStandIn()
 		HungerAddictionApplied = False
 		Debug.Trace("PickmansWhisper: hunger withdrawal cleared")
 	EndIf
+EndFunction
+
+; MCM — each click undoes one rogue AGI/CHA pair. Keeps a single legitimate penalty if still addicted.
+Function RepairHungerSpecialStacks()
+	; Immediate toast — proves MCM CallFunction reached the body (prior jam starved this).
+	Debug.Notification("PW: SPECIAL repair running…")
+	Debug.Trace("PickmansWhisper: SPECIAL repair enter")
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef
+		DiagNotify("Pickman's Whisper\n\nNo player.")
+		Return
+	EndIf
+	String before = FormatSpecialSnapshot()
+	ActorValue avAgi = Game.GetForm(0x000002C7) as ActorValue
+	ActorValue avCha = Game.GetForm(0x000002C5) as ActorValue
+	If !avAgi
+		avAgi = Game.GetFormFromFile(0x000002C7, "Fallout4.esm") as ActorValue
+	EndIf
+	If !avCha
+		avCha = Game.GetFormFromFile(0x000002C5, "Fallout4.esm") as ActorValue
+	EndIf
+	If !avAgi || !avCha
+		DiagNotify("Pickman's Whisper — Repair\n\nERROR: AGI/CHA ActorValue resolve failed.")
+		Debug.Trace("PickmansWhisper: ERROR SPECIAL repair — AV missing agi=" + (avAgi as Bool) + " cha=" + (avCha as Bool))
+		Return
+	EndIf
+	Float agiBefore = PlayerRef.GetValue(avAgi)
+	Float chaBefore = PlayerRef.GetValue(avCha)
+	PlayerRef.ModValue(avAgi, 1.0)
+	PlayerRef.ModValue(avCha, 1.0)
+	Float agiAfter = PlayerRef.GetValue(avAgi)
+	Float chaAfter = PlayerRef.GetValue(avCha)
+	; Do not Sync-apply here — that would ModValue(-1) again and undo the repair.
+	Bool want = IsHungerUnlocked() && IsHungerAddictionSpellEnabled() && HungerLevel >= GetHungerAddictedThreshold() && !IsHungerSated()
+	If want
+		HungerSpecialPenaltyDepth = 1
+		HungerStatPenaltyApplied = True
+		HungerAddictionApplied = True
+	Else
+		HungerSpecialPenaltyDepth = 0
+		HungerStatPenaltyApplied = False
+		HungerAddictionApplied = False
+	EndIf
+	String msg = "Restored one AGI/CHA pair.\nBefore: " + before + "\nAfter: " + FormatSpecialSnapshot()
+	msg += "\nRaw: AGI " + (agiBefore as Int) + "->" + (agiAfter as Int) + " CHA " + (chaBefore as Int) + "->" + (chaAfter as Int)
+	msg += "\nDepth bookkeeping: " + HungerSpecialPenaltyDepth
+	msg += "\nClick again if still short from an older stack."
+	If want
+		msg += "\n(Still addicted — one -1 kept in bookkeeping, not re-applied.)"
+	EndIf
+	If agiAfter <= agiBefore && chaAfter <= chaBefore
+		msg += "\nWARNING: GetValue did not rise — SPECIAL may be locked by another mod."
+	EndIf
+	Debug.Trace("PickmansWhisper: SPECIAL repair click " + before + " -> " + FormatSpecialSnapshot() + " depth=" + HungerSpecialPenaltyDepth + " agi " + agiBefore + "->" + agiAfter + " cha " + chaBefore + "->" + chaAfter)
+	DiagNotify("Pickman's Whisper — Repair\n\n" + msg)
 EndFunction
 
 ; --- MCM -----------------------------------------------------------------------
@@ -6463,7 +6748,7 @@ Function ShowHungerInfo()
 	String msg = "Pickman's Whisper — Hunger\n\n"
 	If !IsHungerUnlocked()
 		msg += "Not bonded yet.\nEnter Pickman Gallery or obtain Pickman's Blade.\n"
-		Debug.MessageBox(msg)
+		DiagNotify(msg)
 		Return
 	EndIf
 	msg += "Level: " + (HungerLevel as Int) + " / 100 (" + GetHungerBandLabel(HungerLevel) + ")\n"
@@ -6480,19 +6765,20 @@ Function ShowHungerInfo()
 	msg += "SPECIAL now: " + FormatSpecialSnapshot() + "\n"
 	msg += "\nRises with unused knife-time after bonding.\n"
 	msg += "Killing a non-essential human with Pickman's Blade sates hunger."
-	Debug.MessageBox(msg)
+	DiagNotify(msg)
 EndFunction
 
 Function ForceHungerAddictedTest()
 	If !IsHungerUnlocked()
-		Debug.MessageBox("Pickman's Whisper — Test\n\nBond first (gallery or blade).")
+		DiagNotify("Pickman's Whisper — Test\n\nBond first (gallery or blade).")
 		Return
 	EndIf
 	If !IsHungerAddictionSpellEnabled()
-		Debug.MessageBox("Pickman's Whisper — Test\n\nKnife Hunger effect is OFF in MCM.")
+		DiagNotify("Pickman's Whisper — Test\n\nKnife Hunger effect is OFF in MCM.")
 		Return
 	EndIf
-	If HungerStatPenaltyApplied
+	ReconcileHungerSpecialPenaltyFlags()
+	If HungerStatPenaltyApplied || HungerSpecialPenaltyDepth > 0 || HungerAddictionApplied
 		ClearHungerAddictionStandIn()
 	EndIf
 	SatedUntilGameTime = 0.0
@@ -6500,18 +6786,20 @@ Function ForceHungerAddictedTest()
 	HungerLevel = 80.0
 	LastHungerBand = 70
 	HungerAddictionApplied = False
+	HungerStatPenaltyApplied = False
+	HungerSpecialPenaltyDepth = 0
 	String before = FormatSpecialSnapshot()
 	SyncHungerAddictionSpell()
 	RefreshHungerPanel(True)
 	String msg = "Hunger forced to 80.\nBefore: " + before + "\nAfter: " + FormatSpecialSnapshot() + "\n"
-	msg += "Withdrawal flag: " + HungerStatPenaltyApplied
-	Debug.MessageBox("Pickman's Whisper — Test\n\n" + msg)
+	msg += "Withdrawal flag: " + HungerStatPenaltyApplied + " depth=" + HungerSpecialPenaltyDepth
+	DiagNotify("Pickman's Whisper — Test\n\n" + msg)
 EndFunction
 
 Function DebugForceBond()
 	StartBond("mcm-debug")
 	RefreshDebugStatus()
-	Debug.MessageBox("Pickman's Whisper\n\nBond forced. Hunger unlocked.")
+	DiagNotify("Pickman's Whisper\n\nBond forced. Hunger unlocked.")
 EndFunction
 
 ; D0-POC — play golden EndIt SNDR (no notice/audio-map wiring yet).
@@ -6526,7 +6814,7 @@ Function DebugPlayTestWhisper()
 		msg += "FAIL: PlayerRef missing"
 		Debug.Trace("PickmansWhisper: ERROR DebugPlayTestWhisper — PlayerRef missing")
 		Debug.Notification("Pickman's Whisper: Play test whisper — no player")
-		Debug.MessageBox(msg)
+		DiagNotify(msg)
 		Return
 	EndIf
 	msg += "FID 0x00000807 / PW_Whisper_EndIt" + nl
@@ -6545,7 +6833,7 @@ Function DebugPlayTestWhisper()
 		msg += nl + "FAIL: SNDR missing — update/rebuild ESP"
 		Debug.Trace("PickmansWhisper: ERROR DebugPlayTestWhisper — GetFormFromFile 0x00000807 failed")
 		Debug.Notification("Pickman's Whisper: PW_Whisper_EndIt SNDR missing (0x807)")
-		Debug.MessageBox(msg)
+		DiagNotify(msg)
 		Return
 	EndIf
 	; Play returns instance id; 0 means the engine refused / failed to start.
@@ -6560,7 +6848,7 @@ Function DebugPlayTestWhisper()
 		Debug.Trace("PickmansWhisper: DebugPlayTestWhisper Play instance=" + inst + " xwmExists=" + xwmOk)
 		Debug.Notification("Pickman's Whisper: EndIt Play instance=" + inst)
 	EndIf
-	Debug.MessageBox(msg)
+	DiagNotify(msg)
 EndFunction
 
 ; Regression helper — confirm GoE sees Pickman's drawn without needing a kill.
@@ -6598,24 +6886,24 @@ Function DebugVerifyBladeDetect()
 	msg += "OMOD bleed+stealth loaded: " + (OmodBleed != None && OmodStealthBlade != None) + "\n\n"
 	msg += "Gun with blade in inv must FAIL.\nBlade drawn must PASS."
 	RefreshDebugStatus()
-	Debug.MessageBox(msg)
+	DiagNotify(msg)
 EndFunction
 
 Function DebugSatiateHunger()
 	If !IsHungerUnlocked()
-		Debug.MessageBox("Pickman's Whisper\n\nBond first.")
+		DiagNotify("Pickman's Whisper\n\nBond first.")
 		Return
 	EndIf
 	String line = PickPraiseLine()
 	ToastPraiseLine(line)
 	SatiateHunger()
 	RefreshHungerPanel(True)
-	Debug.MessageBox("Pickman's Whisper\n\nHunger satiated (debug — no kill required).\n" + line)
+	DiagNotify("Pickman's Whisper\n\nHunger satiated (debug — no kill required).\n" + line)
 EndFunction
 
 Function DebugReloadLines()
 	LoadLineBanks()
-	Debug.MessageBox("Pickman's Whisper — reloaded line banks\n\nTrust (builtin): " + TrustLineCount + "\nHunger (builtin): " + HungerLineCount + "\nPraise (builtin): " + PraiseLineCount + "\n\nNotice stages (files-only):\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
+	DiagNotify("Pickman's Whisper — reloaded line banks\n\nTrust (builtin): " + TrustLineCount + "\nHunger (builtin): " + HungerLineCount + "\nPraise (builtin): " + PraiseLineCount + "\n\nNotice stages (files-only):\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
 EndFunction
 
 ; MCM Debug button — reload all five notice files NOW and show the full
@@ -6635,7 +6923,7 @@ Function DebugTestPraiseLine()
 	String line = PickPraiseLine()
 	ToastPraiseLine(line)
 	If Utility.IsInMenuMode()
-		Debug.MessageBox("Pickman's Whisper\n\n" + line)
+		DiagNotify("Pickman's Whisper\n\n" + line)
 	EndIf
 EndFunction
 
@@ -6643,7 +6931,7 @@ Function DebugTestTrustLine()
 	String line = PickTrustLine()
 	ToastVoice(line)
 	If Utility.IsInMenuMode()
-		Debug.MessageBox("Pickman's Whisper\n\n" + line)
+		DiagNotify("Pickman's Whisper\n\n" + line)
 	EndIf
 EndFunction
 
@@ -6652,11 +6940,11 @@ Function DebugTestNoticeLine()
 		PlayerRef = Game.GetPlayer()
 	EndIf
 	If !BondStarted
-		Debug.MessageBox("Pickman's Whisper — Notice\n\nBond first (gallery or blade).")
+		DiagNotify("Pickman's Whisper — Notice\n\nBond first (gallery or blade).")
 		Return
 	EndIf
 	If !IsVoiceEnabled()
-		Debug.MessageBox("Pickman's Whisper — Notice\n\nEnable toast voice on the Voice page.")
+		DiagNotify("Pickman's Whisper — Notice\n\nEnable toast voice on the Voice page.")
 		Return
 	EndIf
 	; Diagnostics: raw GoE counts before filters
@@ -6672,7 +6960,7 @@ Function DebugTestNoticeLine()
 	EndIf
 	Actor target = PickNoticeTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nKillWatch: " + KillWatchCount + "\nRadius: " + (KILL_WATCH_RADIUS as Int) + "\nNeed adult female, not hostile, not essential.")
+		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nKillWatch: " + KillWatchCount + "\nRadius: " + (KILL_WATCH_RADIUS as Int) + "\nNeed adult female, not hostile, not essential.")
 		Return
 	EndIf
 	String npcName = GetActorDisplayName(target)
@@ -6685,17 +6973,17 @@ Function DebugTestNoticeLine()
 	If mode == 1
 		Int aIdx = PickNoticeAudioIndex(stage)
 		If aIdx < 0
-			Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nAudio-only: no map for stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ").")
+			DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nAudio-only: no map for stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ").")
 			Return
 		EndIf
 		PlayNoticeAudio(stage, aIdx)
 		MarkNoticeCooldown(target)
-		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nMode: Audio only\nIndex: " + aIdx)
+		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nMode: Audio only\nIndex: " + aIdx)
 		Return
 	EndIf
 	String line = PickNoticeLine(npcName)
 	If line == ""
-		Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nNo whisper: stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ") file not loaded.\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
+		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nNo whisper: stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ") file not loaded.\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
 		Return
 	EndIf
 	MarkNoticeCooldown(target)
@@ -6703,7 +6991,7 @@ Function DebugTestNoticeLine()
 	If mode == 0
 		PlayNoticeAudio(stage, LastNoticePickIndex)
 	EndIf
-	Debug.MessageBox("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nGoE female: " + nFem + " any: " + nAny + "\nMode: " + mode + " idx: " + LastNoticePickIndex + "\n\n" + line)
+	DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nGoE female: " + nFem + " any: " + nAny + "\nMode: " + mode + " idx: " + LastNoticePickIndex + "\n\n" + line)
 EndFunction
 
 ; Unfiltered proximity probe — prove GoE/Detecting see anyone before notice filters.
@@ -6714,7 +7002,7 @@ Function DebugScanNearbyNpcs()
 		PlayerRef = Game.GetPlayer()
 	EndIf
 	If !PlayerRef
-		Debug.MessageBox("C2-polldbg\n\nNo player ref.")
+		DiagNotify("C2-polldbg\n\nNo player ref.")
 		Return
 	EndIf
 	; Manual button = non-destructive PROBE. Also re-arms loops (same as load) so a
@@ -6747,7 +7035,7 @@ Function DebugScanNearbyNpcs()
 		WriteNearbyStatusToMcm()
 		body += "\n\nNo toast target"
 	EndIf
-	Debug.MessageBox("PW [" + DEBUG_BUILD + "]\n\n" + body)
+	DiagNotify("PW [" + DEBUG_BUILD + "]\n\n" + body)
 EndFunction
 
 Function RefreshDebugStatus()

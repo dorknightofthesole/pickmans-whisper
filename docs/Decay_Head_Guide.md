@@ -1,6 +1,6 @@
-# Decay face decals (Slice I) — recreate guide
+# Decay face decals (Slice H / P6) — recreate guide
 
-**Status:** Stage 0 (“decently deceased”) face-decal ARMO works in-game while **keeping FaceGen** (real face identity). Stages 1–4 = recolor DDS in a photo editor toward black putrefaction; ship one NIF/BGSM set (or tinted texture set) per ModConfig decay stage.
+**Status:** Stage 0 (“decently deceased”) face-decal ARMO works in-game while **keeping FaceGen** (real face identity). Stages 1–4 = recolor DDS in a photo editor toward black putrefaction; ship one NIF/BGSM set (or tinted texture set) per ModConfig decay stage. (Former standalone Slice I — now part of Slice H.)
 
 **Hard no:** FaceGen Head **slot 32** full-head swap (identical BaseFemaleHead on every corpse).
 
@@ -14,7 +14,7 @@
 
 Script equip / stage swap comes later; art pipeline is author-owned. Do **not** rely on a chemistry crafting recipe for gameplay — CK recipe below is optional for manual testing only.
 
-Cross-ref: [ROADMAP.md](ROADMAP.md) Slice I · [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) stage clock.
+Cross-ref: [ROADMAP.md](ROADMAP.md) Slice H · [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) stage clock · **H P6** art finish.
 
 ---
 

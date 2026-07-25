@@ -50,6 +50,7 @@ $PscBed = "PickmansWhisperBedGiftScript.psc"
 $PscDecay = "PickmansWhisperCorpseDecayScript.psc"
 $PscWoundLab = "PickmansWhisperDecayWoundLabScript.psc"
 $PscVictims = "PickmansWhisperVictimsScript.psc"
+$PscDesperateRename = "PickmansWhisperDesperateRenameScript.psc"
 $PscKillerScan = "PickmansWhisperKillerScanScript.psc"
 $PscVoiceScan = "PickmansWhisperVoiceScanScript.psc"
 $PscAlias = "PickmansWhisperPlayerAliasScript.psc"
@@ -85,6 +86,12 @@ Write-Host "==> Notice line / detection contract test"
 & python (Join-Path $Root "tools\test_notice_lines.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_notice_lines.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Hunger SPECIAL penalty (no ModValue stack) contract test"
+& python (Join-Path $Root "tools\test_hunger_special_penalty.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_hunger_special_penalty.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "==> Look-fixation (C5 P1) contract test"
@@ -145,6 +152,12 @@ Write-Host "==> Bed hallucination (Slice G) contract test"
 & python (Join-Path $Root "tools\test_bed_hallucination.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_bed_hallucination.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Desperate rename (Slice I) contract test"
+& python (Join-Path $Root "tools\test_desperate_rename.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_desperate_rename.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "==> Corpse decay (Slice H ROF/LooksMenu) contract test"
@@ -225,10 +238,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscKillerScan + $PscVoiceScan + $PscAlias"
+Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscKillerScan, $PscVoiceScan, $PscAlias)) {
+  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -245,6 +258,7 @@ $PexBed = Join-Path $PexOut "PickmansWhisperBedGiftScript.pex"
 $PexDecay = Join-Path $PexOut "PickmansWhisperCorpseDecayScript.pex"
 $PexWoundLab = Join-Path $PexOut "PickmansWhisperDecayWoundLabScript.pex"
 $PexVictims = Join-Path $PexOut "PickmansWhisperVictimsScript.pex"
+$PexDesperateRename = Join-Path $PexOut "PickmansWhisperDesperateRenameScript.pex"
 $PexKillerScan = Join-Path $PexOut "PickmansWhisperKillerScanScript.pex"
 $PexVoiceScan = Join-Path $PexOut "PickmansWhisperVoiceScanScript.pex"
 $PexAlias = Join-Path $PexOut "PickmansWhisperPlayerAliasScript.pex"
@@ -253,6 +267,7 @@ if (-not (Test-Path $PexBed)) { throw "compile produced no BedGift .pex" }
 if (-not (Test-Path $PexDecay)) { throw "compile produced no CorpseDecay .pex" }
 if (-not (Test-Path $PexWoundLab)) { throw "compile produced no DecayWoundLab .pex" }
 if (-not (Test-Path $PexVictims)) { throw "compile produced no Victims .pex" }
+if (-not (Test-Path $PexDesperateRename)) { throw "compile produced no DesperateRename .pex" }
 if (-not (Test-Path $PexKillerScan)) { throw "compile produced no KillerScan .pex" }
 if (-not (Test-Path $PexVoiceScan)) { throw "compile produced no VoiceScan .pex" }
 if (-not (Test-Path $PexAlias)) { throw "compile produced no PlayerAlias .pex" }
@@ -278,6 +293,7 @@ Copy-Item -Force $PexBed (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexDecay (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexWoundLab (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexVictims (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexDesperateRename (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexKillerScan (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexVoiceScan (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexAlias (Join-Path $Deploy "Scripts\")
@@ -286,6 +302,7 @@ Copy-Item -Force (Join-Path $Src $PscBed) (Join-Path $Deploy "Scripts\Source\Use
 Copy-Item -Force (Join-Path $Src $PscDecay) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscWoundLab) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscVictims) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscDesperateRename) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscKillerScan) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscVoiceScan) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscAlias) (Join-Path $Deploy "Scripts\Source\User\")

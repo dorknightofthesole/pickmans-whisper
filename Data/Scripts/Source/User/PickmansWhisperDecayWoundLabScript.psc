@@ -1,6 +1,15 @@
 Scriptname PickmansWhisperDecayWoundLabScript extends Quest
 {Slice H P0.1/P0.2 — debug wound + Porcupine skin + face lab. Sticky bed corpse.}
 
+; Former Debug.MessageBox — no pause; full text in Papyrus.0.log (filter PickmansWhisper).
+Function DiagNotify(String msg)
+	If msg == ""
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: DIAG " + msg)
+	Debug.Notification(msg)
+EndFunction
+
 ; Spawn = copy of BedGift DebugForceBedGift / CreateBedCorpseAt / PresentBedCorpseOnWake with only:
 ;   - button trigger (not sleep / not every-sleep setting / not bond-cooldown gates)
 ;   - LabCorpse reference (not BedCorpse)
@@ -349,7 +358,7 @@ EndFunction
 Function DebugSpawnWoundLabCorpse()
 	Actor player = Game.GetPlayer()
 	If !player
-		Debug.MessageBox("Pickman's Whisper\n\nNo player.")
+		DiagNotify("Pickman's Whisper\n\nNo player.")
 		Return
 	EndIf
 	ClearLabCorpse()
@@ -359,11 +368,11 @@ Function DebugSpawnWoundLabCorpse()
 	EndIf
 	LabAnchor = anchor
 	If !TrySpawnLabCorpse(anchor)
-		Debug.MessageBox("Pickman's Whisper\n\nWound lab spawn failed.\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\nWound lab spawn failed.\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	PresentLabCorpse()
-	Debug.MessageBox("Pickman's Whisper\n\nWound lab corpse spawned.\n" + LastWoundLabStatus + "\nClear wound lab corpse to remove. Apply wounds when ready.")
+	DiagNotify("Pickman's Whisper\n\nWound lab corpse spawned.\n" + LastWoundLabStatus + "\nClear wound lab corpse to remove. Apply wounds when ready.")
 EndFunction
 
 ; BedGift DebugClearBedGift — only cleanup path (no auto despawn).
@@ -371,7 +380,7 @@ Function DebugClearWoundLabCorpse()
 	ClearLabCorpse()
 	LabAnchor = None
 	SetWoundLabStatus("cleared (debug)")
-	Debug.MessageBox("Pickman's Whisper\n\nWound lab corpse cleared.\n" + LastWoundLabStatus)
+	DiagNotify("Pickman's Whisper\n\nWound lab corpse cleared.\n" + LastWoundLabStatus)
 EndFunction
 
 Int Function ClampLabCount(Int n)
@@ -429,7 +438,7 @@ EndFunction
 
 Function DebugApplyWoundLabOverlays()
 	If !EnsureLabWoundBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Int idx = 0
@@ -456,7 +465,7 @@ Function DebugApplyWoundLabOverlays()
 	String templateId = LabWoundTemplates[idx]
 	If !templateId || templateId == ""
 		SetWoundLabStatus("ERROR: empty template at index " + idx)
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Actor target = LabCorpse
@@ -467,7 +476,7 @@ Function DebugApplyWoundLabOverlays()
 		EndIf
 	EndIf
 	If !target || target == Game.GetPlayer()
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply.")
 		Return
 	EndIf
 	; Keep strip fresh so body overlays can show.
@@ -475,12 +484,12 @@ Function DebugApplyWoundLabOverlays()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	decay.ApplyTintedWoundTemplateN(target, templateId, count, tintR, tintG, tintB, tintA, LabWoundTemplates, LabWoundTemplateCount)
 	SetWoundLabStatus(decay.LastCorpseDecayStatus)
-	Debug.MessageBox("Pickman's Whisper\n\nWound lab apply\nidx=" + idx + " count=" + count + "\n" + templateId + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
+	DiagNotify("Pickman's Whisper\n\nWound lab apply\nidx=" + idx + " count=" + count + "\n" + templateId + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
 EndFunction
 
 Actor Function ResolveLabApplyTarget()
@@ -501,12 +510,12 @@ EndFunction
 ; Apply count stepper = times each template (capped in CorpseDecay).
 Function DebugApplyAllWoundLabOverlays()
 	If !EnsureLabWoundBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all.")
 		Return
 	EndIf
 	Float tintR = 1.0
@@ -525,19 +534,19 @@ Function DebugApplyAllWoundLabOverlays()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	decay.ApplyTintedAllWoundTemplates(target, LabWoundTemplates, LabWoundTemplateCount, timesEach, tintR, tintG, tintB, tintA)
 	SetWoundLabStatus(decay.LastCorpseDecayStatus)
-	Debug.MessageBox("Pickman's Whisper\n\nWound lab apply ALL\ntemplates=" + LabWoundTemplateCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
+	DiagNotify("Pickman's Whisper\n\nWound lab apply ALL\ntemplates=" + LabWoundTemplateCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
 EndFunction
 
 ; P0.2 — Porcupine Scars/SkinTexture (DecaySkinOverlays.txt). Stacks with wounds.
 ; Skin template 2: MCM index 0 = (none)/skip; 1..N map to LabSkinTemplates[0..N-1].
 Function DebugApplySkinLabOverlays()
 	If !EnsureLabSkinBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Int idx = 0
@@ -565,7 +574,7 @@ Function DebugApplySkinLabOverlays()
 	String templateId = LabSkinTemplates[idx]
 	If !templateId || templateId == ""
 		SetWoundLabStatus("ERROR: empty skin template at index " + idx)
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	; idx2: 0 = (none); 1..count map to bank 0..count-1
@@ -581,14 +590,14 @@ Function DebugApplySkinLabOverlays()
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply skin.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply skin.")
 		Return
 	EndIf
 	StripLabCorpse(target)
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	; Clear skin bank once, then layer template 1 (+ optional template 2 without re-clear).
@@ -600,17 +609,17 @@ Function DebugApplySkinLabOverlays()
 		status2 = templateId2
 	EndIf
 	SetWoundLabStatus(decay.LastCorpseDecayStatus + " +2=" + status2)
-	Debug.MessageBox("Pickman's Whisper\n\nSkin lab apply\n1=" + templateId + "\n2=" + status2 + "\ncount=" + count + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
+	DiagNotify("Pickman's Whisper\n\nSkin lab apply\n1=" + templateId + "\n2=" + status2 + "\ncount=" + count + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
 EndFunction
 
 Function DebugApplyAllSkinLabOverlays()
 	If !EnsureLabSkinBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all skin.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all skin.")
 		Return
 	EndIf
 	Float tintR = 1.0
@@ -629,12 +638,12 @@ Function DebugApplyAllSkinLabOverlays()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	decay.ApplyTintedAllSkinTemplates(target, LabSkinTemplates, LabSkinTemplateCount, timesEach, tintR, tintG, tintB, tintA)
 	SetWoundLabStatus(decay.LastCorpseDecayStatus)
-	Debug.MessageBox("Pickman's Whisper\n\nSkin lab apply ALL\ntemplates=" + LabSkinTemplateCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
+	DiagNotify("Pickman's Whisper\n\nSkin lab apply ALL\ntemplates=" + LabSkinTemplateCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
 EndFunction
 
 Bool Function IsScarSkinTemplate(String templateId)
@@ -651,12 +660,12 @@ EndFunction
 ; Clear Porcupine overlays, then apply ModConfig decayStage* SkinTextures + tint (+ scars if flagged).
 Function DebugApplyDecayStageLab()
 	If !EnsureLabSkinBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
-		Debug.MessageBox("Pickman's Whisper\n\nMain script missing.")
+		DiagNotify("Pickman's Whisper\n\nMain script missing.")
 		Return
 	EndIf
 	If !m.DecayStagesReady()
@@ -664,12 +673,12 @@ Function DebugApplyDecayStageLab()
 	EndIf
 	If !m.DecayStagesReady()
 		SetWoundLabStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
-		Debug.MessageBox("Pickman's Whisper\n\nDecay stages not loaded from ModConfig.txt.\n" + LastWoundLabStatus + "\nReload line banks / check decayStage0..4.")
+		DiagNotify("Pickman's Whisper\n\nDecay stages not loaded from ModConfig.txt.\n" + LastWoundLabStatus + "\nReload line banks / check decayStage0..4.")
 		Return
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply stage.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply stage.")
 		Return
 	EndIf
 	Int stage = 0
@@ -696,7 +705,7 @@ Function DebugApplyDecayStageLab()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	; Wipe prior Porcupine Scars + SkinTexture; keep DeathMarks wounds.
@@ -705,18 +714,18 @@ Function DebugApplyDecayStageLab()
 	decay.ApplyDecayStageOverlays(target, stage)
 	SetWoundLabStatus("stage " + stage + " " + stageName + " RGB=" + tintR + "/" + tintG + "/" + tintB + " A=" + tintA + " | " + decay.LastCorpseDecayStatus)
 	; Do not refresh MCM mid-CallFunction — that has stalled later Spawn/Clear buttons.
-	Debug.MessageBox("Pickman's Whisper\n\nDecay stage applied\n" + stageName + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
+	DiagNotify("Pickman's Whisper\n\nDecay stage applied\n" + stageName + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
 EndFunction
 
 ; Porcupine Scars_* only — additive (no overlay clear) so SkinTexture_* already on the body stay.
 Function DebugApplyAllScarLabOverlays()
 	If !EnsureLabSkinBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all scars.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all scars.")
 		Return
 	EndIf
 	String[] scars = new String[64]
@@ -732,7 +741,7 @@ Function DebugApplyAllScarLabOverlays()
 	EndWhile
 	If scarCount <= 0
 		SetWoundLabStatus("ERROR: no Scars_* templates in " + SKIN_FILE)
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Float tintR = 1.0
@@ -751,19 +760,19 @@ Function DebugApplyAllScarLabOverlays()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	decay.ApplyTintedAllSkinTemplatesKeepExisting(target, scars, scarCount, timesEach, tintR, tintG, tintB, tintA)
 	SetWoundLabStatus(decay.LastCorpseDecayStatus)
-	Debug.MessageBox("Pickman's Whisper\n\nSkin lab apply ALL SCARS (keep SkinTexture)\ntemplates=" + scarCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
+	DiagNotify("Pickman's Whisper\n\nSkin lab apply ALL SCARS (keep SkinTexture)\ntemplates=" + scarCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the body.")
 EndFunction
 
 ; Face — SFT Damage headparts (DecayFaceOverlays.txt FULL names). Soft dep SFT.esp.
 ; Face template 2: MCM index 0 = (none)/skip; 1..N map to LabFaceTemplates[0..N-1].
 Function DebugApplyFaceLabOverlays()
 	If !EnsureLabFaceBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Int idx = 0
@@ -791,7 +800,7 @@ Function DebugApplyFaceLabOverlays()
 	String templateId = LabFaceTemplates[idx]
 	If !templateId || templateId == ""
 		SetWoundLabStatus("ERROR: empty face template at index " + idx)
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	String templateId2 = ""
@@ -806,14 +815,14 @@ Function DebugApplyFaceLabOverlays()
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply face.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply face.")
 		Return
 	EndIf
 	StripLabCorpse(target)
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	decay.ApplyTintedFaceTemplateN(target, templateId, count, tintR, tintG, tintB, tintA, LabFaceTemplates, LabFaceTemplateCount)
@@ -823,17 +832,17 @@ Function DebugApplyFaceLabOverlays()
 		status2 = templateId2
 	EndIf
 	SetWoundLabStatus(decay.LastCorpseDecayStatus + " +2=" + status2)
-	Debug.MessageBox("Pickman's Whisper\n\nFace lab apply\n1=" + templateId + "\n2=" + status2 + "\ncount=" + count + "\n" + LastWoundLabStatus + "\nClose MCM and look at the face.")
+	DiagNotify("Pickman's Whisper\n\nFace lab apply\n1=" + templateId + "\n2=" + status2 + "\ncount=" + count + "\n" + LastWoundLabStatus + "\nClose MCM and look at the face.")
 EndFunction
 
 Function DebugApplyAllFaceLabOverlays()
 	If !EnsureLabFaceBank()
-		Debug.MessageBox("Pickman's Whisper\n\n" + LastWoundLabStatus)
+		DiagNotify("Pickman's Whisper\n\n" + LastWoundLabStatus)
 		Return
 	EndIf
 	Actor target = ResolveLabApplyTarget()
 	If !target
-		Debug.MessageBox("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all face.")
+		DiagNotify("Pickman's Whisper\n\nNo wound lab corpse.\nSpawn on Wound Lab page, or aim a corpse then Apply all face.")
 		Return
 	EndIf
 	Float tintR = 1.0
@@ -852,10 +861,10 @@ Function DebugApplyAllFaceLabOverlays()
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If !decay
 		SetWoundLabStatus("ERROR: CorpseDecay script missing")
-		Debug.MessageBox("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
 		Return
 	EndIf
 	decay.ApplyTintedAllFaceTemplates(target, LabFaceTemplates, LabFaceTemplateCount, timesEach, tintR, tintG, tintB, tintA)
 	SetWoundLabStatus(decay.LastCorpseDecayStatus)
-	Debug.MessageBox("Pickman's Whisper\n\nFace lab apply ALL\ntemplates=" + LabFaceTemplateCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the face.")
+	DiagNotify("Pickman's Whisper\n\nFace lab apply ALL\ntemplates=" + LabFaceTemplateCount + " x" + timesEach + "\n" + LastWoundLabStatus + "\nClose MCM and look at the face.")
 EndFunction

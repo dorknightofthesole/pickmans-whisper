@@ -202,6 +202,7 @@ def build_main_quest_payload() -> bytes:
                 "PickmansWhisperCorpseDecayScript",
                 "PickmansWhisperDecayWoundLabScript",
                 "PickmansWhisperVictimsScript",
+                "PickmansWhisperDesperateRenameScript",
                 "PickmansWhisperKillerScanScript",
                 "PickmansWhisperVoiceScanScript",
             ]
@@ -500,7 +501,10 @@ def collect_decay_face_armor_records() -> tuple[list[bytes], list[bytes]]:
             f"DecayFace {label} -> Meshes\\{mesh_rel}"
         )
     DECAY_FACE_ARMOR_IDS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    DECAY_FACE_ARMOR_IDS_PATH.write_text("\n".join(id_lines) + "\n", encoding="utf-8")
+    # Force LF — Windows Path.write_text() defaults to CRLF, and trailing \\r broke
+    # ParsePositiveInt for every face ARMO id except a lucky last line.
+    with DECAY_FACE_ARMOR_IDS_PATH.open("w", encoding="utf-8", newline="\n") as fh:
+        fh.write("\n".join(id_lines) + "\n")
     print(f"  Wrote {DECAY_FACE_ARMOR_IDS_PATH} ({len(armas)} variant(s))")
     return armas, armos
 

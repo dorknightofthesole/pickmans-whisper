@@ -54,6 +54,10 @@ PickmansWhisperBedGiftScript Function BedGift()
 	Return (Self as Quest) as PickmansWhisperBedGiftScript
 EndFunction
 
+PickmansWhisperDesperateRenameScript Function DesperateRename()
+	Return (Self as Quest) as PickmansWhisperDesperateRenameScript
+EndFunction
+
 Function StartKillerScanLoop()
 	CancelTimer(TIMER_KILLER_SCAN)
 	StartTimer(KILLER_SCAN_SECONDS, TIMER_KILLER_SCAN)
@@ -192,18 +196,27 @@ Function DispatchListeners()
 	EndIf
 
 	; Overlays throttled — LooksMenu Wait must never run on this stack.
+	; Only every 4th completed tick (busy skips never reach here).
 	If (ScanTick % 4) == 0
 		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 		If decay
+			Debug.Trace("PickmansWhisper: KillerScan Dispatch → CorpseDecay SyncOverlays tick=" + ScanTick + " dead=" + ScanDeadCount)
 			decay.CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot", None)
 		Else
 			Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — CorpseDecay missing")
 		EndIf
 	EndIf
 
+	; Sync — deadlines are cheap; NoWait piled up and double-counted despawn scans.
 	PickmansWhisperBedGiftScript bed = BedGift()
 	If bed
-		bed.CallFunctionNoWait("OnKillerScanDeadlines", None)
+		bed.OnKillerScanDeadlines()
+	EndIf
+
+	; Slice I — desperate display-name suffix (GoE2). Additive NoWait; never FindActors.
+	PickmansWhisperDesperateRenameScript rename = DesperateRename()
+	If rename
+		rename.CallFunctionNoWait("SyncFromKillerScanSnapshot", None)
 	EndIf
 EndFunction
 

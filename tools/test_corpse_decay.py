@@ -155,15 +155,80 @@ def test_decay_script(decay: str) -> None:
         fail("ApplyDecayStageOverlays must ApplyTintedAllSkinTemplatesKeepExisting")
     if stage_fn.find("ClearSkinBankOverlays") > stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting"):
         fail("ApplyDecayStageOverlays must clear skin bank BEFORE KeepExisting apply")
-    if "GetDecayStageAllScars" not in stage_fn:
-        fail("ApplyDecayStageOverlays must honor ModConfig scars flag")
-    # Face after body — Overlays.Update strips slot-54 if face is equipped first.
+    if "IsScarSkinTemplate" in stage_fn:
+        fail("ApplyDecayStageOverlays must not expand scars (simplified dirt/tint body)")
+    if "IsDecayVisualsEnabled" not in stage_fn:
+        fail("ApplyDecayStageOverlays must gate paint on IsDecayVisualsEnabled")
+    if "visuals OFF" not in stage_fn:
+        fail("ApplyDecayStageOverlays must soft-succeed when visuals OFF (stage clock still advances)")
+    if "Function IsDecayVisualsEnabled" not in decay:
+        fail("CorpseDecay must IsDecayVisualsEnabled (MCM bDecayVisuals default off)")
+    if 'bDecayVisuals:Victims' not in decay:
+        fail("IsDecayVisualsEnabled must read bDecayVisuals:Victims")
+    bed = extract_function(decay, "ApplyBedGiftDecayOverlays")
+    if "IsDecayVisualsEnabled" in bed:
+        fail("ApplyBedGiftDecayOverlays must NOT gate on IsDecayVisualsEnabled (vignette always paints)")
+    if "ApplyDecayStageOverlays(akCorpse, stage, True)" not in bed and "ApplyDecayStageOverlays(akCorpse, stage,True)" not in bed:
+        fail("ApplyBedGiftDecayOverlays must ApplyDecayStageOverlays(..., True) force paint")
+    if "abForcePaint" not in stage_fn:
+        fail("ApplyDecayStageOverlays must accept abForcePaint (bed gift bypasses MCM visuals off)")
+    # Face first (mask lands even if LooksMenu stalls); re-equip after body strip.
+    if "face-first" not in stage_fn:
+        fail("ApplyDecayStageOverlays must Trace face-first")
+    if "IsCorpseLimbsIntact" not in stage_fn:
+        fail("ApplyDecayStageOverlays must IsCorpseLimbsIntact (no body overlays on stumps)")
+    if "abForcePaint" not in stage_fn or "limbsIntact = True" not in stage_fn:
+        fail("ApplyDecayStageOverlays must skip stump gate when abForcePaint (bed gift)")
+    if "FaceArmorLoadBusy" not in decay:
+        fail("CorpseDecay must FaceArmorLoadBusy to stop known=[] race")
+    if "limbs missing" not in stage_fn:
+        fail("ApplyDecayStageOverlays must skip/clear body when limbs missing (stump halo)")
+    if "ClearCumBankOverlays" not in stage_fn:
+        fail("ApplyDecayStageOverlays must ClearCumBankOverlays when limbs missing (white halo)")
     face_idx = stage_fn.find("ApplyDecayFaceArmorForStage")
     skin_idx = stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting")
-    if face_idx < 0 or skin_idx < 0 or face_idx < skin_idx:
-        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage AFTER body skin apply")
+    if face_idx < 0 or skin_idx < 0 or face_idx > skin_idx:
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage BEFORE body skin apply")
     if "body skipped" not in stage_fn:
         fail("ApplyDecayStageOverlays must soft-skip body (face still succeeds) when skins/deps fail")
+    if "Function IsCorpseLimbsIntact" not in decay:
+        fail("CorpseDecay must IsCorpseLimbsIntact")
+    if "Function QueueStripBodyDecayAfterDismember" not in decay:
+        fail("CorpseDecay must QueueStripBodyDecayAfterDismember after butcher")
+    if "CumOverlayIds.txt" not in decay or "Function ClearCumBankOverlays" not in decay:
+        fail("CorpseDecay must load CumOverlayIds.txt + ClearCumBankOverlays (soft strip)")
+    strip_fn = extract_function(decay, "StripBodyDecayOverlaysForDismember")
+    if "ClearCumBankOverlays" not in strip_fn:
+        fail("StripBodyDecayOverlaysForDismember must ClearCumBankOverlays")
+    sever = extract_function(
+        (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc").read_text(
+            encoding="utf-8", errors="replace"
+        ),
+        "SeverCorpseLimb",
+    )
+    if "QueueStripBodyDecayAfterDismember" not in sever:
+        fail("SeverCorpseLimb must QueueStripBodyDecayAfterDismember (clear stump halo)")
+    cum_bank = ROOT / "Data" / "PickmansWhisper" / "config" / "CumOverlayIds.txt"
+    if not cum_bank.is_file():
+        fail("CumOverlayIds.txt must ship (CumOverlays strip bank)")
+    cum_ids = [
+        ln.strip()
+        for ln in cum_bank.read_text(encoding="utf-8", errors="replace").splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ]
+    if len(cum_ids) < 10 or "Belly_1" not in cum_ids:
+        fail("CumOverlayIds.txt must list CumOverlays template ids (e.g. Belly_1)")
+    if len(cum_ids) > 64:
+        fail("CumOverlayIds.txt exceeds LoadStageBank String[64] capacity")
+    # Optional: set CUMOVERLAYS_JSON in .env to prove strip bank matches installed CumOverlays.
+    cum_json_env = os.environ.get("CUMOVERLAYS_JSON", "").strip()
+    if cum_json_env:
+        cum_json = Path(cum_json_env)
+        if not cum_json.is_file():
+            fail(f"CUMOVERLAYS_JSON not a file: {cum_json}")
+        src_ids = [e["id"] for e in json.loads(cum_json.read_text(encoding="utf-8"))]
+        if sorted(cum_ids) != sorted(src_ids):
+            fail(f"CumOverlayIds.txt must match {cum_json} ids (drift)")
     bed = extract_function(decay, "ApplyBedGiftDecayOverlays")
     if "ApplyDecayWoundOverlaysTinted" not in bed:
         fail("ApplyBedGiftDecayOverlays must ApplyDecayWoundOverlaysTinted (darkened wounds)")
@@ -187,18 +252,40 @@ def test_wiring(bed: str, main: str) -> None:
     present = extract_function(bed, "PresentBedCorpseOnWake")
     if "MaybeApplyBedGiftDecayOverlays()" in present or "decay.ApplyBedGiftDecayOverlays" in present:
         fail("PresentBedCorpseOnWake must NOT sync-apply overlays (stalls SleepStop / MCM Force)")
-    if "BedOverlaysApplied" not in present:
-        fail("PresentBedCorpseOnWake must gate fallback on BedOverlaysApplied")
-    if "ScheduleBedGiftDecayOverlays" not in present:
-        fail("PresentBedCorpseOnWake must ScheduleBedGiftDecayOverlays as fallback only")
+    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in present:
+        fail("PresentBedCorpseOnWake must not CallFunctionNoWait MaybeApply")
+    # Pose (still-alive branch) finishes async via TIMER_BED_POSE; the overlay kick /
+    # re-paint reset live on the shared FinishBedPresentTail, not inline in Present.
+    tail = extract_function(bed, "FinishBedPresentTail")
+    if "MaybeApplyBedGiftDecayOverlays()" in tail or "decay.ApplyBedGiftDecayOverlays" in tail:
+        fail("FinishBedPresentTail must NOT sync-apply overlays (stalls SleepStop / MCM Force)")
+    if "BedOverlaysApplied = False" not in tail:
+        fail("FinishBedPresentTail must clear BedOverlaysApplied after pose (re-paint)")
+    if "KickBedOverlayOnesHot" not in tail:
+        fail("FinishBedPresentTail must KickBedOverlayOnesHot after pose")
+    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in tail:
+        fail("FinishBedPresentTail must not CallFunctionNoWait MaybeApply")
     warm = extract_function(bed, "MaybeWarmBedGiftBody")
     if "ScheduleBedGiftDecayOverlays" not in warm:
         fail("MaybeWarmBedGiftBody must ScheduleBedGiftDecayOverlays after PlaceAtMe (pre-Enable)")
     sleep_start = extract_function(bed, "HandlePlayerSleepStart")
-    if "MaybeApplyBedGiftDecayOverlays" not in sleep_start:
-        fail("HandlePlayerSleepStart must MaybeApplyBedGiftDecayOverlays if still pending")
+    if "MaybeApplyBedGiftDecayOverlays" in sleep_start:
+        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay (blocks KillerScan)")
+    if "ScheduleBedGiftDecayOverlays" not in sleep_start:
+        fail("HandlePlayerSleepStart must ScheduleBedGiftDecayOverlays for KillerScan deadline")
     if "MaybeApplyBedGiftDecayOverlays" not in bed:
-        fail("BedGift must still MaybeApplyBedGiftDecayOverlays")
+        fail("BedGift must still MaybeApplyBedGiftDecayOverlays (from TIMER_BED_OVERLAYS OnTimer)")
+    deadlines = extract_function(bed, "OnKillerScanDeadlines")
+    if "KickBedOverlayOnesHot" not in deadlines:
+        fail("OnKillerScanDeadlines must KickBedOverlayOnesHot when overlay deadline due")
+    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in deadlines:
+        fail("OnKillerScanDeadlines must not CallFunctionNoWait MaybeApply")
+    if "MaybeApplyBedGiftDecayOverlays()" in deadlines:
+        fail("OnKillerScanDeadlines must not sync-call MaybeApplyBedGiftDecayOverlays")
+    if "BedOverlaysBusy" not in bed:
+        fail("BedGift must BedOverlaysBusy against overlay re-entry")
+    if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
+        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot")
     if "OnKillerScanDeadlines" not in bed or "BedOverlaysAtReal" not in bed:
         fail("BedGift must OnKillerScanDeadlines + BedOverlaysAtReal (Killer Orchestrator)")
     sched = extract_function(bed, "ScheduleBedGiftDecayOverlays")

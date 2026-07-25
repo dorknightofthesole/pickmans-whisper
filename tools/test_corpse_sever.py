@@ -143,8 +143,10 @@ def test_psc(text: str) -> None:
     try_fn = extract_function(text, "TrySeverAimedCorpse")
     if "IsBladeEquipped" not in try_fn:
         fail("TrySeverAimedCorpse must gate IsBladeEquipped")
-    if "draw Pickman's Blade" not in try_fn:
-        fail("TrySeverAimedCorpse must MessageBox when blade not drawn")
+    if "draw Pickman's Blade" not in try_fn or "DiagNotify(" not in try_fn:
+        fail("TrySeverAimedCorpse must DiagNotify when blade not drawn")
+    if "Debug.MessageBox(" in try_fn:
+        fail("TrySeverAimedCorpse must not MessageBox")
     if "NecroSceneActive" not in try_fn:
         fail("TrySeverAimedCorpse must skip NecroSceneActive")
     if "ResolveSeverCorpseAim" not in try_fn:

@@ -7,7 +7,8 @@ Locks:
   - Voice sync first; knife/overlays/cadence NoWait
   - Main ArmRuntimeLoops starts KillerScan only (no hunger/bond StartTimer)
   - Version 1.3.0 + Killer Orchestrator banner
-  - Sole StartTimer in User PSC is KillerScan (except comments)
+  - Recurring StartTimer is KillerScan-only; BedGift may one-shot TIMER_BED_OVERLAYS /
+    TIMER_BED_POSE (re-arming polls that never block the wake stack, no true reschedule loop)
 
 Usage:
   python tools/test_killer_scan_bus.py
@@ -106,7 +107,9 @@ def test_killer_scan_producer() -> None:
     if "NoteFromKillerScanSnapshot" not in dispatch:
         fail("DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
     if "OnKillerScanDeadlines" not in dispatch:
-        fail("DispatchListeners must CallFunctionNoWait BedGift OnKillerScanDeadlines")
+        fail("DispatchListeners must call BedGift OnKillerScanDeadlines")
+    if 'CallFunctionNoWait("SyncFromKillerScanSnapshot"' not in dispatch:
+        fail("DispatchListeners must CallFunctionNoWait DesperateRename SyncFromKillerScanSnapshot")
     if not (i_voice < i_knife):
         fail("voice HandleKillerScanVoice must run BEFORE knife NoWait")
     on_timer = extract_function(text, "OnTimer")
@@ -144,11 +147,22 @@ def test_starttimer_inventory() -> None:
         for i, line in enumerate(text.splitlines(), 1):
             if "StartTimer(" in line and not line.strip().startswith(";"):
                 starts.append(f"{p.name}:{i}:{line.strip()}")
-    if len(starts) != 1:
-        fail(f"expected exactly 1 StartTimer in User PSC, got {len(starts)}: {starts}")
-    if "PickmansWhisperKillerScanScript.psc" not in starts[0]:
-        fail(f"sole StartTimer must be KillerScan, got {starts[0]}")
-    ok("sole StartTimer is KillerScan")
+    killer = [s for s in starts if "PickmansWhisperKillerScanScript.psc" in s]
+    bed = [s for s in starts if "PickmansWhisperBedGiftScript.psc" in s]
+    other = [s for s in starts if s not in killer and s not in bed]
+    if len(killer) != 1 or "TIMER_KILLER_SCAN" not in killer[0]:
+        fail(f"expected exactly 1 KillerScan StartTimer(TIMER_KILLER_SCAN), got {killer}")
+    bed_overlays = [s for s in bed if "TIMER_BED_OVERLAYS" in s]
+    bed_pose = [s for s in bed if "TIMER_BED_POSE" in s]
+    if len(bed_overlays) != 1:
+        fail(f"expected exactly 1 BedGift StartTimer(TIMER_BED_OVERLAYS) oneshot, got {bed_overlays}")
+    if len(bed_pose) < 1:
+        fail(f"expected BedGift StartTimer(TIMER_BED_POSE) re-arming poll, got {bed_pose}")
+    if len(bed_overlays) + len(bed_pose) != len(bed):
+        fail(f"unexpected BedGift StartTimer beyond TIMER_BED_OVERLAYS/TIMER_BED_POSE, got {bed}")
+    if other:
+        fail(f"no other feature StartTimer allowed, got {other}")
+    ok("recurring StartTimer=KillerScan; BedGift oneshot TIMER_BED_OVERLAYS + TIMER_BED_POSE only")
 
 
 def test_main_arming_and_cadence() -> None:
@@ -199,11 +213,25 @@ def test_listeners() -> None:
     if "StartTimer(" in victims:
         fail("VictimsScript must not StartTimer (decay nudge parked)")
     bed = BED.read_text(encoding="utf-8", errors="replace")
-    if "StartTimer(" in bed:
-        fail("BedGift must not StartTimer (deadlines on KillerScan)")
     if "OnKillerScanDeadlines" not in bed:
         fail("BedGift must OnKillerScanDeadlines")
-    ok("listeners consume snapshot; no feature StartTimer")
+    if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
+        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot (oneshot experiment)")
+    on_timer = extract_function(bed, "OnTimer")
+    if "MaybeApplyBedGiftDecayOverlays" not in on_timer:
+        fail("BedGift OnTimer must MaybeApplyBedGiftDecayOverlays")
+    if "StartTimer(" in on_timer:
+        fail("BedGift OnTimer must not re-arm StartTimer (oneshot only)")
+    kick = extract_function(bed, "KickBedOverlayOnesHot")
+    if "StartTimer(" not in kick or "TIMER_BED_OVERLAYS" not in kick:
+        fail("KickBedOverlayOnesHot must StartTimer(TIMER_BED_OVERLAYS)")
+    if "CancelTimer(TIMER_BED_OVERLAYS)" not in kick:
+        fail("KickBedOverlayOnesHot must CancelTimer before StartTimer (replace, no stack)")
+    if "ForceApplyMcmDecayStage" in decay or "TIMER_MCM_FORCE_APPLY" in decay:
+        fail("CorpseDecay must not keep retired MCM ForceApply path")
+    if "StartTimer(" in decay:
+        fail("CorpseDecay must not StartTimer")
+    ok("listeners consume snapshot; BedGift oneshot overlay timer allowed")
 
 
 def test_version_packaging() -> None:

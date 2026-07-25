@@ -136,6 +136,17 @@
 					}
 				},
 				{
+					"text": "Repair: restore one AGI/CHA stack",
+					"type": "button",
+					"help": "Undoes one knife-hunger SPECIAL pair if ModValue stacked. Click until SPECIAL is correct. Does not re-apply the penalty.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "RepairHungerSpecialStacks",
+						"scriptName": "PickmansWhisperMainQuestScript"
+					}
+				},
+				{
 					"text": "Test: satiate hunger (debug)",
 					"type": "button",
 					"help": "Clears hunger and plays a praise line without a real kill.",
@@ -316,7 +327,7 @@
 					"id": "sDecayStage:Victims",
 					"text": "Decay stage (current)",
 					"type": "textinput",
-					"help": "Current decay for the cached victim. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply after you close MCM (may take several seconds).",
+					"help": "Current decay for the cached victim. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply via KillerScan sync after you close MCM (may take several seconds).",
 					"valueOptions": {
 						"sourceType": "ModSettingString"
 					}
@@ -375,7 +386,16 @@
 					"type": "section"
 				},
 				{
-					"text": "Testing only. Pick a stage, then \"Set decay stage\" (backdates murder time by ModConfig startHours). \"Reset decay stage\" sets murder time to now and the picker to Freshly Deceased. Close MCM — overlays may take several seconds via KillerScan.",
+					"id": "bDecayVisuals:Victims",
+					"text": "Corpse decay visuals",
+					"type": "switcher",
+					"help": "Off by default. When on: LooksMenu body skins + face masks follow the decay stage on knife/world corpses (can conflict with Real HD Faces — load Real HD after Pickman's Whisper). When off: murder clock and stage labels still advance; no world-corpse paint. Bed gift vignette still paints.",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
+					"text": "Testing only. Pick a stage, press \"Set decay stage\" (or \"Reset decay stage\"), then close the dialog and MCM — overlays apply to the aimed corpse within about a second (requires Corpse decay visuals ON). Freshly (0) = no body skins; Pallor (1) = tinted SkinTexture_16; Livor (2)+ = heavier Porcupine skins. Face masks start at stage 2. \"Load targeted victim\" refreshes Aimed + Decay rows immediately.",
 					"type": "text",
 					"html": true
 				},
@@ -383,7 +403,7 @@
 					"id": "iVictimDecayStage:Victims",
 					"text": "Pick stage",
 					"type": "stepper",
-					"help": "Testing only. Choose the ModConfig stage, then press \"Set decay stage\". Or press \"Reset decay stage\" first (murder time = now, picker → Freshly Deceased). Close MCM; KillerScan may take several seconds to apply overlays.",
+					"help": "Testing only. Choose ModConfig stage, then press \"Set decay stage\", then close dialog + MCM. Stage 0 = body none; Pallor (1) = tinted SkinTexture_16; stage 2+ heavier skins + face.",
 					"valueOptions": {
 						"sourceType": "ModSettingInt",
 						"options": [
@@ -398,7 +418,7 @@
 				{
 					"text": "Set decay stage",
 					"type": "button",
-					"help": "Separate from \"Reset decay stage\". Subtracts ModConfig startHours for the selected Pick stage from now (killTime = now − hours/24). Close MCM — KillerScan SyncDecay applies face/body and may take several seconds. Does not strip/re-apply overlays itself.",
+					"help": "Backdates murder time by ModConfig startHours, then queues overlay apply on the aimed corpse as soon as you leave MCM.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
@@ -409,7 +429,7 @@
 				{
 					"text": "Reset decay stage",
 					"type": "button",
-					"help": "Separate from \"Set decay stage\". Sets murder/kill time to now and forces Pick stage to Freshly Deceased (stage 0), regardless of current stage. Close MCM — KillerScan may take several seconds to sync, or pick a later stage and press \"Set decay stage\".",
+					"help": "Sets murder time to now and Pick stage to Freshly Deceased, then queues overlay apply on the aimed corpse when you leave MCM.",
 					"action": {
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",

@@ -5,7 +5,7 @@ Locks:
   - FO4 sleep stubs; PlayerAlias owns RegisterForPlayerSleep
   - Logic on PickmansWhisperBedGiftScript; Main keeps thin façades
   - Single gameplay PlaceAtMe: MaybeWarmBedGiftBody → DiamondCityResidentF01NoodleMarket
-  - SnapIntoInteraction + KillSilent; SleepStart/Stop never spawn
+  - SnapIntoInteraction + KillSilent; SleepStop never spawn; SleepStart may TrySpawn fallback if warm missed
   - FID_BED_SPAWN_NPC matches Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
   - ESP attaches both Main + BedGift scripts; Caprica/deploy compile BedGift
 
@@ -54,11 +54,13 @@ def extract_function(text: str, name: str) -> str:
         text,
     )
     if not m:
-        fail(f"missing function {name}")
+        m = re.search(rf"Event\s+(?:[\w.]+\.)?{name}\s*\(", text)
+    if not m:
+        fail(f"missing function/event {name}")
     start = m.start()
-    end_m = re.search(r"\nEndFunction\b", text[start:])
+    end_m = re.search(r"\n(?:EndFunction|EndEvent)\b", text[start:])
     if not end_m:
-        fail(f"no EndFunction for {name}")
+        fail(f"no End for {name}")
     return text[start : start + end_m.end()]
 
 
@@ -123,6 +125,21 @@ def test_alias(alias_text: str) -> None:
     ok("PlayerAlias owns bed gift sleep registration")
 
 
+def test_killer_scan_deadlines_sync() -> None:
+    ks = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
+    if not ks.is_file():
+        fail(f"missing {ks}")
+    text = ks.read_text(encoding="utf-8", errors="replace")
+    dispatch = extract_function(text, "DispatchListeners")
+    if "OnKillerScanDeadlines" not in dispatch:
+        fail("KillerScan DispatchListeners must call OnKillerScanDeadlines")
+    if 'CallFunctionNoWait("OnKillerScanDeadlines"' in dispatch:
+        fail("KillerScan must call OnKillerScanDeadlines sync (NoWait double-counted despawn)")
+    if "bed.OnKillerScanDeadlines()" not in dispatch:
+        fail("KillerScan must invoke bed.OnKillerScanDeadlines() synchronously")
+    ok("KillerScan deadlines sync (despawn on stack; overlays via BedGift oneshot)")
+
+
 def test_main_facade(main: str) -> None:
     if re.search(r"\bRegisterForPlayerSleep\s*\(", main):
         fail("main quest must not RegisterForPlayerSleep — use PlayerAlias")
@@ -147,8 +164,11 @@ def test_main_facade(main: str) -> None:
             fail(f"Main {name} must forward via BedGift()")
         if "PlaceAtMe" in body:
             fail(f"Main {name} must not PlaceAtMe (façade only)")
-    if "MaybeWarmBedGiftBody()" not in main:
-        fail("killscan must call MaybeWarmBedGiftBody")
+    knife_warm = extract_function(main, "HandleKillerScanKnifeAimWarm")
+    if "MaybeWarmBedGiftBody" not in knife_warm:
+        fail("HandleKillerScanKnifeAimWarm must call MaybeWarmBedGiftBody")
+    if "% 5" in knife_warm or "ScanTick % 5" in knife_warm:
+        fail("HandleKillerScanKnifeAimWarm must warm every tick (not % 5 — busy skips miss warm)")
     load = extract_function(main, "LoadLineBanks")
     if "LoadModConfig()" not in load:
         fail("LoadLineBanks must LoadModConfig (bedGiftWakeToast)")
@@ -179,10 +199,31 @@ def test_bed_script(bed: str) -> None:
         fail("BedGift must extend Quest")
     if "OnKillerScanDeadlines" not in bed:
         fail("BedGift must OnKillerScanDeadlines (Killer Orchestrator)")
-    if "BedDespawnAtReal" not in bed or "BedOverlaysAtReal" not in bed:
-        fail("BedGift must use BedDespawnAtReal / BedOverlaysAtReal deadlines")
-    if "StartTimer(" in bed:
-        fail("BedGift must not StartTimer")
+    if "BedDespawnScanCount" not in bed or "BED_DESPAWN_SCANS" not in bed:
+        fail("BedGift must despawn by KillerScan pulse count (BED_DESPAWN_SCANS)")
+    if "BED_DESPAWN_SCANS = 2" not in bed:
+        fail("BED_DESPAWN_SCANS must be 2 (2nd KillerScan pulse after present)")
+    if "BedOverlaysAtReal" not in bed:
+        fail("BedGift must keep BedOverlaysAtReal for pre-present decay delay")
+    if "BedDespawnAtReal" in bed or "BED_DESPAWN_SECONDS" in bed:
+        fail("BedGift must not use real-time BedDespawnAtReal / BED_DESPAWN_SECONDS")
+    if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
+        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot (oneshot overlay)")
+    on_timer = extract_function(bed, "OnTimer")
+    if "MaybeApplyBedGiftDecayOverlays" not in on_timer:
+        fail("BedGift OnTimer must MaybeApplyBedGiftDecayOverlays")
+    if "TIMER_BED_POSE" not in on_timer or "AdvanceBedPoseSequence" not in on_timer:
+        fail("BedGift OnTimer must dispatch TIMER_BED_POSE to AdvanceBedPoseSequence")
+    if "StartTimer(" in on_timer:
+        fail("BedGift OnTimer must not re-arm inline (oneshot dispatch only)")
+    kick = extract_function(bed, "KickBedOverlayOnesHot")
+    if "StartTimer(" not in kick or "TIMER_BED_OVERLAYS" not in kick:
+        fail("KickBedOverlayOnesHot must StartTimer(TIMER_BED_OVERLAYS)")
+    clear = extract_function(bed, "ClearBedCorpse")
+    if "CancelTimer(TIMER_BED_OVERLAYS)" not in clear:
+        fail("ClearBedCorpse must CancelTimer(TIMER_BED_OVERLAYS)")
+    if "CancelTimer(TIMER_BED_POSE)" not in clear:
+        fail("ClearBedCorpse must CancelTimer(TIMER_BED_POSE) (abort in-flight pose sequence)")
     if "Actor BedCorpse" not in bed:
         fail("BedCorpse must be Actor on BedGift")
     create = extract_function(bed, "CreateBedCorpseAt")
@@ -191,22 +232,70 @@ def test_bed_script(bed: str) -> None:
     # Warm path must not kill inline; death happens in PoseBedCorpseInFurniture (wake/debug).
     if re.search(r"\bKillSilent\s*\(", create) or re.search(r"\bKillBedCorpse\s*\(", create):
         fail("CreateBedCorpseAt warm path must keep NPC alive until Present pose")
-    if "ParkWarmedBedCorpse" not in create or "PoseBedCorpseInFurniture" not in create:
-        fail("CreateBedCorpseAt must park (warm) or PoseBedCorpseInFurniture (debug)")
+    if "ParkWarmedBedCorpse" not in create or "SnapBedCorpseToAnchor" not in create:
+        fail("CreateBedCorpseAt must park (warm) or SnapBedCorpseToAnchor (bed place; pose deferred)")
+    if "PoseBedCorpseInFurniture" in create:
+        fail("CreateBedCorpseAt must not Pose/Wait — Present poses on wake (SleepStart must stay snappy)")
     if not re.search(r"PlaceAtMe\([^)]*False\s*\)", create):
         fail("CreateBedCorpseAt PlaceAtMe should use InitiallyDisabled=False")
     assign_at = create.find("BedCorpse = corpse")
-    pose_at = create.find("PoseBedCorpseInFurniture")
     park_at = create.find("ParkWarmedBedCorpse")
-    if assign_at < 0 or (pose_at >= 0 and assign_at > pose_at) or (park_at >= 0 and assign_at > park_at):
-        fail("CreateBedCorpseAt must assign BedCorpse before park/pose")
+    snap_at = create.find("SnapBedCorpseToAnchor")
+    if assign_at < 0 or (park_at >= 0 and assign_at > park_at) or (snap_at >= 0 and assign_at > snap_at):
+        fail("CreateBedCorpseAt must assign BedCorpse before park/snap")
     if re.search(r"\bSetSilent\s*\(", bed):
         fail("PSC must not call SetSilent — not a FO4 native")
     if "MuteBedCorpseVoice" in bed or "SetOverrideVoiceType" in bed:
         fail("bed gift mute path retired — no MuteBedCorpseVoice / SetOverrideVoiceType")
+    # Pose is a re-arming TIMER_BED_POSE state machine — never a blocking Utility.Wait
+    # loop on the SleepStop wake stack (that stalled KillerScan's shared timer).
+    if "WaitForBedCorpse3D" in bed:
+        fail("WaitForBedCorpse3D retired — poll Is3DLoaded via TIMER_BED_POSE, not Utility.Wait")
     pose = extract_function(bed, "PoseBedCorpseInFurniture")
-    if "SnapIntoInteraction" not in pose or "KillBedCorpse" not in pose:
-        fail("PoseBedCorpseInFurniture must SnapIntoInteraction + KillBedCorpse")
+    if "TIMER_BED_POSE" not in pose:
+        fail("PoseBedCorpseInFurniture must arm TIMER_BED_POSE (re-arming poll)")
+    if "Utility.Wait" in pose:
+        fail("PoseBedCorpseInFurniture must not Utility.Wait — that blocks the wake stack")
+
+    advance = extract_function(bed, "AdvanceBedPoseSequence")
+    if "Is3DLoaded" not in advance:
+        fail("AdvanceBedPoseSequence must poll Is3DLoaded")
+    if "Utility.Wait" in advance:
+        fail("AdvanceBedPoseSequence must not Utility.Wait — re-arm TIMER_BED_POSE instead")
+    if "StartTimer(" not in advance or "TIMER_BED_POSE" not in advance:
+        fail("AdvanceBedPoseSequence must re-arm TIMER_BED_POSE while waiting for 3D")
+    if "BedPoseTriesRemaining" not in advance:
+        fail("AdvanceBedPoseSequence must bound retries via BedPoseTriesRemaining")
+    if "RagdollBedPoseFallback" not in advance:
+        fail("AdvanceBedPoseSequence must ragdoll-fallback once 3D tries are exhausted")
+
+    snap = extract_function(bed, "DoBedPoseSnap")
+    if "SnapIntoInteraction" not in snap:
+        fail("DoBedPoseSnap must SnapIntoInteraction")
+    if "Utility.Wait" in snap:
+        fail("DoBedPoseSnap must not Utility.Wait — settle via TIMER_BED_POSE instead")
+    if "RagdollBedPoseFallback" not in snap:
+        fail("DoBedPoseSnap must ragdoll-fallback when SnapIntoInteraction fails")
+    if "StartTimer(" not in snap or "TIMER_BED_POSE" not in snap:
+        fail("DoBedPoseSnap must arm the settle delay via TIMER_BED_POSE")
+
+    finish_snap = extract_function(bed, "FinishBedPoseSnap")
+    if "KillBedCorpse" not in finish_snap:
+        fail("FinishBedPoseSnap must KillBedCorpse after the settle delay")
+    if "FinishBedPresentTail" not in finish_snap:
+        fail("FinishBedPoseSnap must FinishBedPresentTail (despawn arm / overlay kick / toast)")
+
+    ragdoll = extract_function(bed, "RagdollBedPoseFallback")
+    if "SnapBedCorpseToAnchor" not in ragdoll:
+        fail("RagdollBedPoseFallback must SnapBedCorpseToAnchor")
+    if "KillBedCorpse" not in ragdoll:
+        fail("RagdollBedPoseFallback must KillBedCorpse")
+    if "Debug.Notification" not in ragdoll or "SnapIntoInteraction FAILED" not in ragdoll:
+        fail("RagdollBedPoseFallback must always toast clearly when snap/3D fails")
+    if "FinishBedPresentTail" not in ragdoll:
+        fail("RagdollBedPoseFallback must FinishBedPresentTail so despawn/overlay still arm")
+    if "actor 3D not loaded" not in advance and "actor 3D not loaded" not in ragdoll:
+        fail("Pose sequence must ragdoll without Snap when 3D never loads")
     kill = extract_function(bed, "KillBedCorpse")
     if "GetPlayer" not in kill or "KillSilent" not in kill:
         fail("KillBedCorpse must KillSilent with player killer (Protected ActorBases)")
@@ -229,25 +318,23 @@ def test_bed_script(bed: str) -> None:
         fail("TrackLivingNear must skip bed gift / wound lab corpses")
     if re.search(r"\bSetProtected\s*\(", bed):
         fail("must not SetProtected on shared ActorBase")
-    if "Utility.Wait" not in pose:
-        fail("PoseBedCorpseInFurniture must Wait briefly after snap")
-    if "IsInMenuMode" not in pose:
-        fail("PoseBedCorpseInFurniture must skip Wait while MCM/menu is open")
-    if "SnapBedCorpseToAnchor" not in pose:
-        fail("PoseBedCorpseInFurniture must ragdoll-fallback if snap fails")
-    if "Debug.Notification" not in pose or "SnapIntoInteraction FAILED" not in pose:
-        fail("PoseBedCorpseInFurniture must always toast clearly when snap fails")
     warm = extract_function(bed, "MaybeWarmBedGiftBody")
     if "CreateBedCorpseAt" not in warm or "BedPresentedThisSleep" not in warm:
         fail("MaybeWarmBedGiftBody must CreateBedCorpseAt and skip during presented cycle")
+    if "warm skip:" not in warm:
+        fail("MaybeWarmBedGiftBody must Trace/status skip reasons (no silent Return)")
     start = extract_function(bed, "HandlePlayerSleepStart")
-    if "TrySpawnBedCorpse" in start or "CreateBedCorpseAt" in start or "PlaceAtMe" in start:
-        fail("HandlePlayerSleepStart must not spawn (anchor only)")
+    if "TrySpawnBedCorpse" not in start:
+        fail("HandlePlayerSleepStart must TrySpawnBedCorpse fallback when warm missed")
+    if "PlaceAtMe" in start:
+        fail("HandlePlayerSleepStart must spawn via TrySpawnBedCorpse (not raw PlaceAtMe)")
     stop = extract_function(bed, "HandlePlayerSleepStop")
     if "PresentBedCorpseOnWake" not in stop:
         fail("HandlePlayerSleepStop must PresentBedCorpseOnWake when corpse ready")
     if "TrySpawnBedCorpse" in stop or "CreateBedCorpseAt" in stop or "PlaceAtMe" in stop:
         fail("HandlePlayerSleepStop must not spawn")
+    if "BedWakeHandledThisSleep" not in stop:
+        fail("HandlePlayerSleepStop must ignore late stop after Present")
     if "TIMER_BED_PRESENT" in bed:
         fail("TIMER_BED_PRESENT retired — no wake retries")
     strip = extract_function(bed, "StripBedCorpse")
@@ -263,20 +350,47 @@ def test_bed_script(bed: str) -> None:
         fail("PresentBedCorpseOnWake must PoseBedCorpseInFurniture when still alive")
     if "PlaceAtMe" in present:
         fail("PresentBedCorpseOnWake must not PlaceAtMe")
-    if "BedDespawnAtReal" not in present:
-        fail("PresentBedCorpseOnWake must set BedDespawnAtReal deadline")
-    if "ScheduleBedGiftDecayOverlays" not in present:
-        fail("PresentBedCorpseOnWake must ScheduleBedGiftDecayOverlays fallback if not pre-applied")
-    if "MaybeApplyBedGiftDecayOverlays()" in present:
-        fail("PresentBedCorpseOnWake must not sync-apply decay overlays")
+    if "Utility.Wait" in present:
+        fail("PresentBedCorpseOnWake must not Utility.Wait — pose finishes async via TIMER_BED_POSE")
+    if "FinishBedPresentTail" not in present:
+        fail("PresentBedCorpseOnWake must FinishBedPresentTail on the no-pose-needed paths")
+
+    tail = extract_function(bed, "FinishBedPresentTail")
+    if "BedDespawnScanCount = 0" not in tail:
+        fail("FinishBedPresentTail must arm BedDespawnScanCount = 0")
+    deadlines = extract_function(bed, "OnKillerScanDeadlines")
+    if "BedDespawnScanCount +=" not in deadlines and "BedDespawnScanCount += 1" not in deadlines:
+        fail("OnKillerScanDeadlines must increment BedDespawnScanCount")
+    if "BED_DESPAWN_SCANS" not in deadlines or "ClearBedCorpse" not in deadlines:
+        fail("OnKillerScanDeadlines must ClearBedCorpse when scan count hits BED_DESPAWN_SCANS")
+    if "KickBedOverlayOnesHot" not in deadlines:
+        fail("OnKillerScanDeadlines must KickBedOverlayOnesHot when overlay deadline due")
+    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in deadlines:
+        fail("OnKillerScanDeadlines must not CallFunctionNoWait MaybeApply (use oneshot timer)")
+    if "MaybeApplyBedGiftDecayOverlays()" in deadlines:
+        fail("OnKillerScanDeadlines must not sync-call MaybeApplyBedGiftDecayOverlays")
+    if "BedOverlaysBusy" not in bed:
+        fail("BedGift must track BedOverlaysBusy against overlay re-entry")
+    if "BedOverlaysApplied = False" not in tail:
+        fail("FinishBedPresentTail must clear BedOverlaysApplied after pose (re-paint)")
+    if "KickBedOverlayOnesHot" not in tail:
+        fail("FinishBedPresentTail must KickBedOverlayOnesHot after pose")
+    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in tail:
+        fail("FinishBedPresentTail must not CallFunctionNoWait MaybeApply")
+    if "MaybeApplyBedGiftDecayOverlays()" in tail:
+        fail("FinishBedPresentTail must not sync-apply decay overlays")
     warm = extract_function(bed, "MaybeWarmBedGiftBody")
     if "ScheduleBedGiftDecayOverlays" not in warm:
         fail("MaybeWarmBedGiftBody must schedule decay while parked/disabled")
     sleep_start = extract_function(bed, "HandlePlayerSleepStart")
-    if "MaybeApplyBedGiftDecayOverlays" not in sleep_start:
-        fail("HandlePlayerSleepStart must finish pending decay before wake Enable")
-    if "MaybeSpeakBedGiftWakeToast" not in present:
-        fail("PresentBedCorpseOnWake must MaybeSpeakBedGiftWakeToast")
+    if "MaybeApplyBedGiftDecayOverlays" in sleep_start:
+        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay (schedule only)")
+    if "ScheduleBedGiftDecayOverlays" not in sleep_start:
+        fail("HandlePlayerSleepStart must ScheduleBedGiftDecayOverlays when body present")
+    if "BedWakeHandledThisSleep" not in bed:
+        fail("BedGift must track BedWakeHandledThisSleep to ignore late duplicate SleepStop")
+    if "MaybeSpeakBedGiftWakeToast" not in tail:
+        fail("FinishBedPresentTail must MaybeSpeakBedGiftWakeToast")
     wake = extract_function(bed, "MaybeSpeakBedGiftWakeToast")
     if "GetBedGiftWakeToast" not in wake:
         fail("MaybeSpeakBedGiftWakeToast must use ModConfig via GetBedGiftWakeToast")
@@ -388,6 +502,7 @@ def main() -> None:
     test_stubs()
     test_alias(alias)
     test_main_facade(main_text)
+    test_killer_scan_deadlines_sync()
     test_bed_script(bed_text)
     test_esm(find_esm(args.esm))
     test_config_mcm_deploy()
