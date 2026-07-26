@@ -348,10 +348,6 @@ Bool Function ResetAimedDecayKillClock()
 	If MCM.IsInstalled()
 		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", 0)
 	EndIf
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If decay
-		decay.NoteDecayClockChangedForSync()
-	EndIf
 	m.LastVictimStatus = "kill clock reset to now (stage 0 Freshly Deceased) — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: ResetAimedDecayKillClock ok id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
@@ -403,10 +399,6 @@ Bool Function PrepAimedDecayStage(Int targetStage)
 		m.SetDecayKillLastStage(formId, -1)
 	Else
 		m.SetDecayKillLastStage(formId, targetStage - 1)
-	EndIf
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If decay
-		decay.NoteDecayClockChangedForSync()
 	EndIf
 	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: PrepAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))

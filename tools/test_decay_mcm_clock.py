@@ -165,7 +165,6 @@ def test_mcm_reset_and_apply_wiring() -> None:
     for needle in (
         "StampDecayKill",
         'iVictimDecayStage:Victims", 0',
-        "NoteDecayClockChangedForSync",
         "ResolveValidDecayTarget",
     ):
         if needle not in reset_body:
@@ -211,8 +210,6 @@ def test_mcm_reset_and_apply_wiring() -> None:
     prep = extract_function(victims, "PrepAimedDecayStage")
     if "ForceDecayKillClockToStage" not in prep:
         fail("PrepAimedDecayStage must ForceDecayKillClockToStage (subtract startHours)")
-    if "NoteDecayClockChangedForSync" not in prep:
-        fail("PrepAimedDecayStage must NoteDecayClockChangedForSync")
     if "ArmMcmForceApply" in prep or "ForceApply" in prep:
         fail("PrepAimedDecayStage must not use MCM ForceApply")
     if "ApplyDecayStageOverlays" in prep:
@@ -256,7 +253,7 @@ def test_mcm_reset_and_apply_wiring() -> None:
     if apply_idx < 0 or apply_idx >= reset_idx:
         fail("Set decay stage button must appear above Reset decay stage")
 
-    ok("MCM reset/apply wiring (clock + NoteDecayClockChangedForSync; selector -> 0 on reset)")
+    ok("MCM reset/apply wiring (clock; selector -> 0 on reset)")
 
 
 def main() -> int:

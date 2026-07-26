@@ -294,7 +294,6 @@ Int[] DecayKillIds
 Float[] DecayKillGameTime
 Int[] DecayKillLastStage ; -1 = never applied
 Int DecayKillSlotCount = 0
-Float Property DecaySyncBackoffUntil = 0.0 Auto ; real-time; LooksMenu sync fail backoff (CorpseDecay NoWait path)
 
 ; Slice E2–E5 — soft Necromantic scene CustomEvents (FormID 0x800). No esp master.
 ; E4/E5: Named toast banks + parallel Intimacy_*_Audio.txt (same-index delivery).

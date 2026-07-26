@@ -195,27 +195,24 @@ Function DispatchListeners()
 		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — Victims missing")
 	EndIf
 
-	; AMBIENT DECAY DISPATCH DISABLED — SyncOverlaysFromKillerScanSnapshot's "unchanged"
-	; stamp trap (a corpse at max stage is never revisited) plus the confirmed inability
-	; of QueueUpdate to render body overlays on a never-disabled corpse made this whole
-	; path produce nothing reliable to test against. Simplifying to MCM-only. Re-enable
-	; only after the overlays are confirmed working end-to-end via the MCM path.
-	; Overlays throttled — LooksMenu Wait must never run on this stack.
-	; Only every 4th completed tick (busy skips never reach here).
-	;If (ScanTick % 4) == 0
-	;	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	;	If decay
-	;		Debug.Trace("PickmansWhisper: KillerScan Dispatch → CorpseDecay SyncOverlays tick=" + ScanTick + " dead=" + ScanDeadCount)
-	;		decay.CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot", None)
-	;	Else
-	;		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — CorpseDecay missing")
-	;	EndIf
-	;EndIf
+	; Ambient decay — resolve each ScanDead corpse's want-vs-last stage and apply on a
+	; mismatch (SyncDecayForKnifeCorpse; identical logic to the MCM Set/Reset path, no
+	; separate rate-limit/backoff of its own). Overlays throttled — LooksMenu Wait must
+	; never run on this stack. Only every 4th completed tick (busy skips never reach here).
+	If (ScanTick % 4) == 0
+		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+		If decay
+			Debug.Trace("PickmansWhisper: KillerScan Dispatch → CorpseDecay SyncOverlays tick=" + ScanTick + " dead=" + ScanDeadCount)
+			decay.CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot", None)
+		Else
+			Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — CorpseDecay missing")
+		EndIf
+	EndIf
 	; MCM Set/Reset decay stage still needs a reliable trigger though — it queues a
 	; paint via QueueAimedDecayApply and hopes VictimsScript.OnMCMMenuClose (an MCM
 	; broadcast event) fires to apply it. Confirmed in testing that broadcast is not
 	; reliable: a whole session of Set-stage clicks never produced a single apply, not
-	; even the face mask. This tiny check is independent of the disabled ambient sweep
+	; even the face mask. This tiny check is independent of the throttled ambient sweep
 	; above — every tick, not throttled, since it's a no-op except right after a button
 	; click (one Bool + one Actor null check when nothing is pending).
 	PickmansWhisperCorpseDecayScript decayPending = CorpseDecay()

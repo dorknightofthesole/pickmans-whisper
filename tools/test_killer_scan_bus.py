@@ -101,19 +101,15 @@ def test_killer_scan_producer() -> None:
         fail("DispatchListeners must CallFunctionNoWait HandleKillerScanKnifeAimWarm")
     if i_cadence < 0:
         fail("DispatchListeners must CallFunctionNoWait OnKillerScanCadence")
-    # AMBIENT DECAY DISPATCH DISABLED (deliberately, "for now") — the "unchanged" stamp
-    # trap plus QueueUpdate's confirmed inability to render body overlays on a never-
-    # disabled corpse made this path untestable. Simplified to MCM-only: Set/Reset decay
-    # stage still applies immediately via QueueAimedDecayApply → OnMCMMenuClose, fully
-    # independent of this dispatch. Lock that the call is commented out, not deleted.
+    # Ambient decay dispatch re-enabled (P2 refactor) — throttled to every 4th tick,
+    # calling SyncOverlaysFromKillerScanSnapshot which itself just applies
+    # SyncDecayForKnifeCorpse's want-vs-last comparison per tracked dead corpse.
     active_overlay_lines = [
         ln for ln in dispatch.splitlines()
         if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' in ln and not ln.strip().startswith(";")
     ]
-    if active_overlay_lines:
-        fail("DispatchListeners must NOT actively CallFunctionNoWait SyncOverlaysFromKillerScanSnapshot (disabled — MCM-only for now)")
-    if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' not in dispatch:
-        fail("DispatchListeners must still contain the SyncOverlaysFromKillerScanSnapshot call, commented out (not deleted)")
+    if not active_overlay_lines:
+        fail("DispatchListeners must actively CallFunctionNoWait SyncOverlaysFromKillerScanSnapshot (ambient decay re-enabled)")
     if "NoteFromKillerScanSnapshot" not in dispatch:
         fail("DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
     if "OnKillerScanDeadlines" not in dispatch:

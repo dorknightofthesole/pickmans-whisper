@@ -111,19 +111,17 @@ def test_killscan_sync() -> None:
     overlay = extract_function(decay, "SyncOverlaysFromKillerScanSnapshot")
     if "SyncDecayForKnifeCorpse" not in overlay:
         fail("SyncOverlaysFromKillerScanSnapshot must SyncDecayForKnifeCorpse")
-    if "DecaySyncBackoffUntil" not in overlay:
-        fail("SyncOverlaysFromKillerScanSnapshot must backoff on LooksMenu apply failure")
+    if "DecaySyncBackoffUntil" in overlay:
+        fail("SyncOverlaysFromKillerScanSnapshot must not have its own backoff (simplified P2 refactor)")
     if "FindActors" in overlay:
         fail("SyncOverlaysFromKillerScanSnapshot must not FindActors")
     if "EnsureDecayForTrackedVictim" not in overlay:
         fail("SyncOverlaysFromKillerScanSnapshot must stamp tracked victims without overlays first")
     for needle in (
-        "CorpseDecay sync skip | rate-limit",
         "CorpseDecay sync skip | ScanDead empty",
         "CorpseDecay sync skip | already running",
         "CorpseDecay sync begin",
         "CorpseDecay sync done",
-        "CorpseDecay sync apply",
     ):
         if needle not in overlay:
             fail(f"SyncOverlaysFromKillerScanSnapshot must Trace {needle!r} (no silent skip)")
@@ -172,22 +170,16 @@ def test_killscan_sync() -> None:
     killer = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
         encoding="utf-8", errors="replace"
     )
-    # AMBIENT DECAY DISPATCH DISABLED (deliberately) — the "unchanged" stamp trap plus
-    # QueueUpdate's confirmed inability to render body overlays on a never-disabled
-    # corpse made this path untestable. Simplified to MCM-only for now: Set/Reset decay
-    # stage still applies immediately via QueueAimedDecayApply → OnMCMMenuClose, fully
-    # independent of this dispatch. Lock that the call stays commented out, not gone —
-    # it should come back once overlays are confirmed working end-to-end via MCM.
+    # Ambient decay dispatch re-enabled (P2 refactor) — throttled to every 4th tick,
+    # calling the same SyncDecayForKnifeCorpse want-vs-last logic as the MCM path.
     active_dispatch_lines = [
         ln for ln in killer.splitlines()
         if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' in ln and not ln.strip().startswith(";")
     ]
-    if active_dispatch_lines:
-        fail("KillerScan must NOT actively dispatch SyncOverlaysFromKillerScanSnapshot (disabled — MCM-only for now)")
-    if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' not in killer:
-        fail("KillerScan Dispatch → CorpseDecay SyncOverlays call must still exist, commented out (not deleted)")
-    if "AMBIENT DECAY DISPATCH DISABLED" not in killer:
-        fail("KillerScan must document why the CorpseDecay dispatch is commented out")
+    if not active_dispatch_lines:
+        fail("KillerScan must actively dispatch SyncOverlaysFromKillerScanSnapshot (ambient decay re-enabled)")
+    if "(ScanTick % 4) == 0" not in killer:
+        fail("KillerScan ambient decay dispatch must stay throttled to every 4th tick")
     bed = BED.read_text(encoding="utf-8", errors="replace")
     if "StampDecayKill" in bed:
         fail("BedGift must not StampDecayKill (hallucination stays out of kill registry)")
@@ -376,8 +368,6 @@ def test_mcm_decay_stage_row() -> None:
         fail("MCMAdvanceAimedDecayStage must NOT ApplyDecayStageOverlays")
     if "QueueAimedDecayAdvance" not in mcm_adv:
         fail("MCMAdvanceAimedDecayStage must QueueAimedDecayAdvance")
-    if "NoteDecayClockChangedForSync" not in prep:
-        fail("PrepAimedDecayStage must NoteDecayClockChangedForSync (clear sync rate-limit)")
     if "ArmMcmForceApply" in prep or "ForceApplyMcmDecayStage" in prep:
         fail("PrepAimedDecayStage must not use MCM ForceApply")
     close = extract_function(victims, "OnMCMMenuClose")
@@ -394,13 +384,13 @@ def test_mcm_decay_stage_row() -> None:
         fail("CorpseDecay must not own MCM force-apply timer (use menu-close NoWait)")
     if "StartTimer(" in decay:
         fail("CorpseDecay must not StartTimer (Killer Orchestrator)")
-    if "Function NoteDecayClockChangedForSync" not in decay:
-        fail("CorpseDecay must NoteDecayClockChangedForSync")
+    if "NoteDecayClockChangedForSync" in decay:
+        fail("CorpseDecay must not NoteDecayClockChangedForSync (dead rate-limit reset, removed in P2 refactor)")
     # OnMCMMenuClose (an MCM broadcast event) is not a reliable trigger — confirmed in
     # testing that RunPendingAimedDecayApply can go a whole session without firing even
     # once via that path. KillerScan's own tick is the fallback: cheap, no timer owned
-    # by CorpseDecay (respects Killer Orchestrator), and independent of the disabled
-    # ambient sweep so it survives even with SyncOverlaysFromKillerScanSnapshot off.
+    # by CorpseDecay (respects Killer Orchestrator), and independent of the ambient
+    # sweep so it still applies MCM Set/Reset clicks promptly between throttled ticks.
     check_pending = extract_function(decay, "CheckPendingAimedDecayApply")
     if "PendingAimedDecayActor" not in check_pending:
         fail("CheckPendingAimedDecayApply must check PendingAimedDecayActor")

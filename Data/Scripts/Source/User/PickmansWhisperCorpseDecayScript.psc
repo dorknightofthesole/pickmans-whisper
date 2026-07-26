@@ -76,8 +76,6 @@ PickmansWhisperKillerScanScript Function KillerScan()
 	Return (Self as Quest) as PickmansWhisperKillerScanScript
 EndFunction
 
-Float LastOverlaySyncReal = 0.0
-Float OVERLAY_SYNC_MIN_SECONDS = 8.0
 ; CallFunctionNoWait + LooksMenu Utility.Wait re-enters this script — overlapping
 ; SyncOverlays thrashed LastStage / never finished stage 4 Black. One flight at a time.
 Bool OverlaySyncBusy = False
@@ -101,15 +99,6 @@ Int AimedDecayApplyCode = 2 ; bump when apply path changes — prove PEX loaded 
 
 ; Victims MCM Set/Reset moves the kill clock, then QueueAimedDecayApply paints that corpse
 ; after MCM closes. Ambient KillerScan sync remains for natural hour progression.
-Function NoteDecayClockChangedForSync()
-	LastOverlaySyncReal = 0.0
-	PickmansWhisperMainQuestScript m = Main()
-	If m
-		m.DecaySyncBackoffUntil = 0.0
-	EndIf
-	Debug.Trace("PickmansWhisper: CorpseDecay NoteDecayClockChangedForSync — rate-limit/backoff cleared")
-EndFunction
-
 ; MCM harness: latch aimed corpse; kick NoWait if already out of menus, else OnMCMMenuClose / Sync.
 Function QueueAimedDecayApply(Actor akCorpse)
 	If !akCorpse
@@ -117,7 +106,6 @@ Function QueueAimedDecayApply(Actor akCorpse)
 		Return
 	EndIf
 	PendingAimedDecayActor = akCorpse
-	NoteDecayClockChangedForSync()
 	Debug.Trace("PickmansWhisper: QueueAimedDecayApply formId=" + akCorpse.GetFormID() + " code=" + AimedDecayApplyCode)
 	If !Utility.IsInMenuMode()
 		CallFunctionNoWait("RunPendingAimedDecayApply", None)
@@ -183,6 +171,11 @@ EndFunction
 
 ; Kicked via KillerScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
 ; Consumes KillerScan.ScanDead (TargetSnapshot) — never FindActors here. Dead-only feature.
+; Simplified P2 refactor: no rate-limit/backoff of its own — the KillerScan dispatch tick
+; throttle (every 4th tick) plus OverlaySyncBusy below are the only gates. For each dead
+; corpse this just asks "what stage do you want, what stage did we last paint" and lets
+; SyncDecayForKnifeCorpse (the same function the MCM Set/Reset path calls) apply on a
+; mismatch and no-op when they already match — identical logic, ambient or MCM-driven.
 Function SyncOverlaysFromKillerScanSnapshot()
 	If Utility.IsInMenuMode()
 		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | in menu")
@@ -204,20 +197,11 @@ Function SyncOverlaysFromKillerScanSnapshot()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	; Real-time resets to ~0 on every new game process, but these are saved fields —
+	; Real-time resets to ~0 on every new game process, but this is a saved field —
 	; a stale value from a longer previous session makes (now - stale) negative,
 	; permanently reading as "still within the window" for the rest of THIS session.
-	; This is exactly why the ambient sync could go an entire session without ever
-	; reaching "sync begin" even once: rate-limit/busy/backoff all looked perpetually
-	; active against a real-time reference that belonged to a different process.
 	If OverlaySyncBusySince > now
 		OverlaySyncBusySince = 0.0
-	EndIf
-	If LastOverlaySyncReal > now
-		LastOverlaySyncReal = 0.0
-	EndIf
-	If m.DecaySyncBackoffUntil > now
-		m.DecaySyncBackoffUntil = 0.0
 	EndIf
 	If OverlaySyncBusy
 		If (now - OverlaySyncBusySince) < OVERLAY_SYNC_BUSY_MAX_SECONDS
@@ -227,17 +211,8 @@ Function SyncOverlaysFromKillerScanSnapshot()
 		Debug.Trace("PickmansWhisper: WARN CorpseDecay OverlaySyncBusy force-clear after " + OVERLAY_SYNC_BUSY_MAX_SECONDS + "s")
 		OverlaySyncBusy = False
 	EndIf
-	If now < m.DecaySyncBackoffUntil
-		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | backoff")
-		Return
-	EndIf
-	If (now - LastOverlaySyncReal) < OVERLAY_SYNC_MIN_SECONDS
-		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | rate-limit (" + OVERLAY_SYNC_MIN_SECONDS + "s)")
-		Return
-	EndIf
 	OverlaySyncBusy = True
 	OverlaySyncBusySince = now
-	LastOverlaySyncReal = now
 
 	PickmansWhisperKillerScanScript scan = KillerScan()
 	If !scan
@@ -259,10 +234,7 @@ Function SyncOverlaysFromKillerScanSnapshot()
 	EndIf
 	Debug.Trace("PickmansWhisper: CorpseDecay sync begin dead=" + deadCount + " consider=" + n + " code=" + AimedDecayApplyCode)
 	Int i = 0
-	Bool anyFail = False
 	Int stamped = 0
-	Int appliedN = 0
-	Int unchangedN = 0
 	While i < n
 		Actor ak = dead[i]
 		If ak && ak != player && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
@@ -272,38 +244,14 @@ Function SyncOverlaysFromKillerScanSnapshot()
 			EndIf
 			If m.FindDecayKillSlot(id) >= 0
 				stamped += 1
-				Int want = m.ResolveDecayStageForKill(id)
-				Int before = m.GetDecayKillLastStage(id)
-				If want < 0
-					Debug.Trace("PickmansWhisper: CorpseDecay sync skip resolve formId=" + id)
-				ElseIf want == before
-					unchangedN += 1
-				Else
-					Debug.Trace("PickmansWhisper: CorpseDecay sync apply formId=" + id + " want=" + want + " last=" + before)
-					SyncDecayForKnifeCorpse(ak)
-					Int after = m.GetDecayKillLastStage(id)
-					If after == want
-						appliedN += 1
-					ElseIf !IsDecayVisualsEnabled()
-						; Intentional skip (visuals off), not a failure — SyncDecayForKnifeCorpse
-						; deliberately does not stamp LastStage in this case (see its own
-						; comment). Treating this as anyFail triggered a false ERROR + 30s
-						; backoff on every single sync while visuals stayed off.
-						unchangedN += 1
-					ElseIf before != want && after != want
-						anyFail = True
-						Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync apply failed formId=" + id + " want=" + want + " after=" + after + " | " + LastCorpseDecayStatus)
-					EndIf
-				EndIf
+				; want vs last — SyncDecayForKnifeCorpse itself re-resolves both and
+				; no-ops when they already match (see its own "stage==last" skip trace).
+				SyncDecayForKnifeCorpse(ak)
 			EndIf
 		EndIf
 		i += 1
 	EndWhile
-	Debug.Trace("PickmansWhisper: CorpseDecay sync done stamped=" + stamped + " applied=" + appliedN + " unchanged=" + unchangedN + " fail=" + (anyFail as Int))
-	If anyFail
-		m.DecaySyncBackoffUntil = now + 30.0
-		Debug.Trace("PickmansWhisper: decay overlay sync backoff 30s (LooksMenu apply failed — voice path stays free)")
-	EndIf
+	Debug.Trace("PickmansWhisper: CorpseDecay sync done stamped=" + stamped)
 	OverlaySyncBusy = False
 EndFunction
 
