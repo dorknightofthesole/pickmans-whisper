@@ -162,7 +162,7 @@ def test_decay_script(decay: str) -> None:
     if "visuals OFF" not in stage_fn:
         fail("ApplyDecayStageOverlays must soft-succeed when visuals OFF (stage clock still advances)")
     if "Function IsDecayVisualsEnabled" not in decay:
-        fail("CorpseDecay must IsDecayVisualsEnabled (MCM bDecayVisuals default off)")
+        fail("CorpseDecay must IsDecayVisualsEnabled (MCM bDecayVisuals, default on)")
     if 'bDecayVisuals:Victims' not in decay:
         fail("IsDecayVisualsEnabled must read bDecayVisuals:Victims")
     bed = extract_function(decay, "ApplyBedGiftDecayOverlays")
@@ -191,6 +191,21 @@ def test_decay_script(decay: str) -> None:
         fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage BEFORE body skin apply")
     if "body skipped" not in stage_fn:
         fail("ApplyDecayStageOverlays must soft-skip body (face still succeeds) when skins/deps fail")
+    if "Function StripDecayCorpseClothing" not in decay:
+        fail("CorpseDecay must StripDecayCorpseClothing (ambient victims aren't nude like Bed Gift)")
+    if "StripDecayCorpseClothing" not in stage_fn:
+        fail("ApplyDecayStageOverlays must StripDecayCorpseClothing before body skins (worn armor hides the tint)")
+    strip_idx = stage_fn.find("StripDecayCorpseClothing")
+    apply_skins_idx = stage_fn.rfind("ApplyTintedAllSkinTemplatesKeepExisting")
+    if strip_idx < 0 or apply_skins_idx < 0 or strip_idx > apply_skins_idx:
+        fail("ApplyDecayStageOverlays must StripDecayCorpseClothing BEFORE applying body skins")
+    # ForceCorpseMeshRefresh (Disable/Enable) was tried and reverted — it did make the
+    # body overlay render, but tearing down/rebuilding an ambient corpse's 3D while
+    # she's actively ragdolled broke IsDismembered ("Cannot find limb") and visually
+    # looked like the NPC was being killed again. Must not come back without a
+    # refresh method that doesn't touch the skeleton.
+    if "Function ForceCorpseMeshRefresh" in decay:
+        fail("ForceCorpseMeshRefresh was reverted (killed-again visual bug) — must not be reintroduced")
     if "Function IsCorpseLimbsIntact" not in decay:
         fail("CorpseDecay must IsCorpseLimbsIntact")
     if "Function QueueStripBodyDecayAfterDismember" not in decay:
@@ -246,6 +261,17 @@ def test_decay_script(decay: str) -> None:
     if "ApplyBedGiftDecayOverlays" not in debug_force:
         fail("DebugForceCorpseDecayOverlays must use ApplyBedGiftDecayOverlays (same path)")
     ok("CorpseDecayScript ROF/LooksMenu tinted apply helper")
+
+    # ReapplyDecayBodySkinsOnly (periodic body-skin self-heal) was tried and reverted —
+    # confirmed QueueUpdate still never composites a new body texture onto an already-
+    # loaded, never-disabled corpse; the retry just visibly flickered and settled back
+    # to the base skin every time. Ambient body-texture decay is out of reach without a
+    # refresh method that doesn't touch the skeleton (same conclusion as
+    # ForceCorpseMeshRefresh above). Must not come back without solving that first.
+    if "ReapplyDecayBodySkinsOnly" in decay:
+        fail("ReapplyDecayBodySkinsOnly was reverted (confirmed QueueUpdate can't render it — just flickers) — must not be reintroduced")
+    if "DECAY_BODY_REAPPLY_COOLDOWN_SECONDS" in decay:
+        fail("DECAY_BODY_REAPPLY_COOLDOWN_SECONDS was reverted alongside ReapplyDecayBodySkinsOnly")
 
 
 def test_wiring(bed: str, main: str) -> None:
@@ -313,6 +339,8 @@ def test_wiring(bed: str, main: str) -> None:
         fail("user scripts must not call PlayImpactEffect for Slice H")
     if "bedGiftWoundAlpha" not in main or "GetBedGiftWoundAlpha" not in main:
         fail("Main must load/expose bedGiftWoundAlpha for bed gift wound opacity")
+    if "DecayKillLastBodyReapplyReal" in main:
+        fail("DecayKillLastBodyReapplyReal was reverted with ReapplyDecayBodySkinsOnly — must not be reintroduced")
     ok("BedGift + Main CorpseDecay wiring")
 
 

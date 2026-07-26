@@ -468,8 +468,11 @@ def test_mcm() -> None:
     ini = MCM_SETTINGS.read_text(encoding="utf-8")
     if "[Victims]" not in ini or "sVictimName=" not in ini:
         fail("settings.ini missing [Victims]")
-    if "bDecayVisuals=0" not in ini:
-        fail("settings.ini must default bDecayVisuals=0 (corpse decay visuals off)")
+    # Was off by default; flipped on because every MCM config.json change during
+    # active dev (new buttons, etc.) can make MCM re-register settings from the
+    # file defaults, silently resetting a live-toggled value back to off.
+    if "bDecayVisuals=1" not in ini:
+        fail("settings.ini must default bDecayVisuals=1 (corpse decay visuals on)")
     mcm_cfg = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json").read_text(
         encoding="utf-8", errors="replace"
     )

@@ -252,12 +252,15 @@ def test_lab_script(lab: str) -> None:
         if "IsInMenuMode" not in fn_body:
             fail(f"{fn_name} must skip Utility.Wait while MCM/menu is open")
     mod_cfg = (ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt").read_text(encoding="utf-8")
+    # DIAGNOSTIC SWAP (2026-07-26): body skins temporarily point at ROF DeadOverlays wound
+    # templates instead of porcOverlays SkinTexture_16 — see ModConfig.txt comment.
+    diag_skins = "Female_Front_Wound_3+Female_Back_Wound_3+Female_Arm_Wound"
     expected_stages = [
         ("decayStage0", "Freshly Deceased", "0.650", "0.520", "0.480", "1.0", "0", "none", False),
-        ("decayStage1", "Pallor Mortis", "0.300", "0.750", "0.720", "1.0", "0.25", "SkinTexture_16", False),
-        ("decayStage2", "Livor Mortis", "0.480", "0.140", "0.300", "1.0", "2", "SkinTexture_16", False),
-        ("decayStage3", "Putrefaction", "0.380", "0.820", "0.480", "1.0", "48", "SkinTexture_16", False),
-        ("decayStage4", "Black Putrefaction", "0.149", "0.118", "0.102", "1.0", "240", "SkinTexture_16", False),
+        ("decayStage1", "Pallor Mortis", "0.300", "0.750", "0.720", "1.0", "0.25", diag_skins, False),
+        ("decayStage2", "Livor Mortis", "0.480", "0.140", "0.300", "1.0", "2", diag_skins, False),
+        ("decayStage3", "Putrefaction", "0.380", "0.820", "0.480", "1.0", "48", diag_skins, False),
+        ("decayStage4", "Black Putrefaction", "0.149", "0.118", "0.102", "1.0", "240", diag_skins, False),
     ]
     for key, name, r, g, b, a, start_h, skins, scars in expected_stages:
         line = next((ln for ln in mod_cfg.splitlines() if ln.startswith(key + "=")), "")

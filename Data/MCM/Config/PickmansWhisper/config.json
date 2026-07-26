@@ -158,6 +158,17 @@
 					}
 				},
 				{
+					"text": "Test: reset bond (debug)",
+					"type": "button",
+					"help": "Clears BondStarted so the next bond poll re-triggers StartBond and the bond toast — lets you retest bonding without hunting for a pre-bond save.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "DebugResetBond",
+						"scriptName": "PickmansWhisperMainQuestScript"
+					}
+				},
+				{
 					"text": "System",
 					"type": "section"
 				},
@@ -389,7 +400,7 @@
 					"id": "bDecayVisuals:Victims",
 					"text": "Corpse decay visuals",
 					"type": "switcher",
-					"help": "Off by default. When on: LooksMenu body skins + face masks follow the decay stage on knife/world corpses (can conflict with Real HD Faces — load Real HD after Pickman's Whisper). When off: murder clock and stage labels still advance; no world-corpse paint. Bed gift vignette still paints.",
+					"help": "On by default. When on: LooksMenu body skins + face masks follow the decay stage on knife/world corpses (can conflict with Real HD Faces — load Real HD after Pickman's Whisper). When off: murder clock and stage labels still advance; no world-corpse paint. Bed gift vignette still paints.",
 					"valueOptions": {
 						"sourceType": "ModSettingBool"
 					}

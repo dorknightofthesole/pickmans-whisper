@@ -295,6 +295,36 @@ Function MCMNameAimedVictim()
 	RefreshVictimsPanel(True)
 EndFunction
 
+; Shared aim+validity gate for the two decay clock mutators below (Reset kill clock /
+; Set decay stage) — same requirements either way: a live aim cache pointing at a dead,
+; gameplay-eligible corpse with a usable FormID. Sets m.LastVictimStatus and traces a
+; reason on failure so both callers report through the same DiagNotify path; returns
+; None on any failure.
+Actor Function ResolveValidDecayTarget(PickmansWhisperMainQuestScript m, String asStatusLabel, String asFnName)
+	Actor player = Game.GetPlayer()
+	Actor aimed = ResolveVictimsAimActor()
+	If !aimed || aimed == player
+		m.LastVictimStatus = asStatusLabel + ": no aim — face a corpse in-world ~2s, then retry"
+		Debug.Trace("PickmansWhisper: ERROR " + asFnName + " — no aim cache")
+		Return None
+	EndIf
+	If !aimed.IsDead()
+		m.LastVictimStatus = asStatusLabel + ": " + m.GetActorDisplayName(aimed) + " is alive"
+		Debug.Trace("PickmansWhisper: " + asFnName + " skip — target alive")
+		Return None
+	EndIf
+	If m.IsNonGameplayCorpse(aimed)
+		m.LastVictimStatus = asStatusLabel + ": skip non-gameplay corpse"
+		Debug.Trace("PickmansWhisper: " + asFnName + " skip — non-gameplay")
+		Return None
+	EndIf
+	If aimed.GetFormID() == 0
+		m.LastVictimStatus = asStatusLabel + ": bad FormID"
+		Return None
+	EndIf
+	Return aimed
+EndFunction
+
 ; Murder time = now; LastStage = -1; MCM stage selector → 0. No overlays here.
 Bool Function ResetAimedDecayKillClock()
 	PickmansWhisperMainQuestScript m = Main()
@@ -302,28 +332,11 @@ Bool Function ResetAimedDecayKillClock()
 		Debug.Trace("PickmansWhisper: ERROR ResetAimedDecayKillClock — Main missing")
 		Return False
 	EndIf
-	Actor player = Game.GetPlayer()
-	Actor aimed = ResolveVictimsAimActor()
-	If !aimed || aimed == player
-		m.LastVictimStatus = "reset kill clock: no aim — face a corpse in-world ~2s, then retry"
-		Debug.Trace("PickmansWhisper: ERROR ResetAimedDecayKillClock — no aim cache")
-		Return False
-	EndIf
-	If !aimed.IsDead()
-		m.LastVictimStatus = "reset kill clock: " + m.GetActorDisplayName(aimed) + " is alive"
-		Debug.Trace("PickmansWhisper: ResetAimedDecayKillClock skip — target alive")
-		Return False
-	EndIf
-	If m.IsNonGameplayCorpse(aimed)
-		m.LastVictimStatus = "reset kill clock: skip non-gameplay corpse"
-		Debug.Trace("PickmansWhisper: ResetAimedDecayKillClock skip — non-gameplay")
+	Actor aimed = ResolveValidDecayTarget(m, "reset kill clock", "ResetAimedDecayKillClock")
+	If !aimed
 		Return False
 	EndIf
 	Int formId = aimed.GetFormID()
-	If formId == 0
-		m.LastVictimStatus = "reset kill clock: bad FormID"
-		Return False
-	EndIf
 	; StampDecayKill upserts kill time to now and LastStage = -1.
 	m.StampDecayKill(aimed)
 	If m.FindDecayKillSlot(formId) < 0
@@ -356,28 +369,11 @@ Bool Function PrepAimedDecayStage(Int targetStage)
 		Debug.Trace("PickmansWhisper: ERROR PrepAimedDecayStage — bad stage " + targetStage)
 		Return False
 	EndIf
-	Actor player = Game.GetPlayer()
-	Actor aimed = ResolveVictimsAimActor()
-	If !aimed || aimed == player
-		m.LastVictimStatus = "set decay: no aim — face a corpse in-world ~2s, then retry"
-		Debug.Trace("PickmansWhisper: ERROR PrepAimedDecayStage — no aim cache")
-		Return False
-	EndIf
-	If !aimed.IsDead()
-		m.LastVictimStatus = "set decay: " + m.GetActorDisplayName(aimed) + " is alive"
-		Debug.Trace("PickmansWhisper: PrepAimedDecayStage skip — target alive")
-		Return False
-	EndIf
-	If m.IsNonGameplayCorpse(aimed)
-		m.LastVictimStatus = "set decay: skip non-gameplay corpse"
-		Debug.Trace("PickmansWhisper: PrepAimedDecayStage skip — non-gameplay")
+	Actor aimed = ResolveValidDecayTarget(m, "set decay", "PrepAimedDecayStage")
+	If !aimed
 		Return False
 	EndIf
 	Int formId = aimed.GetFormID()
-	If formId == 0
-		m.LastVictimStatus = "set decay: bad FormID"
-		Return False
-	EndIf
 	If !m.DecayStagesReady()
 		m.LoadModConfig()
 	EndIf
@@ -499,50 +495,56 @@ Bool Function AdvanceAimedDecayStage()
 	Return QueueAimedDecayAdvance()
 EndFunction
 
-; MCM test harness — murder time = now; stage selector → 0; KillerScan sync applies.
-; Idempotent — no busy flag (swallowing clicks hid real apply failures).
-Function MCMResetAimedDecayKillClock()
-	Debug.Notification("PW Victims — Reset decay stage CallFunction hit")
-	Debug.Trace("PickmansWhisper: MCMResetAimedDecayKillClock OK")
+; Shared tail for the Set/Reset decay-stage MCM buttons below — both prep the kill
+; clock differently, then report identically: push status, latch the stepper, queue
+; the paint, DiagNotify the result. RefreshMenu wipes live MCM rows, so status must
+; be pushed AFTER it, not before (same order as OnMCMMenuOpen).
+Function FinishMcmDecayStageAction(String asFnName, String asTitle, String asSuccessDetail, Bool abOk, Int aiStepperValue)
 	PickmansWhisperMainQuestScript m = Main()
-	ClearPendingDecayAdvance()
-	Bool ok = ResetAimedDecayKillClock()
 	Actor aimed = ResolveVictimsAimActor()
-	; RefreshMenu wipes live rows — push AFTER wipe (same order as OnMCMMenuOpen).
 	If MCM.IsInstalled() && m
 		MCM.RefreshMenu()
 		PushVictimsAimedOnly()
-		; Keep selector at 0; do not Resolve→sync stepper (can race with Set).
 		m.WriteVictimsStatusToMcm()
 		m.WriteDecayStageStatusToMcmForActor(aimed, False)
-		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", 0)
+		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", aiStepperValue)
 	Else
 		PushVictimsAimedOnly()
 	EndIf
-	If ok && aimed
+	If abOk && aimed
 		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 		If decay
 			decay.QueueAimedDecayApply(aimed)
 		Else
-			Debug.Trace("PickmansWhisper: ERROR MCMResetAimedDecayKillClock — CorpseDecay missing")
+			Debug.Trace("PickmansWhisper: ERROR " + asFnName + " — CorpseDecay missing")
+			Debug.Notification("Pickman's Whisper: CorpseDecay missing — rebuild ESP")
 		EndIf
 	EndIf
 	String status = "(Main missing)"
 	If m
 		status = m.LastVictimStatus
 	EndIf
-	If ok
-		DiagNotify("Pickman's Whisper — Reset decay stage\n\n" + status + "\n\nClose MCM — overlays apply to the aimed corpse within ~1s (stage 0 = no body skins).")
+	If abOk
+		DiagNotify("Pickman's Whisper — " + asTitle + "\n\n" + status + "\n\n" + asSuccessDetail)
 	Else
-		DiagNotify("Pickman's Whisper — Reset decay stage\n\nFailed / skipped:\n" + status)
+		DiagNotify("Pickman's Whisper — " + asTitle + "\n\nFailed / skipped:\n" + status)
 	EndIf
+EndFunction
+
+; MCM test harness — murder time = now; stage selector → 0; KillerScan sync applies.
+; Idempotent — no busy flag (swallowing clicks hid real apply failures).
+Function MCMResetAimedDecayKillClock()
+	Debug.Notification("PW Victims — Reset decay stage CallFunction hit")
+	Debug.Trace("PickmansWhisper: MCMResetAimedDecayKillClock OK")
+	ClearPendingDecayAdvance()
+	Bool ok = ResetAimedDecayKillClock()
+	FinishMcmDecayStageAction("MCMResetAimedDecayKillClock", "Reset decay stage", "Close MCM — overlays apply to the aimed corpse within ~1s (stage 0 = no body skins).", ok, 0)
 EndFunction
 
 ; MCM test harness — set kill age only; core KillerScan sync applies the stage.
 ; Idempotent — double-click re-Preps the same stage; never swallow the click.
 Function MCMApplyAimedDecayStage()
 	Debug.Notification("PW Victims — Set decay stage CallFunction hit")
-	PickmansWhisperMainQuestScript m = Main()
 	Int stage = 0
 	If MCM.IsInstalled()
 		stage = MCM.GetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims")
@@ -559,35 +561,7 @@ Function MCMApplyAimedDecayStage()
 	Debug.Trace("PickmansWhisper: MCMApplyAimedDecayStage OK read stage=" + stage)
 	ClearPendingDecayAdvance()
 	Bool ok = PrepAimedDecayStage(stage)
-	Actor aimed = ResolveVictimsAimActor()
-	; RefreshMenu wipes live rows — push AFTER wipe so Decay stage + Pick stage update.
-	If MCM.IsInstalled() && m
-		MCM.RefreshMenu()
-		PushVictimsAimedOnly()
-		m.WriteVictimsStatusToMcm()
-		m.WriteDecayStageStatusToMcmForActor(aimed, False)
-		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", stage)
-	Else
-		PushVictimsAimedOnly()
-	EndIf
-	If ok && aimed
-		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-		If decay
-			decay.QueueAimedDecayApply(aimed)
-		Else
-			Debug.Trace("PickmansWhisper: ERROR MCMApplyAimedDecayStage — CorpseDecay missing")
-			Debug.Notification("Pickman's Whisper: CorpseDecay missing — rebuild ESP")
-		EndIf
-	EndIf
-	String status = "(Main missing)"
-	If m
-		status = m.LastVictimStatus
-	EndIf
-	If ok
-		DiagNotify("Pickman's Whisper — Set decay stage\n\n" + status + "\n\nClose MCM — overlays apply to the aimed corpse within ~1s (not via KillerScan wait).")
-	Else
-		DiagNotify("Pickman's Whisper — Set decay stage\n\nFailed / skipped:\n" + status)
-	EndIf
+	FinishMcmDecayStageAction("MCMApplyAimedDecayStage", "Set decay stage", "Close MCM — overlays apply to the aimed corpse within ~1s (not via KillerScan wait).", ok, stage)
 EndFunction
 
 ; Legacy +1 MCM — clock +1; KillerScan sync applies overlays.

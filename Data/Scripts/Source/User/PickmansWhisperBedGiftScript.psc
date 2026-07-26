@@ -106,6 +106,12 @@ EndEvent
 ; KillerScan cadence — despawn count sync/cheap. Overlay: arm one-shot (not LooksMenu here).
 Function OnKillerScanDeadlines()
 	Float now = Utility.GetCurrentRealTime()
+	; Real-time resets to ~0 on every new game process, but this is a saved field — a
+	; stale value from a longer previous session would make busyElapsed negative and
+	; never exceed the timeout, deadlocking despawn again exactly like before the fix.
+	If BedOverlaysBusySinceReal > now
+		BedOverlaysBusySinceReal = 0.0
+	EndIf
 	If BedOverlaysAtReal > 0.0 && now >= BedOverlaysAtReal
 		BedOverlaysAtReal = 0.0
 		If HasLiveBedCorpse() && !BedOverlaysApplied && !BedOverlaysBusy

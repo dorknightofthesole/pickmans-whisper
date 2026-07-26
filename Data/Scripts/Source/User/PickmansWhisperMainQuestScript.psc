@@ -6910,6 +6910,22 @@ Function DebugSatiateHunger()
 	DiagNotify("Pickman's Whisper\n\nHunger satiated (debug — no kill required).\n" + line)
 EndFunction
 
+; Debug: BondStarted only ever goes True->never-False in normal play, so there was
+; no way to retest bond-activation behavior (e.g. the "bond active" toast) without
+; hunting for a genuinely pre-bond save. This lets the next RunBondPoll (~4s, since
+; the blade is presumably already equipped) re-trigger StartBond on demand.
+Function DebugResetBond()
+	If !BondStarted
+		DiagNotify("Pickman's Whisper\n\nAlready unbonded — StartBond hasn't fired yet.")
+		Return
+	EndIf
+	BondStarted = False
+	IntroToastShown = False
+	BondStartGameTime = 0.0
+	Debug.Trace("PickmansWhisper: DEBUG bond reset — awaiting next RunBondPoll")
+	DiagNotify("Pickman's Whisper\n\nBond reset (debug). Next bond poll (~4s, if blade is equipped/owned) re-triggers StartBond and the bond toast.")
+EndFunction
+
 Function DebugReloadLines()
 	LoadLineBanks()
 	DiagNotify("Pickman's Whisper — reloaded line banks\n\nTrust (builtin): " + TrustLineCount + "\nHunger (builtin): " + HungerLineCount + "\nPraise (builtin): " + PraiseLineCount + "\n\nNotice stages (files-only):\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)

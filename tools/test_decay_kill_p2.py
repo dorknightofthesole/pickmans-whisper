@@ -172,10 +172,22 @@ def test_killscan_sync() -> None:
     killer = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
         encoding="utf-8", errors="replace"
     )
-    if "Dispatch → CorpseDecay SyncOverlays" not in killer:
-        fail("KillerScan Dispatch must Trace when kicking CorpseDecay SyncOverlays")
-    if "ScanTick % 4" not in killer and "(ScanTick % 4)" not in killer:
-        fail("KillerScan must throttle CorpseDecay sync to every 4th tick")
+    # AMBIENT DECAY DISPATCH DISABLED (deliberately) — the "unchanged" stamp trap plus
+    # QueueUpdate's confirmed inability to render body overlays on a never-disabled
+    # corpse made this path untestable. Simplified to MCM-only for now: Set/Reset decay
+    # stage still applies immediately via QueueAimedDecayApply → OnMCMMenuClose, fully
+    # independent of this dispatch. Lock that the call stays commented out, not gone —
+    # it should come back once overlays are confirmed working end-to-end via MCM.
+    active_dispatch_lines = [
+        ln for ln in killer.splitlines()
+        if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' in ln and not ln.strip().startswith(";")
+    ]
+    if active_dispatch_lines:
+        fail("KillerScan must NOT actively dispatch SyncOverlaysFromKillerScanSnapshot (disabled — MCM-only for now)")
+    if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' not in killer:
+        fail("KillerScan Dispatch → CorpseDecay SyncOverlays call must still exist, commented out (not deleted)")
+    if "AMBIENT DECAY DISPATCH DISABLED" not in killer:
+        fail("KillerScan must document why the CorpseDecay dispatch is commented out")
     bed = BED.read_text(encoding="utf-8", errors="replace")
     if "StampDecayKill" in bed:
         fail("BedGift must not StampDecayKill (hallucination stays out of kill registry)")
@@ -281,10 +293,16 @@ def test_mcm_decay_stage_row() -> None:
         fail("ForceDecayKillClockToStage must pad startHours>0 by 0.001h")
     if "SyncVictimDecayStageStepper" not in main:
         fail("Main must SyncVictimDecayStageStepper (keep Victims stepper current)")
+    # PrepAimedDecayStage / ResetAimedDecayKillClock share aim+validity checks via
+    # ResolveValidDecayTarget instead of duplicating ResolveVictimsAimActor/IsDead()/
+    # IsNonGameplayCorpse in each.
+    validator = extract_function(victims, "ResolveValidDecayTarget")
+    for needle in ("ResolveVictimsAimActor", "IsDead()", "IsNonGameplayCorpse"):
+        if needle not in validator:
+            fail(f"ResolveValidDecayTarget must use {needle}")
     prep = extract_function(victims, "PrepAimedDecayStage")
     for needle in (
-        "ResolveVictimsAimActor",
-        "IsDead()",
+        "ResolveValidDecayTarget",
         "ForceDecayKillClockToStage",
         "SetDecayKillLastStage",
         "StampDecayKill",
@@ -294,6 +312,8 @@ def test_mcm_decay_stage_row() -> None:
     if "ApplyDecayStageOverlays" in prep:
         fail("PrepAimedDecayStage must NOT ApplyDecayStageOverlays (clock only)")
     reset_body = extract_function(victims, "ResetAimedDecayKillClock")
+    if "ResolveValidDecayTarget" not in reset_body:
+        fail("ResetAimedDecayKillClock must use ResolveValidDecayTarget")
     if "StampDecayKill" not in reset_body:
         fail("ResetAimedDecayKillClock must StampDecayKill (murder time = now)")
     if 'iVictimDecayStage:Victims", 0' not in reset_body:
@@ -313,6 +333,20 @@ def test_mcm_decay_stage_row() -> None:
         fail("RunPendingDecayAdvance must NOT ApplyDecayStageOverlays (KillerScan owns apply)")
     if "StartTimer" in run:
         fail("RunPendingDecayAdvance parked — must not StartTimer")
+    # MCMApplyAimedDecayStage / MCMResetAimedDecayKillClock share their report tail
+    # (push status, latch stepper, queue paint, DiagNotify) via FinishMcmDecayStageAction.
+    tail = extract_function(victims, "FinishMcmDecayStageAction")
+    if "QueueAimedDecayApply" not in tail:
+        fail("FinishMcmDecayStageAction must QueueAimedDecayApply (paint aimed corpse after MCM close)")
+    if "DiagNotify(" not in tail:
+        fail("FinishMcmDecayStageAction must DiagNotify result")
+    if "Debug.MessageBox(" in tail:
+        fail("FinishMcmDecayStageAction must not MessageBox")
+    if "WriteDecayStageStatusToMcmForActor(aimed, False)" not in tail:
+        fail("FinishMcmDecayStageAction must not SyncVictimDecayStageStepper mid-button")
+    if "McmDecayButtonBusy" in victims:
+        fail("VictimsScript must not use McmDecayButtonBusy (swallowed Set/Reset)")
+
     mcm_apply = extract_function(victims, "MCMApplyAimedDecayStage")
     if "iVictimDecayStage:Victims" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must read iVictimDecayStage:Victims")
@@ -320,31 +354,23 @@ def test_mcm_decay_stage_row() -> None:
         fail("MCMApplyAimedDecayStage must PrepAimedDecayStage (clock only)")
     if "ApplyDecayStageOverlays" in mcm_apply:
         fail("MCMApplyAimedDecayStage must NOT ApplyDecayStageOverlays (queue CorpseDecay aimed apply)")
-    if "QueueAimedDecayApply" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must QueueAimedDecayApply (paint aimed corpse after MCM close)")
+    if "FinishMcmDecayStageAction" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must FinishMcmDecayStageAction (shared report tail)")
     if "ForceApply" in mcm_apply or "ForceApply" in prep:
         fail("MCM ForceApply path retired — clock + QueueAimedDecayApply")
     if "PARKED" in mcm_apply:
         fail("MCMApplyAimedDecayStage DiagNotify must not say PARKED")
     if "within ~1s" not in mcm_apply.lower() and "aimed corpse" not in mcm_apply.lower():
         fail("MCMApplyAimedDecayStage DiagNotify must say aimed corpse applies within ~1s")
-    if "DiagNotify(" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must DiagNotify result")
-    if "Debug.MessageBox(" in mcm_apply:
-        fail("MCMApplyAimedDecayStage must not MessageBox")
-    if "McmDecayButtonBusy" in victims:
-        fail("VictimsScript must not use McmDecayButtonBusy (swallowed Set/Reset)")
-    if "WriteDecayStageStatusToMcmForActor(aimed, False)" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must not SyncVictimDecayStageStepper mid-button")
     mcm_reset = extract_function(victims, "MCMResetAimedDecayKillClock")
     if "ResetAimedDecayKillClock" not in mcm_reset:
         fail("MCMResetAimedDecayKillClock must ResetAimedDecayKillClock")
-    if 'iVictimDecayStage:Victims", 0' not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must force selector to stage 0")
+    if "FinishMcmDecayStageAction" not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must FinishMcmDecayStageAction (shared report tail)")
+    if "FinishMcmDecayStageAction" in mcm_reset and ", 0)" not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must force selector to stage 0 (FinishMcmDecayStageAction(..., 0))")
     if "ApplyDecayStageOverlays" in mcm_reset:
         fail("MCMResetAimedDecayKillClock must NOT ApplyDecayStageOverlays")
-    if "QueueAimedDecayApply" not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must QueueAimedDecayApply")
     mcm_adv = extract_function(victims, "MCMAdvanceAimedDecayStage")
     if "ApplyDecayStageOverlays" in mcm_adv:
         fail("MCMAdvanceAimedDecayStage must NOT ApplyDecayStageOverlays")
@@ -370,6 +396,28 @@ def test_mcm_decay_stage_row() -> None:
         fail("CorpseDecay must not StartTimer (Killer Orchestrator)")
     if "Function NoteDecayClockChangedForSync" not in decay:
         fail("CorpseDecay must NoteDecayClockChangedForSync")
+    # OnMCMMenuClose (an MCM broadcast event) is not a reliable trigger — confirmed in
+    # testing that RunPendingAimedDecayApply can go a whole session without firing even
+    # once via that path. KillerScan's own tick is the fallback: cheap, no timer owned
+    # by CorpseDecay (respects Killer Orchestrator), and independent of the disabled
+    # ambient sweep so it survives even with SyncOverlaysFromKillerScanSnapshot off.
+    check_pending = extract_function(decay, "CheckPendingAimedDecayApply")
+    if "PendingAimedDecayActor" not in check_pending:
+        fail("CheckPendingAimedDecayApply must check PendingAimedDecayActor")
+    if "IsInMenuMode" not in check_pending:
+        fail("CheckPendingAimedDecayApply must gate on Utility.IsInMenuMode")
+    if "RunPendingAimedDecayApply" not in check_pending:
+        fail("CheckPendingAimedDecayApply must call RunPendingAimedDecayApply")
+    killer_full = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    dispatch_full = extract_function(killer_full, "DispatchListeners")
+    active_check_lines = [
+        ln for ln in dispatch_full.splitlines()
+        if 'CallFunctionNoWait("CheckPendingAimedDecayApply"' in ln and not ln.strip().startswith(";")
+    ]
+    if not active_check_lines:
+        fail("KillerScan DispatchListeners must actively CallFunctionNoWait CheckPendingAimedDecayApply")
     if "TIMER_DECAY_ADVANCE" not in victims:
         fail("VictimsScript must declare TIMER_DECAY_ADVANCE (CancelTimer only)")
     if "StartTimer(" in victims:

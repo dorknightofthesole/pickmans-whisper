@@ -155,12 +155,18 @@ def test_mcm_reset_and_apply_wiring() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
     cfg = MCM_CONFIG.read_text(encoding="utf-8")
 
+    # ResetAimedDecayKillClock / PrepAimedDecayStage share aim+validity checks via
+    # ResolveValidDecayTarget instead of each duplicating ResolveVictimsAimActor etc.
+    validator = extract_function(victims, "ResolveValidDecayTarget")
+    if "ResolveVictimsAimActor" not in validator:
+        fail("ResolveValidDecayTarget must use ResolveVictimsAimActor")
+
     reset_body = extract_function(victims, "ResetAimedDecayKillClock")
     for needle in (
         "StampDecayKill",
         'iVictimDecayStage:Victims", 0',
         "NoteDecayClockChangedForSync",
-        "ResolveVictimsAimActor",
+        "ResolveValidDecayTarget",
     ):
         if needle not in reset_body:
             fail(f"ResetAimedDecayKillClock must use {needle}")
@@ -169,19 +175,36 @@ def test_mcm_reset_and_apply_wiring() -> None:
     if "ArmMcmForceApply" in reset_body or "ForceApply" in reset_body:
         fail("ResetAimedDecayKillClock must not use MCM ForceApply")
 
+    # MCMApplyAimedDecayStage / MCMResetAimedDecayKillClock share their report tail
+    # (push status, latch stepper, queue paint, DiagNotify) via FinishMcmDecayStageAction.
+    tail = extract_function(victims, "FinishMcmDecayStageAction")
+    for needle in (
+        "QueueAimedDecayApply",
+        "DiagNotify(",
+        "MCM.RefreshMenu()",
+        "WriteDecayStageStatusToMcmForActor(aimed, False)",
+        "SetModSettingInt(MOD_NAME, \"iVictimDecayStage:Victims\", aiStepperValue)",
+    ):
+        if needle not in tail:
+            fail(f"FinishMcmDecayStageAction must use {needle}")
+    if "ApplyDecayStageOverlays" in tail:
+        fail("FinishMcmDecayStageAction must NOT ApplyDecayStageOverlays")
+    if "ignored (busy)" in tail:
+        fail("Set/Reset must never ignore clicks as busy")
+    refresh_i = tail.find("MCM.RefreshMenu()")
+    write_i = tail.find("WriteDecayStageStatusToMcmForActor(aimed, False)")
+    if refresh_i < 0 or write_i < 0 or write_i < refresh_i:
+        fail("FinishMcmDecayStageAction must WriteDecayStageStatus AFTER RefreshMenu wipe")
+
     mcm_reset = extract_function(victims, "MCMResetAimedDecayKillClock")
     if "ResetAimedDecayKillClock" not in mcm_reset:
         fail("MCMResetAimedDecayKillClock must call ResetAimedDecayKillClock")
-    if 'iVictimDecayStage:Victims", 0' not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must force stage selector to 0")
-    if "QueueAimedDecayApply" not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must QueueAimedDecayApply")
+    if "FinishMcmDecayStageAction" not in mcm_reset:
+        fail("MCMResetAimedDecayKillClock must FinishMcmDecayStageAction")
     if "PARKED" in mcm_reset:
         fail("MCMResetAimedDecayKillClock DiagNotify must not say PARKED (H P2)")
     if "aimed corpse" not in mcm_reset.lower() and "within ~1s" not in mcm_reset.lower():
         fail("MCMResetAimedDecayKillClock DiagNotify must say aimed corpse / ~1s apply")
-    if "DiagNotify(" not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must DiagNotify result")
     if "ApplyDecayStageOverlays" in mcm_reset:
         fail("MCMResetAimedDecayKillClock must NOT ApplyDecayStageOverlays")
 
@@ -200,32 +223,12 @@ def test_mcm_reset_and_apply_wiring() -> None:
         fail("MCMApplyAimedDecayStage must read selected stage")
     if "PrepAimedDecayStage" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must PrepAimedDecayStage")
-    if "QueueAimedDecayApply" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must QueueAimedDecayApply")
+    if "FinishMcmDecayStageAction" not in mcm_apply:
+        fail("MCMApplyAimedDecayStage must FinishMcmDecayStageAction")
     if "McmDecayButtonBusy" in victims:
         fail("VictimsScript must not use McmDecayButtonBusy (swallowed Set/Reset clicks)")
-    if "WriteDecayStageStatusToMcmForActor(aimed, False)" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must write status without SyncVictimDecayStageStepper")
     if "SetModSettingInt(MOD_NAME, \"iVictimDecayStage:Victims\", stage)" not in mcm_apply:
         fail("MCMApplyAimedDecayStage must latch chosen stage so spam cannot re-read 0")
-    if "MCM.RefreshMenu()" not in mcm_apply:
-        fail("MCMApplyAimedDecayStage must RefreshMenu then re-push (RefreshMenu wipes settings.ini defaults)")
-    refresh_i = mcm_apply.find("MCM.RefreshMenu()")
-    write_i = mcm_apply.find("WriteDecayStageStatusToMcmForActor(aimed, False)")
-    if refresh_i < 0 or write_i < 0 or write_i < refresh_i:
-        fail("MCMApplyAimedDecayStage must WriteDecayStageStatus AFTER RefreshMenu wipe")
-
-    mcm_reset = extract_function(victims, "MCMResetAimedDecayKillClock")
-    if "ignored (busy)" in mcm_reset or "ignored (busy)" in mcm_apply:
-        fail("Set/Reset must never ignore clicks as busy")
-    if "WriteDecayStageStatusToMcmForActor(aimed, False)" not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must write status without SyncVictimDecayStageStepper")
-    if "MCM.RefreshMenu()" not in mcm_reset:
-        fail("MCMResetAimedDecayKillClock must RefreshMenu then re-push")
-    r_refresh = mcm_reset.find("MCM.RefreshMenu()")
-    r_write = mcm_reset.find("WriteDecayStageStatusToMcmForActor(aimed, False)")
-    if r_refresh < 0 or r_write < 0 or r_write < r_refresh:
-        fail("MCMResetAimedDecayKillClock must WriteDecayStageStatus AFTER RefreshMenu wipe")
 
     write_status = extract_function(main, "WriteDecayStageStatusToMcmForActor")
     if "abSyncStepper" not in write_status:

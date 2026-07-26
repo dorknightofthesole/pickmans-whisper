@@ -95,15 +95,25 @@ def test_killer_scan_producer() -> None:
     i_voice = dispatch.find("HandleKillerScanVoice")
     i_knife = dispatch.find('CallFunctionNoWait("HandleKillerScanKnifeAimWarm"')
     i_cadence = dispatch.find('CallFunctionNoWait("OnKillerScanCadence"')
-    i_overlay = dispatch.find('CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"')
     if i_voice < 0:
         fail("DispatchListeners must call VoiceScan.HandleKillerScanVoice")
     if i_knife < 0:
         fail("DispatchListeners must CallFunctionNoWait HandleKillerScanKnifeAimWarm")
     if i_cadence < 0:
         fail("DispatchListeners must CallFunctionNoWait OnKillerScanCadence")
-    if i_overlay < 0:
-        fail("DispatchListeners must CallFunctionNoWait SyncOverlaysFromKillerScanSnapshot")
+    # AMBIENT DECAY DISPATCH DISABLED (deliberately, "for now") — the "unchanged" stamp
+    # trap plus QueueUpdate's confirmed inability to render body overlays on a never-
+    # disabled corpse made this path untestable. Simplified to MCM-only: Set/Reset decay
+    # stage still applies immediately via QueueAimedDecayApply → OnMCMMenuClose, fully
+    # independent of this dispatch. Lock that the call is commented out, not deleted.
+    active_overlay_lines = [
+        ln for ln in dispatch.splitlines()
+        if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' in ln and not ln.strip().startswith(";")
+    ]
+    if active_overlay_lines:
+        fail("DispatchListeners must NOT actively CallFunctionNoWait SyncOverlaysFromKillerScanSnapshot (disabled — MCM-only for now)")
+    if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' not in dispatch:
+        fail("DispatchListeners must still contain the SyncOverlaysFromKillerScanSnapshot call, commented out (not deleted)")
     if "NoteFromKillerScanSnapshot" not in dispatch:
         fail("DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
     if "OnKillerScanDeadlines" not in dispatch:

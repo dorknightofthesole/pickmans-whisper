@@ -19,6 +19,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **L** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
 | **M** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
 | **N** | Infamy / serial-killer whispers | Planned |
+| **O** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned |
 
 
 
@@ -194,6 +195,19 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 
 
 
+## Slice O — private cells + quests (stage, cult, shop, home)
+
+Large stretch: custom (or heavily edited) **private cells** and quests that turn the knife voice into a public/secret economy of murder. Soft with **L** (butcher / Cannibal), **K** (preserve), **N** (infamy). Design before ESP sprawl — each pillar can ship as its own sub-slice.
+
+- [ ] **O1 — Combat Zone stage of horror** — Partner with **Tommy Lonegan** at the Combat Zone; offer “performances” where the player murders captured slaves before an audience. Transform the Combat Zone into a stage of horror (crowd reaction, payment, optional return gigs).
+- [ ] **O2 — Culte des Ghouls** — Secret society of elites who **pay to watch** the player commit murder; they are secret cannibals and want to **feast on the victim afterward**. Private salon / cellar cell; invitation / membership progression TBD.
+- [ ] **O3 — Butcher shop** — Player-openable butcher shop (cell + vendor / workbench loop). Soft-stack with Slice **L** Cannibal / butcher-shop stretch — decide whether O3 *is* that stretch or a fuller shop quest.
+- [ ] **O4 — Pickman's house as player home** — Make **Pickman's Gallery / house** a proper player home (ownership, storage, bed, safe return). Likely the **priority** pillar of O; may unlock before or alongside O1–O3.
+
+Honor direction: no AAF/sex content here; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
+
+
+
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
@@ -206,4 +220,5 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 - Desperate rename (I): GoE2 display names vs Potential Victims overrides; strip cleanly when hunger drops; never touch essentials.
 - Hunger pacing (J): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (M): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
+- Private cells / quests (O): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs L overlap; Pickman house ownership without breaking Gallery bond trigger.
 

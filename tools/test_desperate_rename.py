@@ -62,8 +62,23 @@ def main() -> None:
         fail("DesperateRename must not call FindActors")
     if "SetDisplayName" not in rename or "GardenOfEden2" not in rename:
         fail("DesperateRename must GardenOfEden2.SetDisplayName")
-    if "ExplainNoticeReject" not in rename:
-        fail("DesperateRename must use ExplainNoticeReject (skip essentials)")
+    # Dedicated eligibility (stricter than the ambient notice filter, which allows
+    # synths through and doesn't require teammate/hostility exclusion on its own).
+    elig = extract_function(rename, "IsRenameEligible")
+    if "IsPlayerTeammate" not in elig:
+        fail("IsRenameEligible must exclude companions (IsPlayerTeammate) — Codsworth slipped through the old shared filter")
+    if "IsHostileToActor" not in elig:
+        fail("IsRenameEligible must exclude actively hostile targets")
+    if "IsStoryEssential" not in elig:
+        fail("IsRenameEligible must exclude essential NPCs")
+    if "IsChildNpc" not in elig:
+        fail("IsRenameEligible must exclude children (unless override)")
+    if "IsHumanNpc" not in elig:
+        fail("IsRenameEligible must use IsHumanNpc (strict — hard-excludes synths, no ambient-filter carve-out)")
+    if "IsAdultFemale" not in elig:
+        fail("IsRenameEligible must require IsAdultFemale")
+    if "ExplainNoticeReject" in rename:
+        fail("DesperateRename must not fall back to the shared ambient notice filter")
     if "GetDesperateNameSuffix" not in rename:
         fail("DesperateRename must read suffix via Main GetDesperateNameSuffix")
     maybe = extract_function(rename, "MaybeSuffixDisplayName")

@@ -84,13 +84,41 @@ String Function ResolveBaseLabel(Actor ak, String suffix)
 	Return StripSuffix(base.GetName(), suffix)
 EndFunction
 
+; Dedicated, stricter than the shared ambient notice filter: that filter allows
+; synths through ("look human") and doesn't gate on hostility — fine for whispers,
+; wrong for renaming.
+; Codsworth (male robot companion) slipped through it once; this does not repeat
+; that: explicit non-companion + non-hostile + strict human check (no synth
+; carve-out) + adult female, on top of the usual essential/child safety nets.
 Bool Function IsRenameEligible(Actor ak)
 	PickmansWhisperMainQuestScript m = Main()
 	If !m || !ak
 		Return False
 	EndIf
-	; Notice filter, ignore cooldown — essentials / non-targets stay clean.
-	Return m.ExplainNoticeReject(ak, True) == ""
+	Actor player = Game.GetPlayer()
+	If ak == player || ak.IsDead() || ak.IsDisabled()
+		Return False
+	EndIf
+	If ak.IsPlayerTeammate()
+		Return False
+	EndIf
+	; Ambient whispers intentionally ignore hostility (settlers who aggro after being
+	; seen friendly still need kill credit); renaming has no such reason to allow it.
+	If player && ak.IsHostileToActor(player)
+		Return False
+	EndIf
+	If m.IsStoryEssential(ak)
+		Return False
+	EndIf
+	If m.IsChildNpc(ak) && !m.IsChildTargetAllowed()
+		Return False
+	EndIf
+	; Strict human check — hard-excludes synths too, requires a positive
+	; ActorTypeNPC/ActorTypeHuman keyword match rather than just "not excluded."
+	If !m.IsHumanNpc(ak)
+		Return False
+	EndIf
+	Return m.IsAdultFemale(ak)
 EndFunction
 
 Function ApplySuffixToActor(Actor ak, String suffix)
@@ -98,6 +126,10 @@ Function ApplySuffixToActor(Actor ak, String suffix)
 		Return
 	EndIf
 	If !IsRenameEligible(ak)
+		; Self-heal: if she somehow got suffixed while ineligible (edge case in the
+		; shared notice filter — e.g. a keyword/sex mismatch), strip it back instead
+		; of leaving a permanent mislabel until hunger drops out of desperate stage.
+		StripSuffixFromActor(ak, suffix)
 		Return
 	EndIf
 	String baseLabel = ResolveBaseLabel(ak, suffix)

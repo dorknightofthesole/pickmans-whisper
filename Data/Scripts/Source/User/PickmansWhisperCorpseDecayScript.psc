@@ -83,6 +83,17 @@ Float OVERLAY_SYNC_MIN_SECONDS = 8.0
 Bool OverlaySyncBusy = False
 Float OverlaySyncBusySince = 0.0
 Float OVERLAY_SYNC_BUSY_MAX_SECONDS = 90.0
+; REVERTED — tried periodically re-painting body skins on a per-corpse cooldown to
+; self-heal since no LooksMenu call reports back "the overlay actually rendered."
+; Confirmed it does NOT help: QueueUpdate still never composites a new body texture
+; onto an already-loaded, never-disabled corpse — the retry just visibly flickered
+; (Overlays.Add succeeding internally, LooksMenu.Update triggering a real mesh
+; refresh pass) and then settled back to the base skin every time. Disable/Enable
+; is the only thing that ever actually rendered it, and that was reverted for
+; causing a fake re-kill (see ForceCorpseMeshRefresh above). Ambient body-texture
+; decay is out of reach without a refresh method that doesn't touch the skeleton —
+; same call as Bed Gift textures being "a stretch." Face masks + the decay clock
+; are unaffected and keep working.
 ; MCM Set/Reset queues THIS actor — paint on menu close / next sync (no feature StartTimer).
 Actor PendingAimedDecayActor = None
 Actor PendingDismemberStripActor = None
@@ -125,6 +136,12 @@ Function RunPendingAimedDecayApply()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
+	; Real-time resets to ~0 on every new game process, but these are saved fields —
+	; a stale value from a longer previous session makes (now - stale) negative,
+	; permanently reading as "still within the window" for the rest of THIS session.
+	If OverlaySyncBusySince > now
+		OverlaySyncBusySince = 0.0
+	EndIf
 	If OverlaySyncBusy
 		If (now - OverlaySyncBusySince) < OVERLAY_SYNC_BUSY_MAX_SECONDS
 			Debug.Trace("PickmansWhisper: AimedDecayApply defer | OverlaySyncBusy formId=" + ak.GetFormID())
@@ -145,6 +162,23 @@ Function RunPendingAimedDecayApply()
 		m.WriteDecayStageStatusToMcmForActor(ak, False)
 	EndIf
 	Debug.Trace("PickmansWhisper: AimedDecayApply done formId=" + formId + " | " + LastCorpseDecayStatus)
+EndFunction
+
+; MCM Set/Reset queues an aimed corpse via QueueAimedDecayApply, then relies on
+; VictimsScript.OnMCMMenuClose (an MCM broadcast event) to fire RunPendingAimedDecayApply
+; once the menu actually closes. That broadcast is not reliably observed firing —
+; confirmed in testing: RunPendingAimedDecayApply never ran even once across a whole
+; session of Set-stage clicks, with zero trace of it (not even its own guard-clause
+; lines). This is the safety net: KillerScan's own tick (see DispatchListeners) calls
+; this every tick regardless of whether the menu-close broadcast ever fires. Cheap
+; when idle (one Bool + one Actor null check) — no LooksMenu work unless a corpse is
+; actually pending.
+Function CheckPendingAimedDecayApply()
+	If !PendingAimedDecayActor || Utility.IsInMenuMode()
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: CheckPendingAimedDecayApply → RunPendingAimedDecayApply formId=" + PendingAimedDecayActor.GetFormID())
+	RunPendingAimedDecayApply()
 EndFunction
 
 ; Kicked via KillerScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
@@ -170,6 +204,21 @@ Function SyncOverlaysFromKillerScanSnapshot()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
+	; Real-time resets to ~0 on every new game process, but these are saved fields —
+	; a stale value from a longer previous session makes (now - stale) negative,
+	; permanently reading as "still within the window" for the rest of THIS session.
+	; This is exactly why the ambient sync could go an entire session without ever
+	; reaching "sync begin" even once: rate-limit/busy/backoff all looked perpetually
+	; active against a real-time reference that belonged to a different process.
+	If OverlaySyncBusySince > now
+		OverlaySyncBusySince = 0.0
+	EndIf
+	If LastOverlaySyncReal > now
+		LastOverlaySyncReal = 0.0
+	EndIf
+	If m.DecaySyncBackoffUntil > now
+		m.DecaySyncBackoffUntil = 0.0
+	EndIf
 	If OverlaySyncBusy
 		If (now - OverlaySyncBusySince) < OVERLAY_SYNC_BUSY_MAX_SECONDS
 			Debug.Trace("PickmansWhisper: CorpseDecay sync skip | already running")
@@ -235,6 +284,12 @@ Function SyncOverlaysFromKillerScanSnapshot()
 					Int after = m.GetDecayKillLastStage(id)
 					If after == want
 						appliedN += 1
+					ElseIf !IsDecayVisualsEnabled()
+						; Intentional skip (visuals off), not a failure — SyncDecayForKnifeCorpse
+						; deliberately does not stamp LastStage in this case (see its own
+						; comment). Treating this as anyFail triggered a false ERROR + 30s
+						; backoff on every single sync while visuals stayed off.
+						unchangedN += 1
 					ElseIf before != want && after != want
 						anyFail = True
 						Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync apply failed formId=" + id + " want=" + want + " after=" + after + " | " + LastCorpseDecayStatus)
@@ -611,8 +666,15 @@ Bool FaceArmorLoadBusy = False ; blocks re-entrant wipe of FaceArmorLabels mid-p
 ; clear it is gone) — every later apply then silently skips the face ARMO (busy —
 ; skip re-enter) for the rest of the session. Same class of bug as BedOverlaysBusy;
 ; same fix: a real-time staleness check so a stuck flag clears instead of persisting.
+; 8.0s was too short: this load can legitimately take 20s+ under load (confirmed in
+; logs), and force-clearing while the original call was still genuinely mid-parse
+; caused a SECOND concurrent load into the same shared FaceArmorLabels/ArmoFids
+; arrays — doubled/corrupted entries (e.g. 10 entries for a 5-label file) and
+; "UNKNOWN label ... known=[]" errors. Match OverlaySyncBusy's 90s in this same
+; file: give the legitimately-slow call room to finish before ANY retry, since a
+; too-short timeout here doesn't just delay, it actively corrupts shared state.
 Float FaceArmorLoadBusySinceReal = 0.0
-Float FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS = 8.0
+Float FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS = 90.0
 
 ; DecayFaceArmorIds.txt + DecayFaceStages.txt — fail loud if missing/incomplete.
 Bool Function EnsureDecayFaceArmorBanks()
@@ -623,7 +685,14 @@ Bool Function EnsureDecayFaceArmorBanks()
 	EndIf
 	; Another apply is loading — do not reset arrays underneath it (known=[] race).
 	If FaceArmorLoadBusy
-		Float busyElapsed = Utility.GetCurrentRealTime() - FaceArmorLoadBusySinceReal
+		Float nowFaceBusy = Utility.GetCurrentRealTime()
+		; Real-time resets to ~0 on every new process; a stale saved value from a
+		; longer previous session would make busyElapsed negative and never exceed
+		; the timeout, permanently skipping the face ARMO for this whole session.
+		If FaceArmorLoadBusySinceReal > nowFaceBusy
+			FaceArmorLoadBusySinceReal = 0.0
+		EndIf
+		Float busyElapsed = nowFaceBusy - FaceArmorLoadBusySinceReal
 		If busyElapsed <= FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS
 			Debug.Trace("PickmansWhisper: EnsureDecayFaceArmorBanks busy — skip re-enter (" + busyElapsed + "s/" + FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS + "s)")
 			Return False
@@ -1092,6 +1161,50 @@ Function PrepareCorpseForOverlays(Actor akCorpse)
 	akCorpse.SetGhost(False)
 EndFunction
 
+; Ambient knife-kill victims (unlike Bed Gift's corpse) are never stripped. Worn
+; armor/clothing would hide the DecaySkinOverlays body tint under the mesh even
+; when LooksMenu reports a successful Add (appliedUids>0), so strip regardless of
+; what she died wearing. Mirrors Bed Gift's StripBedCorpse; called once real body
+; skins are about to render.
+Function StripDecayCorpseClothing(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	akCorpse.UnequipAll()
+	akCorpse.RemoveAllItems(None, False)
+EndFunction
+
+; REVERTED — a real Disable()/Enable() cycle (like Bed Gift's PrepareCorpseForOverlays
+; gets for free from its own spawn-disabled corpse) did make the body overlay render,
+; but on an ambient, never-disabled corpse it tears down and rebuilds her 3D/skeleton
+; while she's actively ragdolled in the world. Confirmed in logs: IsDismembered started
+; throwing "Cannot find limb" errors immediately after every Disable/Enable, and in
+; testing it visibly looked like the NPC was being killed again. Worse than the
+; original "no body texture" bug, so not worth it — QueueUpdate is the ceiling for
+; ambient corpses until a refresh method is found that doesn't touch the skeleton.
+
+; Ground truth from LooksMenu itself, not our own LastStage bookkeeping — Overlays.Add
+; and QueueUpdate have both been caught reporting success while nothing visually
+; changed. Queries the actor's live overlay list so the log shows what LooksMenu
+; actually has attached at that moment, not what we assume happened.
+Function TraceCorpseOverlayState(Actor akCorpse, String asLabel)
+	If !akCorpse
+		Return
+	EndIf
+	Bool isFemale = IsFemaleActor(akCorpse)
+	Overlays:Entry[] entries = Overlays.GetAll(akCorpse, isFemale)
+	Int count = 0
+	If entries
+		count = entries.Length
+	EndIf
+	Debug.Trace("PickmansWhisper: OverlayState " + asLabel + " formId=" + akCorpse.GetFormID() + " isFemale=" + (isFemale as Int) + " count=" + count)
+	Int i = 0
+	While entries && i < entries.Length
+		Debug.Trace("PickmansWhisper: OverlayState " + asLabel + " [" + i + "] uid=" + entries[i].uid + " template=" + entries[i].template + " rgba=" + entries[i].red + "," + entries[i].green + "," + entries[i].blue + "," + entries[i].alpha)
+		i += 1
+	EndWhile
+EndFunction
+
 ; Apply one template aiCount times. Clears only templates in clearBank (stack-safe).
 Function ApplyTintedTemplateN(Actor akCorpse, String templateId, Int aiCount, Float afR, Float afG, Float afB, Float afA, Int aiPriority, String[] clearBank, Int clearCount, String statusPrefix)
 	If !akCorpse
@@ -1489,7 +1602,11 @@ Bool Function IsDecayVisualsEnabled()
 EndFunction
 
 ; ModConfig decayStageN SkinTextures (+ scars if flagged) at stage RGBA. Soft deps; fail loud.
-; Returns True when paint succeeds OR visuals are MCM-off (so Sync can still stamp LastStage).
+; Returns True when paint succeeds OR visuals are MCM-off (harmless for direct/force
+; callers). SyncDecayForKnifeCorpse checks IsDecayVisualsEnabled() itself BEFORE
+; calling this and skips without stamping LastStage — do not let this True-while-off
+; return value be used to stamp a stage as "applied" (permanently skips repaint once
+; she reaches max stage, since nothing above it triggers a fresh mismatch).
 ; abForcePaint=True: bed gift vignette — paint even when bDecayVisuals is off.
 Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForcePaint = False)
 	If !akCorpse
@@ -1584,6 +1701,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 			bodyStatus = "body default (skins=none)"
 			Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays stage=" + aiStage + " " + stageName + " — no body skins")
 		Else
+			StripDecayCorpseClothing(akCorpse)
 			appliedUids = ApplyTintedAllSkinTemplatesKeepExisting(akCorpse, stageBank, n, 1, tintR, tintG, tintB, tintA)
 			bodyOk = True
 			bodyStatus = LastCorpseDecayStatus
@@ -1591,6 +1709,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 			If appliedUids <= 0
 				Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — LooksMenu Add returned 0 uids (templates missing or wrong sex?)")
 			EndIf
+			TraceCorpseOverlayState(akCorpse, "right-after-body-apply")
 		EndIf
 	EndIf
 
@@ -1602,6 +1721,17 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 			faceStatus = LastCorpseDecayStatus
 		EndIf
 	EndIf
+
+	; Overlays.Add/Update reliably shows on Bed Gift's corpse because it's always
+	; disabled beforehand (PrepareCorpseForOverlays' Enable() call forces a mesh
+	; refresh as a side effect). A naturally-dead, never-disabled corpse (e.g. a
+	; tracked knife-kill victim found via ambient KillerScan sync) skips that
+	; Enable() entirely, and Overlays.Update alone was not enough to visually
+	; refresh her — LooksMenu reported success but the body tint never rendered.
+	; QueueUpdate forces the same refresh without a Disable/Enable cycle, so it
+	; doesn't risk popping an already-ragdolled corpse out of her death pose.
+	akCorpse.QueueUpdate(True, 0)
+	TraceCorpseOverlayState(akCorpse, "end-of-function")
 
 	If bodyOk
 		If !faceOk && (abForcePaint || !akCorpse.IsDismembered("Head1"))
@@ -1656,6 +1786,17 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 		Return
 	EndIf
 	Debug.Trace("PickmansWhisper: SyncDecayForKnifeCorpse apply stage=" + stage + " last=" + last + " formId=" + formId)
+	If !IsDecayVisualsEnabled()
+		; Do NOT stamp LastStage here. ApplyDecayStageOverlays's own visuals-off skip
+		; returns True (harmless for its other callers), but stamping here would make
+		; a later visuals-on toggle believe this stage already painted — permanently
+		; skipping her repaint once she reaches the max stage (nothing above it to
+		; trigger a fresh want!=last mismatch). Leave LastStage alone so the very next
+		; sync after visuals turn on detects the mismatch and paints for real.
+		SetCorpseDecayStatus("stage " + stage + " " + m.GetDecayStageName(stage) + " — visuals OFF (MCM; clock advances, paint deferred) formId=" + formId)
+		Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
+		Return
+	EndIf
 	If ApplyDecayStageOverlays(akCorpse, stage)
 		; MCM may ForceDecay mid-LooksMenu Wait — only stamp LastStage if clock still matches.
 		Int stageNow = m.ResolveDecayStageForKill(formId)
