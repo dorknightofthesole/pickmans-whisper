@@ -128,17 +128,13 @@ def test_parse_shipped_modconfig() -> None:
     if set(stages.keys()) != {0, 1, 2, 3, 4}:
         fail(f"expected decayStage0..4, got {sorted(stages.keys())}")
 
-    # DIAGNOSTIC SWAP (2026-07-26): body skins temporarily point at ROF DeadOverlays
-    # wound templates (same pack Bed Gift already renders successfully) instead of
-    # porcOverlays SkinTexture_16, to isolate whether that specific template/pack was
-    # the reason body decay never rendered on an ambient (never-disabled) corpse.
-    diag_skins = ["Female_Front_Wound_3", "Female_Back_Wound_3", "Female_Arm_Wound"]
     expected = {
         0: ("Freshly Deceased", 0.650, 0.520, 0.480, 1.0, 0.0, [], False),
-        1: ("Pallor Mortis", 0.300, 0.750, 0.720, 1.0, 0.25, diag_skins, False),
-        2: ("Livor Mortis", 0.480, 0.140, 0.300, 1.0, 2.0, diag_skins, False),
-        3: ("Putrefaction", 0.380, 0.820, 0.480, 1.0, 48.0, diag_skins, False),
-        4: ("Black Putrefaction", 0.149, 0.118, 0.102, 1.0, 240.0, diag_skins, False),
+        1: ("Pallor Mortis", 0.300, 0.750, 0.720, 1.0, 0.25, ["SkinTexture_16"], False),
+        2: ("Livor Mortis", 0.900, 0.080, 0.120, 1.0, 2.0, ["SkinTexture_16"], False),
+        3: ("Putrefaction", 0.250, 1.000, 0.100, 1.0, 48.0, ["SkinTexture_16"], False),
+        # Stage 4 experiment: two stacked copies of the same template (see ModConfig.txt).
+        4: ("Black Putrefaction", 0.000, 0.000, 0.000, 1.0, 240.0, ["SkinTexture_16", "SkinTexture_16"], False),
     }
     for idx, (name, r, g, b, a, start_h, skins, scars) in expected.items():
         got = stages[idx]
@@ -159,11 +155,15 @@ def test_parse_shipped_modconfig() -> None:
             fail(f"stage {idx} scars: {got['scars']} != {scars}")
     if stages[0]["skins_raw"] != "none":
         fail("stage 0 Freshly must use skins=none (just killed, default body)")
-    for idx in (1, 2, 3, 4):
-        if stages[idx]["skins"] != diag_skins:
-            fail(f"stage {idx} must use diagnostic ROF wound templates {diag_skins}")
+    for idx in (1, 2, 3):
+        if stages[idx]["skins"] != ["SkinTexture_16"]:
+            fail(f"stage {idx} must be dirt/tint carrier SkinTexture_16 only")
         if stages[idx]["scars"]:
             fail(f"stage {idx} must not enable scars (simplified body)")
+    if stages[4]["skins"] != ["SkinTexture_16", "SkinTexture_16"]:
+        fail("stage 4 must be two stacked copies of SkinTexture_16 (opacity experiment)")
+    if stages[4]["scars"]:
+        fail("stage 4 must not enable scars (simplified body)")
     starts = [stages[i]["start_hours"] for i in range(5)]
     if starts != list(SHIPPED_START_HOURS):
         fail(f"startHours {starts} != locked {list(SHIPPED_START_HOURS)}")

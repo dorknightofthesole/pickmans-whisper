@@ -185,6 +185,17 @@ def test_decay_script(decay: str) -> None:
         fail("ApplyDecayStageOverlays must skip/clear body when limbs missing (stump halo)")
     if "ClearCumBankOverlays" not in stage_fn:
         fail("ApplyDecayStageOverlays must ClearCumBankOverlays when limbs missing (white halo)")
+    # QueueUpdate(bDoEquipment=True) rebuilds the biped from the base race + equipped
+    # items — confirmed in testing this can regenerate a limb a native Dismember()
+    # call already gibbed (visible disappear/reappear pop, severed limb restored).
+    # Must not run when limbs are already known missing; nothing in that branch needs
+    # a mesh refresh anyway since body/face overlay work was already skipped there.
+    queue_idx = stage_fn.rfind("QueueUpdate(True, 0)")
+    if queue_idx < 0:
+        fail("ApplyDecayStageOverlays must QueueUpdate(True, 0) to refresh the mesh")
+    gate_idx = stage_fn.rfind("If limbsIntact", 0, queue_idx)
+    if gate_idx < 0:
+        fail("ApplyDecayStageOverlays must gate the final QueueUpdate on limbsIntact (don't regenerate severed limbs)")
     face_idx = stage_fn.find("ApplyDecayFaceArmorForStage")
     skin_idx = stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting")
     if face_idx < 0 or skin_idx < 0 or face_idx > skin_idx:

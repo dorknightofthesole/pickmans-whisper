@@ -1730,7 +1730,16 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 	; refresh her — LooksMenu reported success but the body tint never rendered.
 	; QueueUpdate forces the same refresh without a Disable/Enable cycle, so it
 	; doesn't risk popping an already-ragdolled corpse out of her death pose.
-	akCorpse.QueueUpdate(True, 0)
+	; Gated on limbsIntact — QueueUpdate(bDoEquipment=True) rebuilds the biped from
+	; the base race + currently-equipped items, which can regenerate a limb a native
+	; Dismember() call already gibbed. Confirmed in testing: a severed limb visibly
+	; came back (with a disappear/reappear pop) because this ran unconditionally on
+	; every apply, even when the body branch above had already skipped for the exact
+	; same "limbs missing" reason. No overlay work happens in that branch, so there's
+	; nothing here that needs a mesh refresh anyway.
+	If limbsIntact
+		akCorpse.QueueUpdate(True, 0)
+	EndIf
 	TraceCorpseOverlayState(akCorpse, "end-of-function")
 
 	If bodyOk
