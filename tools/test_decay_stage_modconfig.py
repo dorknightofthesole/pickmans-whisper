@@ -128,13 +128,16 @@ def test_parse_shipped_modconfig() -> None:
     if set(stages.keys()) != {0, 1, 2, 3, 4}:
         fail(f"expected decayStage0..4, got {sorted(stages.keys())}")
 
+    # Coverage experiment: SkinTexture_16 alone renders but its dirt pattern is
+    # torso-only (confirmed in-game — visible hard edge on arms/legs). All stages
+    # stack the same 3 different templates uniformly to test combined coverage.
+    coverage_skins = ["SkinTexture_16", "SkinTexture_09", "SkinTexture_18"]
     expected = {
         0: ("Freshly Deceased", 0.650, 0.520, 0.480, 1.0, 0.0, [], False),
-        1: ("Pallor Mortis", 0.300, 0.750, 0.720, 1.0, 0.25, ["SkinTexture_16"], False),
-        2: ("Livor Mortis", 0.900, 0.080, 0.120, 1.0, 2.0, ["SkinTexture_16"], False),
-        3: ("Putrefaction", 0.250, 1.000, 0.100, 1.0, 48.0, ["SkinTexture_16"], False),
-        # Stage 4 experiment: two stacked copies of the same template (see ModConfig.txt).
-        4: ("Black Putrefaction", 0.000, 0.000, 0.000, 1.0, 240.0, ["SkinTexture_16", "SkinTexture_16"], False),
+        1: ("Pallor Mortis", 0.606, 0.859, 0.843, 1.0, 0.25, coverage_skins, False),
+        2: ("Livor Mortis", 0.900, 0.080, 0.120, 1.0, 2.0, coverage_skins, False),
+        3: ("Putrefaction", 0.250, 1.000, 0.100, 1.0, 48.0, coverage_skins, False),
+        4: ("Black Putrefaction", 0.000, 0.000, 0.000, 1.0, 240.0, coverage_skins, False),
     }
     for idx, (name, r, g, b, a, start_h, skins, scars) in expected.items():
         got = stages[idx]
@@ -156,12 +159,12 @@ def test_parse_shipped_modconfig() -> None:
     if stages[0]["skins_raw"] != "none":
         fail("stage 0 Freshly must use skins=none (just killed, default body)")
     for idx in (1, 2, 3):
-        if stages[idx]["skins"] != ["SkinTexture_16"]:
-            fail(f"stage {idx} must be dirt/tint carrier SkinTexture_16 only")
+        if stages[idx]["skins"] != coverage_skins:
+            fail(f"stage {idx} must use the coverage-experiment skin stack {coverage_skins}")
         if stages[idx]["scars"]:
             fail(f"stage {idx} must not enable scars (simplified body)")
-    if stages[4]["skins"] != ["SkinTexture_16", "SkinTexture_16"]:
-        fail("stage 4 must be two stacked copies of SkinTexture_16 (opacity experiment)")
+    if stages[4]["skins"] != coverage_skins:
+        fail(f"stage 4 must use the coverage-experiment skin stack {coverage_skins}")
     if stages[4]["scars"]:
         fail("stage 4 must not enable scars (simplified body)")
     starts = [stages[i]["start_hours"] for i in range(5)]

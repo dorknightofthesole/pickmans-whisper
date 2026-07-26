@@ -254,10 +254,10 @@ def test_lab_script(lab: str) -> None:
     mod_cfg = (ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt").read_text(encoding="utf-8")
     expected_stages = [
         ("decayStage0", "Freshly Deceased", "0.650", "0.520", "0.480", "1.0", "0", "none", False),
-        ("decayStage1", "Pallor Mortis", "0.300", "0.750", "0.720", "1.0", "0.25", "SkinTexture_16", False),
-        ("decayStage2", "Livor Mortis", "0.900", "0.080", "0.120", "1.0", "2", "SkinTexture_16", False),
-        ("decayStage3", "Putrefaction", "0.250", "1.000", "0.100", "1.0", "48", "SkinTexture_16", False),
-        ("decayStage4", "Black Putrefaction", "0.000", "0.000", "0.000", "1.0", "240", "SkinTexture_16+SkinTexture_16", False),
+        ("decayStage1", "Pallor Mortis", "0.606", "0.859", "0.843", "1.0", "0.25", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
+        ("decayStage2", "Livor Mortis", "0.900", "0.080", "0.120", "1.0", "2", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
+        ("decayStage3", "Putrefaction", "0.250", "1.000", "0.100", "1.0", "48", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
+        ("decayStage4", "Black Putrefaction", "0.000", "0.000", "0.000", "1.0", "240", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
     ]
     for key, name, r, g, b, a, start_h, skins, scars in expected_stages:
         line = next((ln for ln in mod_cfg.splitlines() if ln.startswith(key + "=")), "")

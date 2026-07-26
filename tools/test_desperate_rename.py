@@ -130,8 +130,10 @@ def main() -> None:
         fail("ROADMAP must link Slice I desperate rename")
     if "| **I** | Slow hunger" in road:
         fail("ROADMAP must have shifted old Slice I (slow hunger) off letter I")
-    if "Slow hunger stages" not in road or "**J**" not in road:
-        fail("ROADMAP must keep slow hunger as Slice J")
+    if "Slow hunger stages" not in road or "| **K** | Slow hunger" not in road:
+        fail("ROADMAP must keep slow hunger as Slice K")
+    if "| **J** | Victim" not in road:
+        fail("ROADMAP must keep victim beat-before-kill as Slice J")
 
     ok("Slice I desperate rename script + ModConfig + KillerScan + toast name")
     print("All desperate-rename (Slice I) contracts passed.")

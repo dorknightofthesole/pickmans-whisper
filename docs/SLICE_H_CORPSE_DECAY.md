@@ -1,6 +1,6 @@
 # Slice H — corpse decay (body + face) / consume + victim places
 
-**Merged former Slice I** (FaceGen-preserving slot-54 face decals) into this slice. Face art guide: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft ties to **J** (preserve), **K** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
+**Merged former Slice I** (FaceGen-preserving slot-54 face decals) into this slice. Face art guide: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft ties to **L** (preserve), **M** (Cannibal / butcher), **G** (bed gift POC), and **C5** Potential Victims.
 
 ## Visual path status
 
@@ -58,10 +58,10 @@ decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 | Stage | Name | R | G | B | A | Start (h) | Skins | Scars |
 |------:|------|--:|--:|--:|--:|----------:|-------|:-----:|
 | 0 | Freshly Deceased | 0.650 | 0.520 | 0.480 | 1.0 | 0 | `none` (default body) | — |
-| 1 | Pallor Mortis | 0.300 | 0.750 | 0.720 | 1.0 | 0.25 (15 min) | `SkinTexture_16` | — |
-| 2 | Livor Mortis (red) | 0.900 | 0.080 | 0.120 | 1.0 | 2 | `SkinTexture_16` | — |
-| 3 | Putrefaction (green) | 0.250 | 1.000 | 0.100 | 1.0 | 48 (2 d) | `SkinTexture_16` | — |
-| 4 | Black Putrefaction | 0.000 | 0.000 | 0.000 | 1.0 | 240 (10 d) | `SkinTexture_16+SkinTexture_16` (stacked ×2, opacity experiment) | — |
+| 1 | Pallor Mortis | 0.606 | 0.859 | 0.843 | 1.0 | 0.25 (15 min) | `SkinTexture_16+SkinTexture_09+SkinTexture_18` | — |
+| 2 | Livor Mortis (red) | 0.900 | 0.080 | 0.120 | 1.0 | 2 | same | — |
+| 3 | Putrefaction (green) | 0.250 | 1.000 | 0.100 | 1.0 | 48 (2 d) | same | — |
+| 4 | Black Putrefaction | 0.000 | 0.000 | 0.000 | 1.0 | 240 (10 d) | same | — |
 
 **Simplified body paint:** face ARMO first, then a small tinted set + stage RGBA. Multi-skin / scars map retired (hung Papyrus before stage 4 finished).
 
@@ -78,6 +78,8 @@ decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 **RESOLVED — the render pipeline was never the problem; the MCM trigger firing at all was.** Disabling the ambient dispatch above also silently removed a bundled-in fallback (`SyncOverlaysFromKillerScanSnapshot` used to check `PendingAimedDecayActor` and apply it before doing its ambient sweep), leaving `VictimsScript.OnMCMMenuClose` — an MCM broadcast event — as the only trigger for the MCM Set/Reset path. Confirmed in testing that broadcast is not reliable: a whole session of Set-stage clicks produced zero applies, not even the face mask (`RunPendingAimedDecayApply` never ran even once — no trace of it, not even its own guard-clause lines). Fixed by extracting the pending-actor check into `CorpseDecayScript.CheckPendingAimedDecayApply`, dispatched every `KillerScanScript` tick independent of the disabled ambient sweep (`CorpseDecayScript` still owns no timer of its own — Killer Orchestrator). Once that fix landed, a diagnostic swap to the ROF DeadOverlays wound templates (`Female_Front_Wound_3+Female_Back_Wound_3+Female_Arm_Wound`, same pack Bed Gift renders successfully) rendered fine on the very first real test. That means **every earlier "no body change" report was this same MCM-trigger bug, not a rendering limitation** — the mesh-refresh and self-heal work above chased the wrong root cause entirely; `SkinTexture_16` was very likely fine the whole time. Reverted to `SkinTexture_16` (the tintable dirt carrier the feature actually wants — the wound decals don't respond to tint the way it does) now that the real trigger is fixed.
 
 **`OnMCMMenuClose` is not a reliable trigger — confirmed, not assumed.** MCM Set/Reset queues a paint via `QueueAimedDecayApply` → `PendingAimedDecayActor`, expecting `VictimsScript.OnMCMMenuClose` (an MCM broadcast event) to fire `RunPendingAimedDecayApply` once the menu closes. Before disabling the ambient dispatch above, `SyncOverlaysFromKillerScanSnapshot`'s own first few lines doubled as a fallback trigger for this (check `PendingAimedDecayActor`, apply if found) — disabling that call silently removed the fallback too, and `OnMCMMenuClose` alone turned out not to be reliable: confirmed in testing that a whole session of Set-stage clicks produced zero applies, not even the face mask (`RunPendingAimedDecayApply` never ran even once — no trace of it, not even its own guard-clause lines). Fix: extracted just the pending-actor check into `CheckPendingAimedDecayApply`, dispatched from `KillerScanScript.DispatchListeners` every tick (cheap — one Bool + one Actor null check when idle), independent of the still-disabled ambient sweep. `CorpseDecayScript` still owns no timer of its own (Killer Orchestrator).
+
+**Body coverage — torso only, arms/legs bare.** Confirmed in-game (screenshot): `SkinTexture_16` genuinely renders now, but its dirt pattern is concentrated on the torso — a visible hard edge where it ends, especially obvious on a fair-skinned corpse. All 20 `SkinTexture_XX` ids in the installed pack use the identical LooksMenu slot (3), differing only in the underlying texture, so there's no way to pick a wider-coverage id sight-unseen. Testing whether stacking multiple *different* ids (not the same one twice, unlike the earlier stage-4 opacity test) combines their patterns for fuller coverage — reusing this project's own retired multi-decal combo (`SkinTexture_16+SkinTexture_09+SkinTexture_18`), applied uniformly across all four stages now. The scars flag on that retired combo is what caused the old hang, not the skin-stacking itself, so this should be safe at 3 templates (well under the 8-slot cap).
 
 **MCM `bDecayVisuals:Victims` (default ON):** when off, knife sync / Set stage still advance the murder clock and stage labels; knife/MCM `ApplyDecayStageOverlays` paint is skipped. **Bed gift** still paints DeathMarks + Black stage (vignette) regardless. Flipped to default-on because every MCM config.json change during active dev (new buttons, etc.) risks MCM re-registering settings from file defaults, silently resetting a live-toggled value back off. Load **Real HD Faces after** Pickman's Whisper if both are used.
 
@@ -122,5 +124,5 @@ Not listed above: leave out of gameplay shortlist for now (still in `DecaySkinOv
 ## Soft rules
 
 - Do **not** decay essential/protected story NPCs (none should be victims anyway).
-- Soft with **J**: preserved / Necromantic-held corpses pause or reset the decay clock (P3+).
-- Cap stays **32** unless **J** raises hold limits.
+- Soft with **L**: preserved / Necromantic-held corpses pause or reset the decay clock (P3+).
+- Cap stays **32** unless **L** raises hold limits.

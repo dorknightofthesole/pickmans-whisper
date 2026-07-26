@@ -14,12 +14,13 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
 | **H** | Corpse decay (body + face) → eat urge → reward | **P1 done**; next **P2** MCM stage change — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) · face art [Decay_Head_Guide.md](Decay_Head_Guide.md) |
 | **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix) | **I1–I2 verified in-game** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md) |
-| **J** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
-| **K** | Corpse preserve sync with Necromantic | Planned |
-| **L** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
-| **M** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
-| **N** | Infamy / serial-killer whispers | Planned |
-| **O** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned |
+| **J** | Victim “beat before kill” — temp essential + fight back (unarmed exception) | Planned |
+| **K** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
+| **L** | Corpse preserve sync with Necromantic | Planned |
+| **M** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
+| **N** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
+| **O** | Infamy / serial-killer whispers | Planned |
+| **P** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned |
 
 
 
@@ -113,7 +114,7 @@ Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contrac
 
 ## Slice H — corpse decay (body + face) / consume + victim places
 
-Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft with **K** (preserve) and **L** (Cannibal). Cap aligns with Victims (32).
+Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft with **L** (preserve) and **M** (Cannibal). Cap aligns with Victims (32).
 
 **Merged former face-only slice** (FaceGen-preserving slot-54 face decals) into this slice — body overlays + face ARMO share the same stage clock.
 
@@ -144,7 +145,20 @@ Honor direction: never rename **essential** story NPCs. Editable suffix in `ModC
 
 
 
-## Slice J — slow hunger + peak wait rewards
+## Slice J — victim beat-before-kill (temp essential)
+
+Let the player **pretend to beat** a qualified woman before finishing her with the knife — she won’t die during the scuffle and ideally **fights back**. Soft with Victims (C5) and knife-kill rules (B).
+
+- [ ] **J1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear when player is done / on blade kill path / MCM off.
+- [ ] **J2 — Auto on unarmed attack** — If the player attacks a **qualified** NPC **without a weapon armed** (fists / no drawn weapon), auto-enter the same temp-essential + fight-back state. **Exception:** Pickman's Blade need **not** be drawn for this path (blade still required later to sate / praise).
+- [ ] **J3 — Fight back** — Aggro / combat so she resists instead of crumpling; exit cleanly when essential is cleared so a later blade kill can work.
+- [ ] **J4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
+
+Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
+
+
+
+## Slice K — slow hunger + peak wait rewards
 
 Stretch the hunger climb so each stage lasts **days** of game time (not a quick meter fill). Reward patience when the player waits until hunger is peaking before killing.
 
@@ -155,7 +169,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 
 
 
-## Slice K — corpse preserve
+## Slice L — corpse preserve
 
 - `HeldCorpses[]` + soft claim token on knife-kill victims.
 - Compatible with Necromantic holds; no ESP master dependency.
@@ -164,7 +178,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 
 
 
-## Slice L — perk / stretch
+## Slice M — perk / stretch
 
 - Soft-gate or enhance via Lady Killer / Black Widow.
 - Optional Cannibal; stretch butcher-shop cell.
@@ -173,7 +187,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 
 
 
-## Slice M — witnesses
+## Slice N — witnesses
 
 NPCs who witness a knife kill (or catch the player mid-crime) react instead of ignoring it.
 
@@ -181,13 +195,13 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
   - **Flee** — run in fear / scream / call for help, or
   - **Fight** — turn hostile and attack the player.
 - Reuse existing GoE proximity / LOS scanning (kill-watch + `GetActorsDetecting`) to find who actually saw it; gate by distance/line-of-sight so unseen kills stay quiet.
-- **M1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
+- **N1 (sub) — rumors of the "killer":** witnesses spread talk; other NPCs later reference a killer at large (toast/among-settlers flavor). Foundation for reputation/bounty-style consequences.
 - Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
 - Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
 
 
 
-## Slice N — infamy
+## Slice O — infamy
 
 - Whispers about a new serial killer in the commonwealth
 - References to past murders, could include the name of the victim that differs from the name the player gave them, but the player would realize it is "Cindy"
@@ -195,14 +209,14 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 
 
 
-## Slice O — private cells + quests (stage, cult, shop, home)
+## Slice P — private cells + quests (stage, cult, shop, home)
 
-Large stretch: custom (or heavily edited) **private cells** and quests that turn the knife voice into a public/secret economy of murder. Soft with **L** (butcher / Cannibal), **K** (preserve), **N** (infamy). Design before ESP sprawl — each pillar can ship as its own sub-slice.
+Large stretch: custom (or heavily edited) **private cells** and quests that turn the knife voice into a public/secret economy of murder. Soft with **M** (butcher / Cannibal), **L** (preserve), **O** (infamy). Design before ESP sprawl — each pillar can ship as its own sub-slice.
 
-- [ ] **O1 — Combat Zone stage of horror** — Partner with **Tommy Lonegan** at the Combat Zone; offer “performances” where the player murders captured slaves before an audience. Transform the Combat Zone into a stage of horror (crowd reaction, payment, optional return gigs).
-- [ ] **O2 — Culte des Ghouls** — Secret society of elites who **pay to watch** the player commit murder; they are secret cannibals and want to **feast on the victim afterward**. Private salon / cellar cell; invitation / membership progression TBD.
-- [ ] **O3 — Butcher shop** — Player-openable butcher shop (cell + vendor / workbench loop). Soft-stack with Slice **L** Cannibal / butcher-shop stretch — decide whether O3 *is* that stretch or a fuller shop quest.
-- [ ] **O4 — Pickman's house as player home** — Make **Pickman's Gallery / house** a proper player home (ownership, storage, bed, safe return). Likely the **priority** pillar of O; may unlock before or alongside O1–O3.
+- [ ] **P1 — Combat Zone stage of horror** — Partner with **Tommy Lonegan** at the Combat Zone; offer “performances” where the player murders captured slaves before an audience. Transform the Combat Zone into a stage of horror (crowd reaction, payment, optional return gigs).
+- [ ] **P2 — Culte des Ghouls** — Secret society of elites who **pay to watch** the player commit murder; they are secret cannibals and want to **feast on the victim afterward**. Private salon / cellar cell; invitation / membership progression TBD.
+- [ ] **P3 — Butcher shop** — Player-openable butcher shop (cell + vendor / workbench loop). Soft-stack with Slice **M** Cannibal / butcher-shop stretch — decide whether P3 *is* that stretch or a fuller shop quest.
+- [ ] **P4 — Pickman's house as player home** — Make **Pickman's Gallery / house** a proper player home (ownership, storage, bed, safe return). Likely the **priority** pillar of P; may unlock before or alongside P1–P3.
 
 Honor direction: no AAF/sex content here; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
 
@@ -216,9 +230,9 @@ Honor direction: no AAF/sex content here; never break essential/protected story 
 - Named-kill / Necromantic hooks (E): soft stub + CustomEvents; no `Necromantic.esp` master.
 - Corpse sever (F): limb-under-reticule unavailable in Papyrus; MSG menu + `Dismember` must leave gore pieces (no force-explode / no BloodyMess gib).
 - Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
-- Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; decay vs K preserve race; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn.
+- Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; decay vs L preserve race; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn.
 - Desperate rename (I): GoE2 display names vs Potential Victims overrides; strip cleanly when hunger drops; never touch essentials.
-- Hunger pacing (J): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
-- Witnesses (M): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
-- Private cells / quests (O): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs L overlap; Pickman house ownership without breaking Gallery bond trigger.
-
+- Victim beat (J): FO4 `SetEssential` is often **ActorBase**-scoped (shared templates); must restore prior essential/protected state; unarmed hit detection without false positives; don’t block later blade kill / satiation; never sticky-essential story NPCs.
+- Hunger pacing (K): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
+- Witnesses (N): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
+- Private cells / quests (P): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs M overlap; Pickman house ownership without breaking Gallery bond trigger.
