@@ -1601,6 +1601,17 @@ Bool Function IsDecayVisualsEnabled()
 	Return MCM.GetModSettingBool(MOD_NAME, "bDecayVisuals:Victims")
 EndFunction
 
+; MCM Victims — Apply decay to missing limbs/head (default OFF). When off (default),
+; ApplyDecayStageOverlays skips body decal decay on a corpse missing a limb or the
+; head (stump-edge UV glow protection) — same as today. When on, overrides that skip
+; so a dismembered corpse gets painted exactly like a fully-limbed one.
+Bool Function IsDecayMissingLimbsAllowed()
+	If !MCM.IsInstalled()
+		Return False
+	EndIf
+	Return MCM.GetModSettingBool(MOD_NAME, "bDecayMissingLimbs:Victims")
+EndFunction
+
 ; ModConfig decayStageN SkinTextures (+ scars if flagged) at stage RGBA. Soft deps; fail loud.
 ; Returns True when paint succeeds OR visuals are MCM-off (harmless for direct/force
 ; callers). SyncDecayForKnifeCorpse checks IsDecayVisualsEnabled() itself BEFORE
@@ -1637,8 +1648,13 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 	Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays begin stage=" + aiStage + " formId=" + akCorpse.GetFormID() + " force=" + (abForcePaint as Int))
 	; Bed gift (force paint): IsDismembered errors on parked/disabled NPCs false-trigger
 	; "limbs missing" and strip body textures — always paint body for vignette.
+	; MCM bDecayMissingLimbs:Victims (default off) is the same kind of override for
+	; the ambient/MCM path — when on, a dismembered corpse is treated exactly like a
+	; fully-limbed one (paints body decals + face mask; skips the stump-edge UV glow
+	; protection). Computed once and reused for every IsDismembered("Head1") gate below.
+	Bool bypassLimbGate = abForcePaint || IsDecayMissingLimbsAllowed()
 	Bool limbsIntact = True
-	If !abForcePaint
+	If !bypassLimbGate
 		limbsIntact = IsCorpseLimbsIntact(akCorpse)
 		If !limbsIntact
 			Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays body blocked — limbs missing formId=" + akCorpse.GetFormID())
@@ -1653,7 +1669,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 	String stageName = m.GetDecayStageName(aiStage)
 	Bool faceOk = False
 	String faceStatus = "face skipped — head missing"
-	Bool headOk = abForcePaint || !akCorpse.IsDismembered("Head1")
+	Bool headOk = bypassLimbGate || !akCorpse.IsDismembered("Head1")
 	If headOk
 		faceOk = ApplyDecayFaceArmorForStage(akCorpse, aiStage)
 		faceStatus = LastCorpseDecayStatus
@@ -1714,7 +1730,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 	EndIf
 
 	; LooksMenu Update may have stripped the face mask — put it back (head still present).
-	If abForcePaint || !akCorpse.IsDismembered("Head1")
+	If bypassLimbGate || !akCorpse.IsDismembered("Head1")
 		Bool faceOkAfter = ApplyDecayFaceArmorForStage(akCorpse, aiStage)
 		If faceOkAfter
 			faceOk = True
@@ -1743,7 +1759,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 	TraceCorpseOverlayState(akCorpse, "end-of-function")
 
 	If bodyOk
-		If !faceOk && (abForcePaint || !akCorpse.IsDismembered("Head1"))
+		If !faceOk && (bypassLimbGate || !akCorpse.IsDismembered("Head1"))
 			SetCorpseDecayStatus("stage " + aiStage + " " + stageName + " skins=" + skinCount + " scars=" + scarCount + " rgb=" + tintR + "," + tintG + "," + tintB + " a=" + tintA + " | body ok | face FAILED — " + faceStatus)
 			Debug.Notification("Pickman's Whisper: body decay applied; face mask failed — " + faceStatus)
 			Debug.Trace("PickmansWhisper: WARN ApplyDecayStageOverlays face failed — " + LastCorpseDecayStatus)

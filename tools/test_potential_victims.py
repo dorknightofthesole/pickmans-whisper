@@ -431,6 +431,8 @@ def test_mcm() -> None:
         fail("Victims decay help must mention overlay apply timing (~1s)")
     if "bDecayVisuals:Victims" not in victims_page:
         fail("Victims page must include Corpse decay visuals switcher")
+    if "bDecayMissingLimbs:Victims" not in victims_page:
+        fail("Victims page must include the Apply decay to missing limbs/head switcher")
 
     data = json.loads(cfg)
     missing_script = 0
@@ -473,11 +475,15 @@ def test_mcm() -> None:
     # file defaults, silently resetting a live-toggled value back to off.
     if "bDecayVisuals=1" not in ini:
         fail("settings.ini must default bDecayVisuals=1 (corpse decay visuals on)")
+    if "bDecayMissingLimbs=0" not in ini:
+        fail("settings.ini must default bDecayMissingLimbs=0 (stump-halo skip stays on by default)")
     mcm_cfg = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json").read_text(
         encoding="utf-8", errors="replace"
     )
     if '"id": "bDecayVisuals:Victims"' not in mcm_cfg:
         fail("MCM config.json must expose bDecayVisuals:Victims under Decay section")
+    if '"id": "bDecayMissingLimbs:Victims"' not in mcm_cfg:
+        fail("MCM config.json must expose bDecayMissingLimbs:Victims under Decay section")
     ok("settings.ini [Victims]")
 
 

@@ -196,6 +196,19 @@ def test_decay_script(decay: str) -> None:
     gate_idx = stage_fn.rfind("If limbsIntact", 0, queue_idx)
     if gate_idx < 0:
         fail("ApplyDecayStageOverlays must gate the final QueueUpdate on limbsIntact (don't regenerate severed limbs)")
+    # MCM bDecayMissingLimbs:Victims (default off) — overrides the stump-halo skip so
+    # a dismembered corpse can be painted like a fully-limbed one, on request.
+    if "Function IsDecayMissingLimbsAllowed" not in decay:
+        fail("CorpseDecay must IsDecayMissingLimbsAllowed (MCM bDecayMissingLimbs, default off)")
+    missing_limbs_fn = extract_function(decay, "IsDecayMissingLimbsAllowed")
+    if "bDecayMissingLimbs:Victims" not in missing_limbs_fn:
+        fail("IsDecayMissingLimbsAllowed must read bDecayMissingLimbs:Victims")
+    if "bypassLimbGate" not in stage_fn:
+        fail("ApplyDecayStageOverlays must compute bypassLimbGate (abForcePaint or IsDecayMissingLimbsAllowed)")
+    if "IsDecayMissingLimbsAllowed" not in stage_fn:
+        fail("ApplyDecayStageOverlays must gate bypassLimbGate on IsDecayMissingLimbsAllowed")
+    if stage_fn.count("bypassLimbGate") < 4:
+        fail("ApplyDecayStageOverlays must reuse bypassLimbGate for every Head1 dismember gate, not just the body one")
     face_idx = stage_fn.find("ApplyDecayFaceArmorForStage")
     skin_idx = stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting")
     if face_idx < 0 or skin_idx < 0 or face_idx > skin_idx:

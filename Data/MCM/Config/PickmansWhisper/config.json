@@ -406,6 +406,15 @@
 					}
 				},
 				{
+					"id": "bDecayMissingLimbs:Victims",
+					"text": "Apply decay to missing limbs/head",
+					"type": "switcher",
+					"help": "Off by default. When off: a corpse missing a limb or the head is skipped for body decal decay (stump-edge UV glow protection) — clock/face still advance as normal. When on: overrides that skip and paints body decals on a dismembered corpse exactly like a fully-limbed one.",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
 					"text": "Testing only. Pick a stage, press \"Set decay stage\" (or \"Reset decay stage\"), then close the dialog and MCM — overlays apply to the aimed corpse within about a second (requires Corpse decay visuals ON). Freshly (0) = no body skins; Pallor (1) = tinted SkinTexture_16; Livor (2)+ = heavier Porcupine skins. Face masks start at stage 2. \"Load targeted victim\" refreshes Aimed + Decay rows immediately.",
 					"type": "text",
 					"html": true
