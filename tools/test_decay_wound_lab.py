@@ -257,7 +257,7 @@ def test_lab_script(lab: str) -> None:
         ("decayStage1", "Pallor Mortis", "0.606", "0.859", "0.843", "1.0", "0.25", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
         ("decayStage2", "Livor Mortis", "0.900", "0.080", "0.120", "1.0", "2", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
         ("decayStage3", "Putrefaction", "0.250", "1.000", "0.100", "1.0", "48", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
-        ("decayStage4", "Black Putrefaction", "0.000", "0.000", "0.000", "1.0", "240", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
+        ("decayStage4", "Black Putrefaction", "0.000", "0.000", "0.000", "1.0", "96", "SkinTexture_16+SkinTexture_09+SkinTexture_18", False),
     ]
     for key, name, r, g, b, a, start_h, skins, scars in expected_stages:
         line = next((ln for ln in mod_cfg.splitlines() if ln.startswith(key + "=")), "")

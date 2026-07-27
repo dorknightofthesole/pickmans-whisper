@@ -61,7 +61,7 @@ decayStageN=name;r;g;b;a;startHours;skins[+skin...];scars?
 | 1 | Pallor Mortis | 0.606 | 0.859 | 0.843 | 1.0 | 0.25 (15 min) | `SkinTexture_16+SkinTexture_09+SkinTexture_18` | — |
 | 2 | Livor Mortis (red) | 0.900 | 0.080 | 0.120 | 1.0 | 2 | same | — |
 | 3 | Putrefaction (green) | 0.250 | 1.000 | 0.100 | 1.0 | 48 (2 d) | same | — |
-| 4 | Black Putrefaction | 0.000 | 0.000 | 0.000 | 1.0 | 240 (10 d) | same | — |
+| 4 | Black Putrefaction | 0.000 | 0.000 | 0.000 | 1.0 | 96 (4 d) | same | — |
 
 **Simplified body paint:** face ARMO first, then a small tinted set + stage RGBA. Multi-skin / scars map retired (hung Papyrus before stage 4 finished).
 

@@ -23,7 +23,7 @@ MCM_CONFIG = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 
 # Keep in sync with ModConfig decayStage0..4 startHours (and test_decay_stage_modconfig).
-SHIPPED_START_HOURS = (0.0, 0.25, 2.0, 48.0, 240.0)
+SHIPPED_START_HOURS = (0.0, 0.25, 2.0, 48.0, 96.0)
 
 
 def fail(msg: str) -> None:

@@ -190,8 +190,8 @@ def test_docs() -> None:
     slice_h = SLICE_H.read_text(encoding="utf-8")
     if "startHours" not in slice_h:
         fail("SLICE_H must document startHours")
-    if "0.25" not in slice_h or "240" not in slice_h:
-        fail("SLICE_H must document Pallor 0.25h and Black 240h thresholds")
+    if "0.25" not in slice_h or "96" not in slice_h:
+        fail("SLICE_H must document Pallor 0.25h and Black 96h thresholds")
     ok("SLICE_H documents P2 hour thresholds")
 
 

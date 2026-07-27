@@ -21,7 +21,7 @@ LAB = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperDecayWound
 DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 
 # Locked start-hour thresholds (game hours after kill).
-SHIPPED_START_HOURS = (0.0, 0.25, 2.0, 48.0, 240.0)
+SHIPPED_START_HOURS = (0.0, 0.25, 2.0, 48.0, 96.0)
 
 
 def fail(msg: str) -> None:
@@ -137,7 +137,7 @@ def test_parse_shipped_modconfig() -> None:
         1: ("Pallor Mortis", 0.606, 0.859, 0.843, 1.0, 0.25, coverage_skins, False),
         2: ("Livor Mortis", 0.900, 0.080, 0.120, 1.0, 2.0, coverage_skins, False),
         3: ("Putrefaction", 0.250, 1.000, 0.100, 1.0, 48.0, coverage_skins, False),
-        4: ("Black Putrefaction", 0.000, 0.000, 0.000, 1.0, 240.0, coverage_skins, False),
+        4: ("Black Putrefaction", 0.000, 0.000, 0.000, 1.0, 96.0, coverage_skins, False),
     }
     for idx, (name, r, g, b, a, start_h, skins, scars) in expected.items():
         got = stages[idx]
@@ -186,8 +186,8 @@ def test_resolve_decay_stage() -> None:
         (2.0, 2),
         (47.9, 2),  # gap before Putrefaction stays Livor
         (48.0, 3),
-        (239.9, 3),
-        (240.0, 4),
+        (95.9, 3),
+        (96.0, 4),
         (9999.0, 4),  # Black forever
     )
     for elapsed, want in cases:
