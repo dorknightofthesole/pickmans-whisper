@@ -190,6 +190,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_decay_mcm_clock.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Decay eat-ripe-toast (Slice H P4) contract test"
+& python (Join-Path $Root "tools\test_decay_eat_ripe_toast.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_decay_eat_ripe_toast.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> Killer Orchestrator / KillerScan bus contract test"
 & python (Join-Path $Root "tools\test_killer_scan_bus.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

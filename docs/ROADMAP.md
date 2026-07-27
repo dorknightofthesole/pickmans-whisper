@@ -125,7 +125,7 @@ Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Hea
 - [x] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Verify in-game.
 - [ ] **P2** — **Deliver working Corpse Decay stage change in MCM** (Set/Reset = kill clock; KillerScan sync applies overlays). Stage 0 body none; Pallor (1) tinted SkinTexture_16. Implemented — awaiting in-game confirm.
 - [ ] **P3** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 96); `SyncDecayForKnifeCorpse` via KillerScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT Boxer face stays lab-only; stage face ARMO rides the clock. Coded — verify in-game.
-- [ ] **P4** — At max stage (4), toast (and optional audio) urging the player to eat her before she is too ripe.
+- [ ] **P4** — At max stage (4), toast urging the player to eat her before she is too ripe. Cannibal-perk gated, ModConfig `eatRipeCorpseToast`, once-per-game-hour. Coded — awaiting in-game confirm.
 - [ ] **P5** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
 - [ ] **P6** — Face decal art finish: photo-edit stage-0 DDS toward putrefaction; **one asset set per ModConfig stage 0–4** (stage 0 verified in-game). Hard no slot-32 FaceGen swap. ESP builder must preserve ARMO FormIDs. Guide: [Decay_Head_Guide.md](Decay_Head_Guide.md).
 

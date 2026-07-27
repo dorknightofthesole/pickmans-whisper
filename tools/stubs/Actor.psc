@@ -11,6 +11,7 @@ Bool Function IsHostileToActor(Actor akActor) Native
 Actor Function GetCombatTarget() Native
 Bool Function HasSpell(Form akSpell) Native
 Bool Function HasMagicEffect(MagicEffect akEffect) Native
+Bool Function HasPerk(Perk akPerk) Native
 Bool Function AddSpell(Spell akSpell, Bool abVerbose = True) Native
 Bool Function RemoveSpell(Spell akSpell) Native
 Function DispelSpell(Spell akSpell) Native

@@ -12,6 +12,9 @@
 # namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
 #   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
 #   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
+# eatRipeCorpseToast — Slice H P4: Cannibal-perk nag once a tracked knife-kill corpse hits
+#   Black Putrefaction (max decay stage). {name} -> Victim override name, or "her" if unnamed.
+#   Max once per game-hour (all ripe corpses share one cooldown). Missing/empty key = no nag.
 # E4/E5 intimacy (named Potential Victim + Necromantic scene):
 #   config/necromantic/Intimacy_Start_Named.txt + Intimacy_Start_Audio.txt
 #   config/necromantic/Intimacy_End_Named.txt + Intimacy_End_Audio.txt
@@ -33,6 +36,7 @@ bedGiftWoundAlpha=0.40
 desperateNameSuffix= Dumb Bitch
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
+eatRipeCorpseToast=Eat {name} before she is too ripe.
 
 # skins=none → no body LooksMenu overlays (default body). Face masks: DecayFaceStages.txt.
 # Back to porcOverlays SkinTexture_16 (tintable dirt carrier — ROF DeadOverlays wound

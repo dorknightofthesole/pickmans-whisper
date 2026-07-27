@@ -145,6 +145,9 @@ python "$ROOT/tools/test_decay_kill_p2.py" || exit 1
 echo "==> Decay MCM kill-clock (reset/apply) contract test"
 python "$ROOT/tools/test_decay_mcm_clock.py" || exit 1
 
+echo "==> Decay eat-ripe-toast (Slice H P4) contract test"
+python "$ROOT/tools/test_decay_eat_ripe_toast.py" || exit 1
+
 echo "==> Killer Orchestrator / KillerScan bus contract test"
 python "$ROOT/tools/test_killer_scan_bus.py" || exit 1
 

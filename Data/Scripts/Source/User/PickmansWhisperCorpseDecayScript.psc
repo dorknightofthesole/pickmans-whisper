@@ -247,6 +247,11 @@ Function SyncOverlaysFromKillerScanSnapshot()
 				; want vs last — SyncDecayForKnifeCorpse itself re-resolves both and
 				; no-ops when they already match (see its own "stage==last" skip trace).
 				SyncDecayForKnifeCorpse(ak)
+				; P4 Cannibal nag — independent of the stage-changed gate above; checked
+				; every sweep so it keeps nagging (throttled) for as long as she stays ripe.
+				If m.ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)
+					m.MaybeToastEatRipeCorpse(ak)
+				EndIf
 			EndIf
 		EndIf
 		i += 1

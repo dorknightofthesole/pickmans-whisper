@@ -9,6 +9,11 @@ Weapon CombatKnifeBase ; WEAP Knife 0x913CA — what GetEquippedWeapon returns f
 ObjectMod OmodBleed ; mod_Legendary_Weapon_Bleed 0x1E7C20
 ObjectMod OmodStealthBlade ; mod_melee_Knife_SerratedStealth 0x187A10
 Cell PickmanGalleryCell
+; Slice H P4 — Cannibal perk ranks (Fallout4.esm grants each rank as its own PERK record;
+; ranked perks are additive, so check all three rather than assume rank order).
+Perk CannibalPerk1
+Perk CannibalPerk2
+Perk CannibalPerk3
 
 ; --- Bond (Auto = saved with the quest) ----------------------------------------
 Bool Property BondStarted = False Auto
@@ -144,6 +149,9 @@ Int FID_COMBAT_KNIFE = 0x000913CA ; WEAP Knife — equipped base for Pickman's
 Int FID_OMOD_BLEED = 0x001E7C20 ; mod_Legendary_Weapon_Bleed (Wounding)
 Int FID_OMOD_STEALTH = 0x00187A10 ; mod_melee_Knife_SerratedStealth
 Int FID_PICKMAN_GALLERY = 0x000379C5
+Int FID_PERK_CANNIBAL_1 = 0x0004B259 ; Cannibal01 (Hole in the Wall quest reward)
+Int FID_PERK_CANNIBAL_2 = 0x001D1A62 ; Cannibal02
+Int FID_PERK_CANNIBAL_3 = 0x001D1A63 ; Cannibal03
 ; Local forms (PickmansWhisper.esp) — low word for GetFormFromFile
 Int FID_HUNGER_SPEL = 0x00000801
 Int FID_HUNGER_GLOB = 0x00000802
@@ -265,6 +273,10 @@ Float BedGiftCooldownDays = -1.0 ; Slice G from ModConfig; -1 = missing/invalid
 Float BedGiftWoundAlpha = -1.0 ; Slice H bed DeathMarks opacity; -1 = missing/invalid
 String NamedKillToast = ""
 String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
+; Slice H P4 — ModConfig eatRipeCorpseToast; Cannibal nag, shared cooldown across all corpses.
+String EatRipeCorpseToast = ""
+Float LastEatRipeCorpseToastGameTime = 0.0
+Float EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0
 String Property ModConfigLoadStatus = "" Auto
 Bool ModConfigLoadBusy = False ; nested LoadModConfig forbidden (Sync must not clear live stages)
 ; Slice H P2 — decayStage0..4 from ModConfig (name;r;g;b;a;startHours;skins[+…];scars?).
@@ -1084,6 +1096,33 @@ Function ResolveVanillaForms()
 			Debug.Trace("PickmansWhisper: ERROR PickmanGallery01 missing")
 		EndIf
 	EndIf
+	If !CannibalPerk1
+		CannibalPerk1 = Game.GetFormFromFile(FID_PERK_CANNIBAL_1, "Fallout4.esm") as Perk
+	EndIf
+	If !CannibalPerk2
+		CannibalPerk2 = Game.GetFormFromFile(FID_PERK_CANNIBAL_2, "Fallout4.esm") as Perk
+	EndIf
+	If !CannibalPerk3
+		CannibalPerk3 = Game.GetFormFromFile(FID_PERK_CANNIBAL_3, "Fallout4.esm") as Perk
+	EndIf
+EndFunction
+
+; Any rank — Fallout4.esm grants each Cannibal rank as its own PERK record additively.
+Bool Function PlayerHasCannibalPerk()
+	If !PlayerRef
+		Return False
+	EndIf
+	ResolveVanillaForms()
+	If CannibalPerk1 && PlayerRef.HasPerk(CannibalPerk1)
+		Return True
+	EndIf
+	If CannibalPerk2 && PlayerRef.HasPerk(CannibalPerk2)
+		Return True
+	EndIf
+	If CannibalPerk3 && PlayerRef.HasPerk(CannibalPerk3)
+		Return True
+	EndIf
+	Return False
 EndFunction
 
 ; --- Bond / trigger ------------------------------------------------------------
@@ -3650,6 +3689,7 @@ Function LoadModConfig()
 	DesperateNameSuffix = ""
 	NamedKillToast = ""
 	NamedKillAudio = ""
+	EatRipeCorpseToast = ""
 	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
@@ -3715,6 +3755,8 @@ Function LoadModConfig()
 					NamedKillToast = val
 				ElseIf key == "namedKillAudio"
 					NamedKillAudio = val
+				ElseIf key == "eatRipeCorpseToast"
+					EatRipeCorpseToast = val
 				ElseIf key == "decayStage0"
 					ParseDecayStageValue(0, val)
 				ElseIf key == "decayStage1"
@@ -6416,6 +6458,42 @@ Bool Function MaybeSpeakNamedKillVoice(Actor victim)
 	EndIf
 	Debug.Trace("PickmansWhisper: named kill voice | " + line)
 	Return True
+EndFunction
+
+; Slice H P4 — Cannibal-perk nag at Black Putrefaction (max decay stage). Called from
+; CorpseDecay's ambient KillerScan sweep for every tracked corpse currently AT that stage
+; (not just on transition), so this owns its own once-per-game-hour throttle rather than
+; relying on SyncDecayForKnifeCorpse's stage-changed gate. One shared cooldown across all
+; ripe corpses — several corpses hitting the cap at once should not stack toasts.
+Function MaybeToastEatRipeCorpse(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	If !EatRipeCorpseToast || GardenOfEden.StrLength(EatRipeCorpseToast) < 1
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | no eatRipeCorpseToast (ModConfig not loaded / key empty)")
+		Return
+	EndIf
+	If !PlayerHasCannibalPerk()
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | player lacks Cannibal perk")
+		Return
+	EndIf
+	Float now = Utility.GetCurrentGameTime()
+	If (now - LastEatRipeCorpseToastGameTime) < (EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS / 24.0)
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | cooldown formId=" + akCorpse.GetFormID())
+		Return
+	EndIf
+	String overrideName = GetVictimOverrideName(akCorpse)
+	If !overrideName
+		overrideName = "her"
+	EndIf
+	String line = ApplyNamePlaceholder(EatRipeCorpseToast, overrideName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | empty line after placeholder")
+		Return
+	EndIf
+	LastEatRipeCorpseToastGameTime = now
+	Debug.Notification(line)
+	Debug.Trace("PickmansWhisper: eat-ripe-corpse toast | " + line)
 EndFunction
 
 ; Call after a valid knife kill (or MCM debug). Clears meter + sated window.
