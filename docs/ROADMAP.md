@@ -3,24 +3,24 @@
 Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md).
 
 
-| Slice | Deliverable                                                                    | Status                                                                                       |
-| ----- | ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
-| **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM                    | **Shipped (0.1.0)**                                                                          |
-| **B** | Kill-with-knife praise + satiation rules                                       | **Done**                                                                                     |
-| **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation | **Done** — C1–C5 verified in-game                                                            |
-| **D** | Audio bank playback (research + implement)                                     | **Done** — D0–D1 Desperate audio; delivery modes verified                                    |
-| **E** | Named-victim kill voice + soft Necromantic intimacy hooks                      | **Done** — E1–E5                                                                             |
-| **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`)                       | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md))             |
-| **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md)) |
-| **H** | Corpse decay (body + face) → eat urge → reward | **P1 done**; next **P2** MCM stage change — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) · face art [Decay_Head_Guide.md](Decay_Head_Guide.md) |
-| **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix) | **I1–I2 verified in-game** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md) |
-| **J** | Victim “beat before kill” — temp essential + fight back (unarmed exception) | Planned |
-| **K** | Slow hunger stages (days) + peak-hunger wait rewards | Planned |
-| **L** | Corpse preserve sync with Necromantic | Planned |
-| **M** | Perk gates; optional butcher cell / Cannibal hooks | Planned |
-| **N** | Witness support: flee/scream or attack; rumors of the "killer" | Planned |
-| **O** | Infamy / serial-killer whispers | Planned |
-| **P** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned |
+| Slice | Deliverable                                                                                    | Status                                                                                                                                               |
+| ----- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **A** | Trigger on house/knife; toast-only voice; hunger meter; MCM                                    | **Shipped (0.1.0)**                                                                                                                                  |
+| **B** | Kill-with-knife praise + satiation rules                                                       | **Done**                                                                                                                                             |
+| **C** | NPC scan + nearby comments + hunger-staged whispers + approach + look-fixation                 | **Done** — C1–C5 verified in-game                                                                                                                    |
+| **D** | Audio bank playback (research + implement)                                                     | **Done** — D0–D1 Desperate audio; delivery modes verified                                                                                            |
+| **E** | Named-victim kill voice + soft Necromantic intimacy hooks                                      | **Done** — E1–E5                                                                                                                                     |
+| **F** | Blade corpse sever (`/` + limb menu + `Actor.Dismember`)                                       | **Done** — verified in-game ([SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md))                                                                     |
+| **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md))                                                         |
+| **H** | Corpse decay (body + face) → eat urge → reward                                                 | **P1 done**; next **P2** MCM stage change — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) · face art [Decay_Head_Guide.md](Decay_Head_Guide.md) |
+| **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix)                                      | **I1–I2 verified in-game** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md)                                                              |
+| **J** | Victim “beat before kill” — temp essential + fight back (unarmed exception)                    | Planned                                                                                                                                              |
+| **K** | Slow hunger stages (days) + peak-hunger wait rewards                                           | Planned                                                                                                                                              |
+| **L** | Corpse preserve sync with Necromantic                                                          | Planned                                                                                                                                              |
+| **M** | Perk gates; optional butcher cell / Cannibal hooks                                             | Planned                                                                                                                                              |
+| **N** | Witness support: flee/scream or attack; rumors of the "killer"                                 | Planned                                                                                                                                              |
+| **O** | Infamy / serial-killer whispers                                                                | Planned                                                                                                                                              |
+| **P** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned                                                                                                                                              |
 
 
 
@@ -123,11 +123,11 @@ Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Hea
 - [x] **P0.1** — MCM Debug wound lab (sticky corpse + template/tint/count apply). Verify in-game.
 - [x] **P0.2** — Wound Lab: Porcupine Scars/SkinTexture stepper + apply/all (stacks with DeathMarks). Soft dep `porcOverlays.esl`. Face lab: Scripted Face Tints Damage/Boxer bruises (`DecayFaceOverlays.txt`, soft `SFT.esp`).
 - [x] **P1** — Apply DeathMarks wound overlays on the bed-gift corpse (POC; no kill clock). Verify in-game.
-- [ ] **P2** — **Deliver working Corpse Decay stage change in MCM** (Set/Reset = kill clock; KillerScan sync applies overlays). Stage 0 body none; Pallor (1) tinted SkinTexture_16. Implemented — awaiting in-game confirm.
-- [ ] **P3** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 96); `SyncDecayForKnifeCorpse` via KillerScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT Boxer face stays lab-only; stage face ARMO rides the clock. Coded — verify in-game.
-- [ ] **P4** — At max stage (4), toast urging the player to eat her before she is too ripe. Cannibal-perk gated, ModConfig `eatRipeCorpseToast`, once-per-game-hour. Coded — awaiting in-game confirm.
-- [ ] **P5** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
-- [ ] **P6** — Face decal art finish: photo-edit stage-0 DDS toward putrefaction; **one asset set per ModConfig stage 0–4** (stage 0 verified in-game). Hard no slot-32 FaceGen swap. ESP builder must preserve ARMO FormIDs. Guide: [Decay_Head_Guide.md](Decay_Head_Guide.md).
+- [x] **P2** — **Deliver working Corpse Decay stage change in MCM** (Set/Reset = kill clock; KillerScan sync applies overlays). Stage 0 body none; Pallor (1) tinted SkinTexture_16. Implemented — awaiting in-game confirm.
+- [x] **P3** — Stamp kill game-time + ModConfig `startHours` thresholds (0 / 0.25 / 2 / 48 / 96); `SyncDecayForKnifeCorpse` via KillerScan → CorpseDecay `CallFunctionNoWait` (not on voice stack). SFT Boxer face stays lab-only; stage face ARMO rides the clock. Coded — verify in-game.
+- [x] **P4** — At max stage (4), toast urging the player to eat her before she is too ripe. Cannibal-perk gated, ModConfig `eatRipeCorpseToast`, once-per-game-hour. Coded — awaiting in-game confirm.
+- [x] **P5** — Reward eating the corpse at that peak stage and clear her from Potential Victims.
+- [x] **P6** — Face decal art finish: photo-edit stage-0 DDS toward putrefaction; **one asset set per ModConfig stage 0–4** (stage 0 verified in-game). Hard no slot-32 FaceGen swap. ESP builder must preserve ARMO FormIDs. Guide: [Decay_Head_Guide.md](Decay_Head_Guide.md).
 
 Victim **places** (last-known cell/label) remain a tangential foundation for unloaded refs / MCM — not required for P1–P5 visuals.
 
@@ -137,13 +137,11 @@ Design: [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md). Contract: `t
 
 At notice stage **desperate** (hunger band 4), the knife voice rewrites how nearby women read — world name + `{name}` in notice toasts.
 
-- [x] **I1** — KillerScan `ScanAlive` → GoE2 `SetDisplayName` append ModConfig `desperateNameSuffix` (e.g. ` Dumb Bitch`). Idempotent; strip when stage drops. Skip essential / notice-reject. Logic on `PickmansWhisperDesperateRenameScript`. **Verified in-game.**
+- [x] **I1** — KillerScan `ScanAlive` → GoE2 `SetDisplayName` append ModConfig `desperateNameSuffix` (e.g.  `Dumb Bitch`). Idempotent; strip when stage drops. Skip essential / notice-reject. Logic on `PickmansWhisperDesperateRenameScript`. **Verified in-game.**
 - [x] **I2** — `GetActorDisplayName` / notice `{name}` show the suffixed label while desperate (toast matches mouseover). **Verified in-game** (world name confirmed).
 - [ ] **I3** — Optional bank of suffixes / MCM toggle (later).
 
 Honor direction: never rename **essential** story NPCs. Editable suffix in `ModConfig.txt` only (no hard-coded line bank mirror).
-
-
 
 ## Slice J — victim beat-before-kill (temp essential)
 
@@ -155,8 +153,6 @@ Let the player **pretend to beat** a qualified woman before finishing her with t
 - [ ] **J4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
 
 Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
-
-
 
 ## Slice K — slow hunger + peak wait rewards
 
@@ -220,8 +216,6 @@ Large stretch: custom (or heavily edited) **private cells** and quests that turn
 
 Honor direction: no AAF/sex content here; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
 
-
-
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
@@ -236,3 +230,4 @@ Honor direction: no AAF/sex content here; never break essential/protected story 
 - Hunger pacing (K): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (N): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 - Private cells / quests (P): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs M overlap; Pickman house ownership without breaking Gallery bond trigger.
+

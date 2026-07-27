@@ -192,10 +192,20 @@ def test_main_wiring() -> None:
         fail("MaybeRewardEatenRipeCorpse must pick the nearest corpse via GetDistance (two ripe corpses in one room must disambiguate)")
     if "FindDecayKillSlot(formId)" not in reward:
         fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be tracked")
-    if "ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)" not in reward:
+    stage_check_idx = reward.find("ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)")
+    if stage_check_idx < 0:
         fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be at max decay stage")
     if "ToastAteRipeCorpse(nearest)" not in reward or "ApplyEatRipeCorpseBonus(nearest)" not in reward:
         fail("MaybeRewardEatenRipeCorpse must call both ToastAteRipeCorpse and ApplyEatRipeCorpseBonus")
+    # Not just "these strings appear somewhere" — the stage check must actually gate the
+    # calls: a Return inside its own If block, positioned before both calls in source.
+    stage_if_block = reward[stage_check_idx : reward.find("EndIf", stage_check_idx)]
+    if "Return" not in stage_if_block:
+        fail("MaybeRewardEatenRipeCorpse's max-decay-stage check must Return (not just Trace) on mismatch")
+    toast_idx = reward.find("ToastAteRipeCorpse(nearest)")
+    bonus_idx = reward.find("ApplyEatRipeCorpseBonus(nearest)")
+    if toast_idx < stage_check_idx or bonus_idx < stage_check_idx:
+        fail("ToastAteRipeCorpse/ApplyEatRipeCorpseBonus must be called AFTER the max-decay-stage gate, not before")
     for needle in (
         "eaten-ripe-corpse skip | no Cannibal perk",
         "eaten-ripe-corpse skip | KillerScan missing",

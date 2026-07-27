@@ -2315,11 +2315,20 @@ Function EnsureVictimDisplayName(Actor ak)
 	GardenOfEden2.SetDisplayName(ak, n)
 EndFunction
 
-; Apply player-chosen name to a living actor (MCM / debug).
+; Apply player-chosen name to a living OR dead actor (MCM / debug) — naming a corpse
+; is a supported workflow (MCM: "aim a corpse, then open MCM" for the decay-stage row
+; on this same page), so this must not require her to still be alive.
 Bool Function ApplyVictimName(Actor ak, String name)
 	If !ak || !name
 		LastVictimStatus = "apply failed — no actor or name"
 		WriteVictimsStatusToMcm()
+		Return False
+	EndIf
+	; Lighter naming-only gate (human/female/non-hostile) — see IsValidNamingTarget.
+	If !IsValidNamingTarget(ak)
+		LastVictimStatus = "apply failed — not a valid target (" + LastKillIgnoreReason + ")"
+		WriteVictimsStatusToMcm()
+		Debug.Notification("Pickman's Whisper: can't name her — " + LastKillIgnoreReason)
 		Return False
 	EndIf
 	String useName = TrimString(name)
@@ -6321,7 +6330,7 @@ Function WatchKillCandidate(Actor ak, Bool abRequireValidFilter = True)
 	If ak.IsDead()
 		Return
 	EndIf
-	If abRequireValidFilter && !IsValidKnifeKillVictim(ak, True)
+	If abRequireValidFilter && !IsValidTarget(ak, True)
 		Return
 	EndIf
 	NoteAliveSeen(ak)
@@ -6479,7 +6488,14 @@ Bool Function IsHumanNpc(Actor ak)
 	Return False
 EndFunction
 
-Bool Function IsValidKnifeKillVictim(Actor ak, Bool abRequireAlive = True)
+; Eligibility gate for anything that actually credits/affects gameplay — knife-kill
+; crediting (ProcessKnifeKill) and pre-kill watch registration (WatchKillCandidate).
+; Was IsValidKnifeKillVictim; renamed since it is the shared gate for that whole
+; pipeline, not just the literal kill moment. MCM naming (ApplyVictimName) deliberately
+; does NOT use this — see IsValidNamingTarget below, a lighter gate for a non-destructive
+; action (naming does not credit hunger or affect the world, so it doesn't need the
+; essential/teammate/alive protections a real kill does).
+Bool Function IsValidTarget(Actor ak, Bool abRequireAlive = True)
 	If !ak || ak == PlayerRef
 		LastKillIgnoreReason = "no actor"
 		Return False
@@ -6509,6 +6525,31 @@ Bool Function IsValidKnifeKillVictim(Actor ak, Bool abRequireAlive = True)
 		Return False
 	EndIf
 	; Must have been seen non-hostile while alive (raiders fail; settlers you aggro still pass).
+	If !WasFriendlySeen(ak)
+		LastKillIgnoreReason = "hostile / not seen friendly"
+		Return False
+	EndIf
+	Return True
+EndFunction
+
+; Naming gate (ApplyVictimName only) — deliberately lighter than IsValidTarget. Naming is
+; non-destructive (just a label) and must work on a corpse, not only a living actor (MCM's
+; own copy: "aim a corpse, then open MCM"), so there is no alive/dead requirement here and
+; no essential/teammate protection — human, adult female (which itself already honors
+; IsChildTargetAllowed — see IsAdultFemale), and seen-non-hostile, nothing else.
+Bool Function IsValidNamingTarget(Actor ak)
+	If !ak || ak == PlayerRef
+		LastKillIgnoreReason = "no actor"
+		Return False
+	EndIf
+	If !IsHumanNpc(ak)
+		LastKillIgnoreReason = "not human NPC"
+		Return False
+	EndIf
+	If !IsAdultFemale(ak)
+		LastKillIgnoreReason = "not adult female"
+		Return False
+	EndIf
 	If !WasFriendlySeen(ak)
 		LastKillIgnoreReason = "hostile / not seen friendly"
 		Return False
@@ -6581,7 +6622,7 @@ Function HandlePotentialKnifeKill(Actor victim, Actor akKiller)
 		LastKillIgnoreReason = "cooldown"
 		Return
 	EndIf
-	If !IsValidKnifeKillVictim(victim, False)
+	If !IsValidTarget(victim, False)
 		ToastDebug("PW debug: kill ignored — " + LastKillIgnoreReason)
 		Debug.Trace("PickmansWhisper: kill ignored — " + LastKillIgnoreReason + " id=" + vid)
 		Return

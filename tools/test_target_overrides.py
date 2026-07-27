@@ -135,10 +135,10 @@ def test_psc(text: str) -> None:
         fail("IsAdultFemale must honor IsChildTargetAllowed for child females")
     ok("IsAdultFemale child override")
 
-    knife = extract_function(text, "IsValidKnifeKillVictim")
+    knife = extract_function(text, "IsValidTarget")
     if "IsChildTargetAllowed" not in knife:
-        fail("IsValidKnifeKillVictim must honor IsChildTargetAllowed (full mod support)")
-    ok("IsValidKnifeKillVictim child gate")
+        fail("IsValidTarget must honor IsChildTargetAllowed (full mod support)")
+    ok("IsValidTarget child gate")
 
     human = extract_function(text, "IsHumanNpc")
     if "IsRobotTargetAllowed" not in human:

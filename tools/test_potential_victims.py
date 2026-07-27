@@ -143,7 +143,31 @@ def test_main_naming(text: str) -> None:
         fail("ApplyVictimName must HoldVictimRef (optional alias)")
     if "IsUsableWhisperName" not in apply:
         fail("ApplyVictimName must reject unusable names")
+    # Naming is the only entry point into the Potential Victims table, and Corpse Decay
+    # tracking keys off that table, so an unfiltered name could smuggle a non-human/male
+    # target into decay tracking. Deliberately the LIGHTER IsValidNamingTarget gate, not
+    # IsValidTarget — naming must work on a corpse (MCM: "aim a corpse, then open MCM")
+    # and doesn't need kill-crediting's essential/teammate/alive protections. Must run
+    # BEFORE UpsertVictim, not after.
+    if "IsValidTarget(ak, True)" in apply or "IsValidTarget(ak, False)" in apply:
+        fail("ApplyVictimName must not use IsValidTarget (requires alive or drags in essential/teammate checks) — use IsValidNamingTarget")
+    gate_idx = apply.find("IsValidNamingTarget(ak)")
+    if gate_idx < 0:
+        fail("ApplyVictimName must gate on IsValidNamingTarget(ak)")
+    if gate_idx > apply.find("UpsertVictim"):
+        fail("ApplyVictimName must check IsValidNamingTarget BEFORE UpsertVictim, not after")
     ok("ApplyVictimName GoE2.SetDisplayName + store")
+    ok("ApplyVictimName gates on IsValidNamingTarget before UpsertVictim (human/female/non-hostile, alive-or-dead)")
+
+    naming_gate = extract_function(text, "IsValidNamingTarget")
+    if "ak.IsDead()" in naming_gate:
+        fail("IsValidNamingTarget must not require/reject on alive-vs-dead — naming works on corpses")
+    if "IsStoryEssential" in naming_gate or "IsPlayerTeammate" in naming_gate:
+        fail("IsValidNamingTarget must not check essential/teammate — naming is non-destructive, unlike kill crediting")
+    for needle in ("IsHumanNpc(ak)", "IsAdultFemale(ak)", "WasFriendlySeen(ak)"):
+        if needle not in naming_gate:
+            fail(f"IsValidNamingTarget must check {needle}")
+    ok("IsValidNamingTarget: human + female + non-hostile only, no alive/essential/teammate restriction")
 
     get_name = extract_function(text, "GetActorDisplayName")
     if "GetVictimOverrideName" not in get_name:
