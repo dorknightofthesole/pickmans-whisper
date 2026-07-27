@@ -15,11 +15,21 @@ Int FID_MAIN_QUEST = 0x00000800
 Int KEY_BUTCHER = 191
 Bool ButcherKeyRegistered = False
 Bool BedSleepRegistered = False
+; Slice H P5 — magic-effect-apply detection lives here, not on the Quest. A Quest-level
+; RegisterForMagicEffectApplyEvent(PlayerRef, ...) was tried first and confirmed dead
+; live (an unfiltered sniff variant caught zero effects over two minutes of play, even
+; though the registration call itself reported success) — this alias is filled with the
+; player and already proves other per-player natives work here (RegisterForKey,
+; RegisterForPlayerSleep, and OnCombatStateChanged firing locally with no registration
+; at all), so detection moved to match.
+Bool MagicEffectDetectRegistered = False
+Bool MagicEffectSniffRegistered = False
 
 Event OnAliasInit()
 	EnsurePlayerFill()
 	RegisterButcherKey()
 	RegisterBedGiftSleep()
+	RegisterMagicEffectDetect()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.EnsurePlayerCombatQuest()
@@ -34,11 +44,61 @@ Event OnPlayerLoadGame()
 	EnsurePlayerFill()
 	RegisterButcherKey()
 	RegisterBedGiftSleep()
+	RegisterMagicEffectDetect()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.HandlePlayerLoadFromAlias()
 	Else
 		Debug.Trace("PickmansWhisper: alias OnPlayerLoadGame — main quest script not found (timers not armed)")
+	EndIf
+EndEvent
+
+; Re-register every load, same pattern as RegisterButcherKey/RegisterBedGiftSleep.
+Function RegisterMagicEffectDetect()
+	PickmansWhisperMainQuestScript main = GetMain()
+	If !main
+		Debug.Trace("PickmansWhisper: alias RegisterMagicEffectDetect — main quest script not found")
+		Return
+	EndIf
+	MagicEffect effect = main.GetRestoreHealthGenericEffect()
+	If !effect
+		Debug.Trace("PickmansWhisper: ERROR alias RegisterMagicEffectDetect — RestoreHealthGenericEffect missing")
+		Return
+	EndIf
+	If MagicEffectDetectRegistered
+		UnregisterForMagicEffectApplyEvent(Self, None, effect, True)
+	EndIf
+	RegisterForMagicEffectApplyEvent(Self, None, effect, True)
+	MagicEffectDetectRegistered = True
+	Debug.Trace("PickmansWhisper: alias registered MagicEffectApply effect=" + effect)
+EndFunction
+
+; Called by MainQuestScript.SyncMagicEffectSniffer (MCM Debug switcher). Unfiltered catch-
+; all — UnregisterForAllMagicEffectApplyEvents wipes the real registration too, so turning
+; sniffing off must re-arm it.
+Function SyncMagicEffectSniff(Bool abWant)
+	If abWant == MagicEffectSniffRegistered
+		Return
+	EndIf
+	MagicEffectSniffRegistered = abWant
+	If abWant
+		RegisterForMagicEffectApplyEvent(Self)
+		Debug.Trace("PickmansWhisper: alias DEBUG magic-effect sniffer ON")
+	Else
+		UnregisterForAllMagicEffectApplyEvents(Self)
+		RegisterMagicEffectDetect()
+		Debug.Trace("PickmansWhisper: alias DEBUG magic-effect sniffer OFF")
+	EndIf
+EndFunction
+
+; Local alias event — must match ScriptObject's declared OnMagicEffectApply signature
+; EXACTLY (all 3 params; Caprica rejects a shortened override — confirmed by compile
+; error: "doesn't match the signature in the parent class 'ScriptObject'"). Unlike
+; OnCombatStateChanged, this event does not drop akTarget for local use.
+Event OnMagicEffectApply(ObjectReference akTarget, ObjectReference akCaster, MagicEffect akEffect)
+	PickmansWhisperMainQuestScript main = GetMain()
+	If main
+		main.HandlePlayerMagicEffectApply(akEffect)
 	EndIf
 EndEvent
 

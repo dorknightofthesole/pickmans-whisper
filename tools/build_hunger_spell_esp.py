@@ -205,6 +205,7 @@ def build_main_quest_payload() -> bytes:
                 "PickmansWhisperDesperateRenameScript",
                 "PickmansWhisperKillerScanScript",
                 "PickmansWhisperVoiceScanScript",
+                "PickmansWhisperBuffTrackerScript",
             ]
         ),
     )

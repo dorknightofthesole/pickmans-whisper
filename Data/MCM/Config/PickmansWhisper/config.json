@@ -507,6 +507,15 @@
 					}
 				},
 				{
+					"id": "bSniffMagicEffects:Debug",
+					"text": "Sniff magic effects (P5 discovery)",
+					"type": "switcher",
+					"help": "Temporary Slice H P5 diagnostic. Off by default. When on, Traces the FormID of EVERY magic effect applied to the player (Papyrus.0.log) — used to confirm which effect the Cannibal perk's heal actually applies. Turn off when done; it is noisy.",
+					"valueOptions": {
+						"sourceType": "ModSettingBool"
+					}
+				},
+				{
 					"id": "bBedGiftEverySleep:Debug",
 					"text": "Bed gift every sleep",
 					"type": "switcher",

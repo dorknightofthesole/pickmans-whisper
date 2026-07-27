@@ -235,7 +235,6 @@ EndFunction
 
 ; MCM CallFunction — "Load targeted corpse" (own lock; must not wait on Main killscan).
 Function MCMRefreshVictimsPanel()
-	Debug.Notification("PW Victims Refresh — CallFunction hit")
 	Debug.Trace("PickmansWhisper: MCMRefreshVictimsPanel OK")
 	; RefreshMenu reloads settings.ini and wipes live sDecayStage / Pick stage.
 	; Write aux SYNC (not CallFunctionNoWait) so Decay row + dialog match now.

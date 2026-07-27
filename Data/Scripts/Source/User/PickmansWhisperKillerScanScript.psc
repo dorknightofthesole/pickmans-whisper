@@ -50,6 +50,10 @@ PickmansWhisperVictimsScript Function Victims()
 	Return (Self as Quest) as PickmansWhisperVictimsScript
 EndFunction
 
+PickmansWhisperBuffTrackerScript Function BuffTracker()
+	Return (Self as Quest) as PickmansWhisperBuffTrackerScript
+EndFunction
+
 PickmansWhisperBedGiftScript Function BedGift()
 	Return (Self as Quest) as PickmansWhisperBedGiftScript
 EndFunction
@@ -218,6 +222,15 @@ Function DispatchListeners()
 	PickmansWhisperCorpseDecayScript decayPending = CorpseDecay()
 	If decayPending
 		decayPending.CallFunctionNoWait("CheckPendingAimedDecayApply", None)
+	EndIf
+
+	; Slice H P5 — buff expiry check. Cheap (two Float comparisons unless a buff is
+	; both active and past expiry); no StartTimer of its own (Killer Orchestrator).
+	PickmansWhisperBuffTrackerScript buffs = BuffTracker()
+	If buffs
+		buffs.CallFunctionNoWait("TickEndBuffExpiry", None)
+	Else
+		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — BuffTracker missing")
 	EndIf
 
 	; Sync — deadlines are cheap; NoWait piled up and double-counted despawn scans.

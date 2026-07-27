@@ -62,6 +62,7 @@ PSC_VICTIMS="PickmansWhisperVictimsScript.psc"
 PSC_WORLD_SCAN="PickmansWhisperKillerScanScript.psc"
 PSC_VOICE_SCAN="PickmansWhisperVoiceScanScript.psc"
 PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
+PSC_BUFF_TRACKER="PickmansWhisperBuffTrackerScript.psc"
 
 to_win_path() {
   local p="$1"
@@ -148,6 +149,12 @@ python "$ROOT/tools/test_decay_mcm_clock.py" || exit 1
 echo "==> Decay eat-ripe-toast (Slice H P4) contract test"
 python "$ROOT/tools/test_decay_eat_ripe_toast.py" || exit 1
 
+echo "==> Decay eaten-ripe-corpse (Slice H P5) contract test"
+python "$ROOT/tools/test_decay_eaten_ripe_corpse.py" || exit 1
+
+echo "==> Buff tracker (Slice H P5 bonus) contract test"
+python "$ROOT/tools/test_buff_tracker.py" || exit 1
+
 echo "==> Killer Orchestrator / KillerScan bus contract test"
 python "$ROOT/tools/test_killer_scan_bus.py" || exit 1
 
@@ -166,10 +173,10 @@ python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -216,6 +223,10 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" ]]; then
   echo "ERROR: compile produced no PlayerAlias .pex" >&2
   exit 1
 fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" ]]; then
+  echo "ERROR: compile produced no BuffTracker .pex" >&2
+  exit 1
+fi
 
 echo "==> Deploying to $DEPLOY"
 mkdir -p \
@@ -238,6 +249,7 @@ cp -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVoiceScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
@@ -246,6 +258,7 @@ cp -f "$SRC/PickmansWhisperVictimsScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperKillerScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVoiceScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperBuffTrackerScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"

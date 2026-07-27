@@ -15,6 +15,13 @@
 # eatRipeCorpseToast — Slice H P4: Cannibal-perk nag once a tracked knife-kill corpse hits
 #   Black Putrefaction (max decay stage). {name} -> Victim override name, or "her" if unnamed.
 #   Max once per game-hour (all ripe corpses share one cooldown). Missing/empty key = no nag.
+# ateRipeCorpseToast — Slice H P5: fires once the player actually eats a max-stage corpse
+#   (Cannibal perk required). {name} -> Victim override name, or "She" if unnamed.
+#   No cooldown — each eat is already a deliberate, spaced-out action.
+# ateRipeCorpseEndBuffAmount / MaxDelta / Hours — Slice H P5 bonus: END buff per eat,
+#   clamped so the total delta from this buff never exceeds MaxDelta (e.g. already +3,
+#   Amount=2 -> only +1 applied). Hours is game-time; eating again refreshes the timer.
+#   BuffTrackerScript removes the full applied delta on expiry.
 # E4/E5 intimacy (named Potential Victim + Necromantic scene):
 #   config/necromantic/Intimacy_Start_Named.txt + Intimacy_Start_Audio.txt
 #   config/necromantic/Intimacy_End_Named.txt + Intimacy_End_Audio.txt
@@ -37,6 +44,10 @@ desperateNameSuffix= Dumb Bitch
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
 eatRipeCorpseToast=Eat {name} before she is too ripe.
+ateRipeCorpseToast={name} was delicious, though a bit ripe.
+ateRipeCorpseEndBuffAmount=2
+ateRipeCorpseEndBuffMaxDelta=4
+ateRipeCorpseEndBuffHours=2
 
 # skins=none → no body LooksMenu overlays (default body). Face masks: DecayFaceStages.txt.
 # Back to porcOverlays SkinTexture_16 (tintable dirt carrier — ROF DeadOverlays wound

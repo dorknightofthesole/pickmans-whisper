@@ -54,6 +54,7 @@ $PscDesperateRename = "PickmansWhisperDesperateRenameScript.psc"
 $PscKillerScan = "PickmansWhisperKillerScanScript.psc"
 $PscVoiceScan = "PickmansWhisperVoiceScanScript.psc"
 $PscAlias = "PickmansWhisperPlayerAliasScript.psc"
+$PscBuffTracker = "PickmansWhisperBuffTrackerScript.psc"
 
 Write-Host "==> Pickman's Whisper local build + deploy"
 Write-Host "    ROOT=$Root"
@@ -196,6 +197,18 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_decay_eat_ripe_toast.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Decay eaten-ripe-corpse (Slice H P5) contract test"
+& python (Join-Path $Root "tools\test_decay_eaten_ripe_corpse.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_decay_eaten_ripe_corpse.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Buff tracker (Slice H P5 bonus) contract test"
+& python (Join-Path $Root "tools\test_buff_tracker.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_buff_tracker.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> Killer Orchestrator / KillerScan bus contract test"
 & python (Join-Path $Root "tools\test_killer_scan_bus.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
@@ -244,10 +257,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias"
+Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias + $PscBuffTracker"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias)) {
+  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias, $PscBuffTracker)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -268,6 +281,7 @@ $PexDesperateRename = Join-Path $PexOut "PickmansWhisperDesperateRenameScript.pe
 $PexKillerScan = Join-Path $PexOut "PickmansWhisperKillerScanScript.pex"
 $PexVoiceScan = Join-Path $PexOut "PickmansWhisperVoiceScanScript.pex"
 $PexAlias = Join-Path $PexOut "PickmansWhisperPlayerAliasScript.pex"
+$PexBuffTracker = Join-Path $PexOut "PickmansWhisperBuffTrackerScript.pex"
 if (-not (Test-Path $Pex)) { throw "compile produced no main .pex" }
 if (-not (Test-Path $PexBed)) { throw "compile produced no BedGift .pex" }
 if (-not (Test-Path $PexDecay)) { throw "compile produced no CorpseDecay .pex" }
@@ -277,6 +291,7 @@ if (-not (Test-Path $PexDesperateRename)) { throw "compile produced no Desperate
 if (-not (Test-Path $PexKillerScan)) { throw "compile produced no KillerScan .pex" }
 if (-not (Test-Path $PexVoiceScan)) { throw "compile produced no VoiceScan .pex" }
 if (-not (Test-Path $PexAlias)) { throw "compile produced no PlayerAlias .pex" }
+if (-not (Test-Path $PexBuffTracker)) { throw "compile produced no BuffTracker .pex" }
 
 Write-Host "==> Deploying to $Deploy"
 @(
@@ -303,6 +318,7 @@ Copy-Item -Force $PexDesperateRename (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexKillerScan (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexVoiceScan (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexAlias (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexBuffTracker (Join-Path $Deploy "Scripts\")
 Copy-Item -Force (Join-Path $Src $Psc) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscBed) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscDecay) (Join-Path $Deploy "Scripts\Source\User\")
@@ -312,6 +328,7 @@ Copy-Item -Force (Join-Path $Src $PscDesperateRename) (Join-Path $Deploy "Script
 Copy-Item -Force (Join-Path $Src $PscKillerScan) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscVoiceScan) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscAlias) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscBuffTracker) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\config.json") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join-Path $Deploy "MCM\Settings\")

@@ -24,6 +24,14 @@ Function RegisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilt
 Function UnregisterForHitEvent(ScriptObject akTarget, ScriptObject akAggressorFilter = None, Form akSourceFilter = None, Form akProjectileFilter = None, Int aiPowerFilter = -1, Int aiSneakFilter = -1, Int aiBashFilter = -1, Int aiBlockFilter = -1, Bool abMatch = True) Native
 Function UnregisterForAllHitEvents(ScriptObject akTarget = None) Native
 
+; FO4 magic effect apply events — akEffectFilter narrows to one MagicEffect form (e.g.
+; a shared/generic effect used by multiple spells) so we don't get spammed by every buff.
+Function RegisterForMagicEffectApplyEvent(ScriptObject akTarget, ScriptObject akCasterFilter = None, Form akEffectFilter = None, Bool abMatch = True) Native
+Function UnregisterForMagicEffectApplyEvent(ScriptObject akTarget, ScriptObject akCasterFilter = None, Form akEffectFilter = None, Bool abMatch = True) Native
+Function UnregisterForAllMagicEffectApplyEvents(ScriptObject akTarget = None) Native
+Event OnMagicEffectApply(ObjectReference akTarget, ObjectReference akCaster, MagicEffect akEffect)
+EndEvent
+
 ; FO4 timers live on ScriptObject (Quest inherits). Do NOT stub Skyrim RegisterForUpdate*.
 Function StartTimer(Float afInterval, Int aiTimerID = 0) Native
 Function CancelTimer(Int aiTimerID = 0) Native

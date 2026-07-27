@@ -14,6 +14,12 @@ Cell PickmanGalleryCell
 Perk CannibalPerk1
 Perk CannibalPerk2
 Perk CannibalPerk3
+; Slice H P5 — RestoreHealthGeneric is the shared/generic heal MGEF the vanilla
+; PerkCannibalHeal spell applies (verified against Fallout4.esm; also used by Stimpaks
+; etc., so it is NOT cannibal-exclusive on its own — see MaybeRewardEatenRipeCorpse).
+MagicEffect RestoreHealthGenericEffect
+; P5 discovery only — MCM Debug "Sniff magic effects". See SyncMagicEffectSniffer.
+Bool DebugSniffMagicEffects = False
 
 ; --- Bond (Auto = saved with the quest) ----------------------------------------
 Bool Property BondStarted = False Auto
@@ -152,6 +158,7 @@ Int FID_PICKMAN_GALLERY = 0x000379C5
 Int FID_PERK_CANNIBAL_1 = 0x0004B259 ; Cannibal01 (Hole in the Wall quest reward)
 Int FID_PERK_CANNIBAL_2 = 0x001D1A62 ; Cannibal02
 Int FID_PERK_CANNIBAL_3 = 0x001D1A63 ; Cannibal03
+Int FID_MGEF_RESTORE_HEALTH_GENERIC = 0x00023735 ; RestoreHealthGeneric
 ; Local forms (PickmansWhisper.esp) — low word for GetFormFromFile
 Int FID_HUNGER_SPEL = 0x00000801
 Int FID_HUNGER_GLOB = 0x00000802
@@ -277,6 +284,14 @@ String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exis
 String EatRipeCorpseToast = ""
 Float LastEatRipeCorpseToastGameTime = 0.0
 Float EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0
+; Slice H P5 — ModConfig ateRipeCorpseToast; fires once per detected eat (no cooldown needed
+; — each eat is a deliberate, spaced-out player action already).
+String AteRipeCorpseToast = ""
+; Slice H P5 bonus — END buff (BuffTrackerScript). -1 = missing/invalid, matching
+; BedGiftCooldownDays' convention (fail loud, no baked fallback).
+Float EatRipeCorpseEndBuffAmount = -1.0
+Float EatRipeCorpseEndBuffMaxDelta = -1.0
+Float EatRipeCorpseEndBuffHours = -1.0
 String Property ModConfigLoadStatus = "" Auto
 Bool ModConfigLoadBusy = False ; nested LoadModConfig forbidden (Sync must not clear live stages)
 ; Slice H P2 — decayStage0..4 from ModConfig (name;r;g;b;a;startHours;skins[+…];scars?).
@@ -1105,6 +1120,9 @@ Function ResolveVanillaForms()
 	If !CannibalPerk3
 		CannibalPerk3 = Game.GetFormFromFile(FID_PERK_CANNIBAL_3, "Fallout4.esm") as Perk
 	EndIf
+	If !RestoreHealthGenericEffect
+		RestoreHealthGenericEffect = Game.GetFormFromFile(FID_MGEF_RESTORE_HEALTH_GENERIC, "Fallout4.esm") as MagicEffect
+	EndIf
 EndFunction
 
 ; Any rank — Fallout4.esm grants each Cannibal rank as its own PERK record additively.
@@ -1123,6 +1141,155 @@ Bool Function PlayerHasCannibalPerk()
 		Return True
 	EndIf
 	Return False
+EndFunction
+
+; Slice H P5 — detect "player ate a corpse." No vanilla script anywhere registers an
+; animation event for this (checked FO4's real Scripts/Source; the one precedent found,
+; Bloodbug's feed event, is an arbitrary per-animation name like "FillingRed" with zero
+; guessable convention) so an animation-event name cannot be verified without a live
+; in-game discovery pass. Instead: the vanilla Cannibal fragment
+; (PRKF_Cannibal_0004B259) always does `PerkCannibalHeal.Cast(player, player)`, and that
+; spell's single effect is RestoreHealthGeneric (verified against Fallout4.esm,
+; duration 5s) — the same generic heal MGEF Stimpaks etc. also use, so it is NOT
+; cannibal-exclusive by itself. MaybeRewardEatenRipeCorpse compensates by additionally
+; requiring the Cannibal perk (without it this MGEF cannot come from eating — the vanilla
+; Eat choice would not exist) and a tracked, max-stage corpse within butcher range.
+;
+; Registration lives on PickmansWhisperPlayerAliasScript (ReferenceAlias filled with the
+; player), NOT here — a Quest-level RegisterForMagicEffectApplyEvent(PlayerRef, ...) was
+; tried first and never fired even once (confirmed live: an unfiltered sniff variant of
+; it caught zero effects over two minutes of play, though registration itself reported
+; success). The alias already proves the working pattern for other per-player natives
+; (RegisterForKey/RegisterForPlayerSleep re-armed every load; OnCombatStateChanged fires
+; locally with zero registration) so magic-effect detection moved there too. This getter
+; is what the alias calls to resolve the filter effect.
+MagicEffect Function GetRestoreHealthGenericEffect()
+	ResolveVanillaForms()
+	Return RestoreHealthGenericEffect
+EndFunction
+
+PickmansWhisperPlayerAliasScript Function PlayerAlias()
+	Quest pq = Game.GetFormFromFile(FID_PLAYER_COMBAT_QUEST, "PickmansWhisper.esp") as Quest
+	If !pq
+		Debug.Trace("PickmansWhisper: ERROR PlayerAlias — PlayerCombat quest 0x805 missing")
+		Return None
+	EndIf
+	Return pq.GetAlias(0) as PickmansWhisperPlayerAliasScript
+EndFunction
+
+; MCM Debug switcher handler — delegates the actual (un)registration to the alias, since
+; RegisterForMagicEffectApplyEvent(Self) there is what's proven to work; this script just
+; tracks the flag for HandlePlayerMagicEffectApply's Trace-or-not decision.
+Function SyncMagicEffectSniffer()
+	Bool want = False
+	If MCM.IsInstalled()
+		want = MCM.GetModSettingBool(MOD_NAME, "bSniffMagicEffects:Debug")
+	EndIf
+	PickmansWhisperPlayerAliasScript pAlias = PlayerAlias()
+	If !pAlias
+		Debug.Trace("PickmansWhisper: ERROR SyncMagicEffectSniffer — PlayerAlias missing")
+		Return
+	EndIf
+	pAlias.SyncMagicEffectSniff(want)
+	DebugSniffMagicEffects = want
+EndFunction
+
+; Called by PickmansWhisperPlayerAliasScript.OnMagicEffectApply (local alias event).
+Function HandlePlayerMagicEffectApply(MagicEffect akEffect)
+	If DebugSniffMagicEffects
+		Debug.Trace("PickmansWhisper: DEBUG MagicEffectApply effect=" + akEffect)
+	EndIf
+	If akEffect != RestoreHealthGenericEffect
+		Return
+	EndIf
+	MaybeRewardEatenRipeCorpse()
+EndFunction
+
+; Trigger fires ~0.6s+ after the vanilla fragment's StartCannibal call (see its own Wait),
+; so the player is still standing at/near her — no extra delay needed before resolving
+; nearest corpse, unlike the fragment's own animation timing.
+Function MaybeRewardEatenRipeCorpse()
+	If !PlayerRef || !PlayerHasCannibalPerk()
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no Cannibal perk (heal was not from eating)")
+		Return
+	EndIf
+	PickmansWhisperKillerScanScript scan = KillerScan()
+	If !scan
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | KillerScan missing")
+		Return
+	EndIf
+	Actor[] dead = scan.ScanDead
+	Int deadCount = scan.ScanDeadCount
+	If !dead || deadCount <= 0
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | ScanDead empty")
+		Return
+	EndIf
+	Int n = deadCount
+	If n > 16
+		n = 16
+	EndIf
+	Actor nearest = None
+	Float nearestDist = BUTCHER_CORPSE_RADIUS + 1.0
+	Int i = 0
+	While i < n
+		Actor ak = dead[i]
+		If ak && ak != PlayerRef
+			Float d = PlayerRef.GetDistance(ak)
+			If d < nearestDist
+				nearestDist = d
+				nearest = ak
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	If !nearest
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no corpse within " + BUTCHER_CORPSE_RADIUS)
+		Return
+	EndIf
+	Int formId = nearest.GetFormID()
+	If FindDecayKillSlot(formId) < 0
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse untracked formId=" + formId)
+		Return
+	EndIf
+	If ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse not max stage formId=" + formId)
+		Return
+	EndIf
+	ToastAteRipeCorpse(nearest)
+	ApplyEatRipeCorpseBonus(nearest)
+EndFunction
+
+Function ToastAteRipeCorpse(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	If !AteRipeCorpseToast || GardenOfEden.StrLength(AteRipeCorpseToast) < 1
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no ateRipeCorpseToast (ModConfig not loaded / key empty)")
+		Return
+	EndIf
+	String overrideName = GetVictimOverrideName(akCorpse)
+	If !overrideName
+		overrideName = "She"
+	EndIf
+	String line = ApplyNamePlaceholder(AteRipeCorpseToast, overrideName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | empty line after placeholder")
+		Return
+	EndIf
+	Debug.Notification(line)
+	Debug.Trace("PickmansWhisper: eaten-ripe-corpse toast | " + line + " formId=" + akCorpse.GetFormID())
+EndFunction
+
+; Bonus reward for eating a corpse at max decay stage — dedicated BuffTracker script
+; (extensible for future buffs). akCorpse unused today but kept for future per-victim
+; bonus variants (e.g. named victims granting something different).
+Function ApplyEatRipeCorpseBonus(Actor akCorpse)
+	PickmansWhisperBuffTrackerScript buffs = BuffTracker()
+	If !buffs
+		Debug.Trace("PickmansWhisper: ERROR ApplyEatRipeCorpseBonus — BuffTracker missing")
+		Return
+	EndIf
+	buffs.ApplyEatRipeCorpseEndBuff()
 EndFunction
 
 ; --- Bond / trigger ------------------------------------------------------------
@@ -3690,6 +3857,10 @@ Function LoadModConfig()
 	NamedKillToast = ""
 	NamedKillAudio = ""
 	EatRipeCorpseToast = ""
+	AteRipeCorpseToast = ""
+	EatRipeCorpseEndBuffAmount = -1.0
+	EatRipeCorpseEndBuffMaxDelta = -1.0
+	EatRipeCorpseEndBuffHours = -1.0
 	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
@@ -3757,6 +3928,29 @@ Function LoadModConfig()
 					NamedKillAudio = val
 				ElseIf key == "eatRipeCorpseToast"
 					EatRipeCorpseToast = val
+				ElseIf key == "ateRipeCorpseToast"
+					AteRipeCorpseToast = val
+				ElseIf key == "ateRipeCorpseEndBuffAmount"
+					If val && GardenOfEden.StrLength(val) > 0
+						Float endAmt = val as Float
+						If endAmt > 0.0
+							EatRipeCorpseEndBuffAmount = endAmt
+						EndIf
+					EndIf
+				ElseIf key == "ateRipeCorpseEndBuffMaxDelta"
+					If val && GardenOfEden.StrLength(val) > 0
+						Float endMax = val as Float
+						If endMax > 0.0
+							EatRipeCorpseEndBuffMaxDelta = endMax
+						EndIf
+					EndIf
+				ElseIf key == "ateRipeCorpseEndBuffHours"
+					If val && GardenOfEden.StrLength(val) > 0
+						Float endHours = val as Float
+						If endHours > 0.0
+							EatRipeCorpseEndBuffHours = endHours
+						EndIf
+					EndIf
 				ElseIf key == "decayStage0"
 					ParseDecayStageValue(0, val)
 				ElseIf key == "decayStage1"
@@ -4049,6 +4243,24 @@ Function DebugForceCorpseDecayOverlays()
 	Else
 		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
 	EndIf
+EndFunction
+
+; --- Slice H P5 — player buffs (façade) -----------------------------------------
+
+PickmansWhisperBuffTrackerScript Function BuffTracker()
+	Return (Self as Quest) as PickmansWhisperBuffTrackerScript
+EndFunction
+
+Float Function GetEatRipeCorpseEndBuffAmount()
+	Return EatRipeCorpseEndBuffAmount
+EndFunction
+
+Float Function GetEatRipeCorpseEndBuffMaxDelta()
+	Return EatRipeCorpseEndBuffMaxDelta
+EndFunction
+
+Float Function GetEatRipeCorpseEndBuffHours()
+	Return EatRipeCorpseEndBuffHours
 EndFunction
 
 ; --- Slice H P0.1 — decay wound lab (façade) ------------------------------------
@@ -6788,6 +7000,8 @@ Function OnMCMSettingChange(String modName, String id)
 	EndIf
 	If id == "bKillDebugToasts:Debug"
 		InvalidateDebugToastCache()
+	ElseIf id == "bSniffMagicEffects:Debug"
+		SyncMagicEffectSniffer()
 	ElseIf id == "bAddictionSpell:Hunger" || id == "fAddictedAt:Hunger"
 		SyncHungerAddictionSpell()
 		RefreshHungerPanel(True)
