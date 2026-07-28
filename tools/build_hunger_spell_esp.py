@@ -3,9 +3,7 @@
 #   QUST 0x01000805 PickmansWhisperPlayerCombat (Player UniqueActor alias —
 #     VMAD mirrors DialogueGenericPlayer: 0 quest scripts + alias script)
 #   GLOB / MGEF / SPEL Knife Hunger
-#   ARMA/ARMO Slice I decay face (biped 54) @ 0x850+ for NecroBaseFemaleHead*.nif
-#   SNDR clones for Desperate_Audio.txt + E5 Intimacy_*_Audio.txt starting at
-#     0x01000807 — EDID PW_Whisper_<SanitizedStem>, path Sound\PickmansWhisper\<rel>
+#   Cloak proximity chain @ 0x870–0x873 (Ability SPEL → Cloak MGEF → Hit SPEL → Hit MGEF)
 #   Writes WhisperSndrIds.txt + DecayFaceArmorIds.txt
 from __future__ import annotations
 
@@ -57,12 +55,30 @@ DECAY_FACE_MESH_STAGE = DECAY_FACE_MESH_DIR / f"{DECAY_FACE_MESH_PREFIX}.nif"
 DECAY_FACE_ARMOR_IDS_PATH = (
     ROOT / "Data" / "PickmansWhisper" / "config" / "DecayFaceArmorIds.txt"
 )
-# Past reserved decay-face ARMA/ARMO pairs (0x850 .. 0x86F for 16 variants).
-NEXT_OID = 0x00000870  # == FID_DECAY_FACE_BASE + DECAY_FACE_VARIANT_RESERVE * 2
+# Proximity cloak — exact Glowing One chain (Fallout4.esm), renamed + no radiation:
+#   Ability SPEL crGlowingOneCloak → Cloak MGEF RadiationCloak (arch=35, Assoc=SPEL)
+#   → Assoc SPEL RadiationHazardToken → hit MGEF(s)
+# Events: VMAD on hit MGEF only (vanilla puts radiation ValueMods there; we put Script).
+# See PickmansWhisperProximityEffect.psc.
+FID_PROXIMITY_HIT_MGEF = 0x01000870  # Script effect on nearby NPCs (VMAD)
+FID_PROXIMITY_HIT_SPEL = 0x01000871  # Assoc Item of the Cloak MGEF
+FID_PROXIMITY_CLOAK_MGEF = 0x01000872  # Cloak archetype on the player
+FID_PROXIMITY_CLOAK_SPEL = 0x01000873  # Ability granted via AddSpell
+# NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
+NEXT_OID = 0x00000874  # == (FID_PROXIMITY_CLOAK_SPEL & 0xFFFFFF) + 1
 
 # Vanilla PeakValueMod alcohol-withdrawal MGEFs we clone DATA from
 VANILLA_MGEF_AGI = 0x0010224F
 VANILLA_MGEF_CHA = 0x00102251
+
+# Glowing One sources (exact topology; Assoc Item @ DATA+8, Area @ DATA+44).
+VANILLA_CLOAK_ABILITY_SPEL_SOURCE = 0x000DB3AD  # crGlowingOneCloak
+VANILLA_CLOAK_MGEF_SOURCE = 0x000DB3AE  # RadiationCloak (arch=35, no VMAD)
+VANILLA_CLOAK_HIT_SPEL_SOURCE = 0x000DF451  # RadiationHazardToken
+VANILLA_CLOAK_HIT_MGEF_SOURCE = 0x0009252A  # RadiationHazardEffect (cast/deliv/timing)
+# Vanilla RadiationCloak Area (DATA+44). Ability SPEL EFIT Area stays 40 from crGlowingOneCloak.
+PROXIMITY_CLOAK_AREA = 15
+PROXIMITY_ABILITY_EFIT_AREA = 40
 
 # Golden Standard one-shot SNDR fields (matches verified EndIt hand FO4Edit)
 SNDR_CNAM_STANDARD = 0x1EEF540A  # BGSStandardSoundDef
@@ -206,6 +222,7 @@ def build_main_quest_payload() -> bytes:
                 "PickmansWhisperKillerScanScript",
                 "PickmansWhisperVoiceScanScript",
                 "PickmansWhisperBuffTrackerScript",
+                "PickmansWhisperBeatBeforeKillScript",
             ]
         ),
     )
@@ -248,6 +265,22 @@ def extract_esm_mgef_payload(fid: int) -> bytes:
             return data[p + 24 : p + 24 + size]
         idx = i + 1
     raise SystemExit(f"MGEF 0x{fid:08X} not found in Fallout4.esm")
+
+
+def extract_esm_spel_payload(fid: int) -> bytes:
+    data = ESM.read_bytes()
+    needle = struct.pack("<I", fid)
+    idx = 0
+    while True:
+        i = data.find(needle, idx)
+        if i < 0:
+            break
+        if i >= 12 and data[i - 12 : i - 8] == b"SPEL":
+            p = i - 12
+            size = struct.unpack_from("<I", data, p + 4)[0]
+            return data[p + 24 : p + 24 + size]
+        idx = i + 1
+    raise SystemExit(f"SPEL 0x{fid:08X} not found in Fallout4.esm")
 
 
 def build_mgef_value_mod(van_fid: int, edid: str, full: str) -> bytes:
@@ -308,6 +341,157 @@ def build_spel_payload() -> bytes:
             field(b"CTDA", ctda),
         ]
     )
+
+
+def build_proximity_hit_mgef_payload() -> bytes:
+    """Hit MGEF applied to NPCs in the cloak radius.
+
+    Cloned from RadiationHazardEffect for cast/deliv/timing (Fire+Forget / Touch), but:
+    Archetype=Script, radiation AV/resist cleared, no CTDA/KWDA, VMAD=ProximityEffect.
+    """
+    src = extract_esm_mgef_payload(VANILLA_CLOAK_HIT_MGEF_SOURCE)
+    out = []
+    wrote_vmad = False
+    for st, sd in parse_fields(src):
+        if st == b"EDID":
+            out.append(field(b"EDID", zstr("PickmansWhisperProximityHitEffect")))
+        elif st == b"FULL":
+            out.append(field(b"FULL", zstr("Pickman's Whisper Proximity Hit")))
+        elif st == b"VMAD":
+            out.append(field(b"VMAD", build_vmad_script("PickmansWhisperProximityEffect")))
+            wrote_vmad = True
+        elif st in (b"CTDA", b"KSIZ", b"KWDA"):
+            # Radiation conditions / keywords — drop for event-only hit effect.
+            continue
+        elif st == b"DATA" and len(sd) >= 88:
+            data = bytearray(sd)
+            struct.pack_into("<I", data, 0, 0)  # flags — no hostile / radiation payload
+            struct.pack_into("<i", data, 16, 0)  # Resist AV (was Radiation)
+            struct.pack_into("<I", data, 32, 0)  # Hit Shader
+            struct.pack_into("<I", data, 36, 0)  # Enchant Shader
+            struct.pack_into("<I", data, 64, 1)  # Archetype = Script
+            struct.pack_into("<i", data, 68, 0)  # Primary AV (was Radiation)
+            struct.pack_into("<I", data, 72, 0)  # Projectile
+            struct.pack_into("<I", data, 76, 0)  # Explosion
+            # Keep cast=FireAndForget (2) / deliv=Touch (1) from RadiationHazardEffect.
+            if struct.unpack_from("<I", data, 80)[0] != 2 or struct.unpack_from("<I", data, 84)[0] != 1:
+                raise SystemExit(
+                    f"vanilla hit MGEF 0x{VANILLA_CLOAK_HIT_MGEF_SOURCE:08X} "
+                    f"expected cast=2 deliv=1, got cast={struct.unpack_from('<I', data, 80)[0]} "
+                    f"deliv={struct.unpack_from('<I', data, 84)[0]}"
+                )
+            out.append(field(b"DATA", bytes(data)))
+        else:
+            out.append(field(st, sd))
+    if not wrote_vmad:
+        rebuilt = []
+        for st, sd in parse_fields(b"".join(out)):
+            rebuilt.append(field(st, sd))
+            if st == b"EDID":
+                rebuilt.append(
+                    field(b"VMAD", build_vmad_script("PickmansWhisperProximityEffect"))
+                )
+        return b"".join(rebuilt)
+    return b"".join(out)
+
+
+def build_proximity_hit_spel_payload() -> bytes:
+    """Assoc SPEL (RadiationHazardToken clone) — Cloak applies this to actors in radius.
+
+    Both EFIDs retarget our single scripted hit MGEF; EFITs keep vanilla mag/area/dur.
+    Radiation CTDAs dropped so the scripted hit is not filtered away.
+    """
+    src = extract_esm_spel_payload(VANILLA_CLOAK_HIT_SPEL_SOURCE)
+    out = []
+    for st, sd in parse_fields(src):
+        if st == b"EDID":
+            out.append(field(b"EDID", zstr("PickmansWhisperProximityHit")))
+        elif st == b"FULL":
+            out.append(field(b"FULL", zstr("Pickman's Whisper Proximity Hit")))
+        elif st == b"DESC":
+            out.append(field(b"DESC", zstr("")))
+        elif st == b"EFID":
+            out.append(field(b"EFID", u32(FID_PROXIMITY_HIT_MGEF)))
+        elif st == b"EFIT" and len(sd) >= 12:
+            # Preserve vanilla RadiationHazardToken EFITs (5/0/1 and 0.5/0/1).
+            out.append(field(b"EFIT", sd))
+        elif st == b"CTDA":
+            continue
+        else:
+            out.append(field(st, sd))
+    return b"".join(out)
+
+
+def build_proximity_cloak_mgef_payload() -> bytes:
+    """Outer Cloak MGEF (RadiationCloak clone). Archetype=35; Assoc @ DATA+8 = hit SPEL.
+
+    No VMAD — vanilla RadiationCloak has none; scripts live on the hit MGEF.
+    """
+    src = extract_esm_mgef_payload(VANILLA_CLOAK_MGEF_SOURCE)
+    out = []
+    for st, sd in parse_fields(src):
+        if st == b"EDID":
+            out.append(field(b"EDID", zstr("PickmansWhisperProximityCloakEffect")))
+        elif st == b"FULL":
+            out.append(field(b"FULL", zstr("Pickman's Whisper Proximity Cloak")))
+        elif st == b"VMAD":
+            # Glowing One cloak has no script — never inject one.
+            continue
+        elif st == b"DATA" and len(sd) >= 88:
+            data = bytearray(sd)
+            struct.pack_into("<I", data, 8, FID_PROXIMITY_HIT_SPEL)  # Assoc Item = SPEL
+            # Keep Area=15 from RadiationCloak (do not invent a different radius).
+            if struct.unpack_from("<I", data, 44)[0] != PROXIMITY_CLOAK_AREA:
+                raise SystemExit(
+                    f"vanilla cloak 0x{VANILLA_CLOAK_MGEF_SOURCE:08X} Area expected "
+                    f"{PROXIMITY_CLOAK_AREA}, got {struct.unpack_from('<I', data, 44)[0]}"
+                )
+            if struct.unpack_from("<I", data, 64)[0] != 35:
+                raise SystemExit(
+                    f"vanilla cloak source 0x{VANILLA_CLOAK_MGEF_SOURCE:08X} "
+                    f"Archetype != 35 (got {struct.unpack_from('<I', data, 64)[0]})"
+                )
+            out.append(field(b"DATA", bytes(data)))
+        else:
+            out.append(field(st, sd))
+    return b"".join(out)
+
+
+def build_proximity_cloak_spel_payload() -> bytes:
+    """Ability SPEL (crGlowingOneCloak clone) granted via AddSpell → Cloak MGEF."""
+    src = extract_esm_spel_payload(VANILLA_CLOAK_ABILITY_SPEL_SOURCE)
+    out = []
+    for st, sd in parse_fields(src):
+        if st == b"EDID":
+            out.append(field(b"EDID", zstr("PickmansWhisperProximityCloak")))
+        elif st == b"FULL":
+            out.append(field(b"FULL", zstr("Pickman's Whisper Proximity Cloak")))
+        elif st == b"DESC":
+            out.append(
+                field(b"DESC", zstr("Detects nearby NPCs for Pickman's Whisper."))
+            )
+        elif st == b"EFID":
+            out.append(field(b"EFID", u32(FID_PROXIMITY_CLOAK_MGEF)))
+        elif st == b"EFIT" and len(sd) >= 12:
+            mag, area, dur = struct.unpack_from("<fII", sd, 0)
+            if area != PROXIMITY_ABILITY_EFIT_AREA or dur != 0:
+                raise SystemExit(
+                    f"vanilla ability SPEL 0x{VANILLA_CLOAK_ABILITY_SPEL_SOURCE:08X} "
+                    f"EFIT expected area={PROXIMITY_ABILITY_EFIT_AREA} dur=0, "
+                    f"got area={area} dur={dur}"
+                )
+            out.append(field(b"EFIT", sd))  # keep mag=10 / area=40 / dur=0
+        elif st == b"SPIT" and len(sd) >= 24:
+            if struct.unpack_from("<I", sd, 8)[0] != 4:
+                raise SystemExit("crGlowingOneCloak SPIT Type must be Ability (4)")
+            if struct.unpack_from("<I", sd, 16)[0] != 0:
+                raise SystemExit("crGlowingOneCloak SPIT CastType must be Constant (0)")
+            if struct.unpack_from("<I", sd, 20)[0] != 0:
+                raise SystemExit("crGlowingOneCloak SPIT TargetType must be Self (0)")
+            out.append(field(b"SPIT", sd))
+        else:
+            out.append(field(st, sd))
+    return b"".join(out)
 
 
 def build_tes4(num_records: int, next_object_id: int) -> bytes:
@@ -613,20 +797,32 @@ def main() -> None:
         ),
     )
     msg_rec = record(b"MESG", FID_SEVER_MSG, build_sever_limb_menu_payload())
+    proximity_hit_mgef = record(
+        b"MGEF", FID_PROXIMITY_HIT_MGEF, build_proximity_hit_mgef_payload()
+    )
+    proximity_cloak_mgef = record(
+        b"MGEF", FID_PROXIMITY_CLOAK_MGEF, build_proximity_cloak_mgef_payload()
+    )
+    proximity_hit_spel = record(
+        b"SPEL", FID_PROXIMITY_HIT_SPEL, build_proximity_hit_spel_payload()
+    )
+    proximity_cloak_spel = record(
+        b"SPEL", FID_PROXIMITY_CLOAK_SPEL, build_proximity_cloak_spel_payload()
+    )
     sndr_recs = collect_sndr_records()
     sndr_blob = b"".join(sndr_recs)
     arma_recs, armo_recs = collect_decay_face_armor_records()
     arma_blob = b"".join(arma_recs)
     armo_blob = b"".join(armo_recs)
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF + MESG + N SNDR + N ARMA + N ARMO
-    num_records = 7 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
+    # 2x QUST + SPEL + GLOB + 2x MGEF + MESG + 2 proximity MGEF + 2 proximity SPEL + N SNDR + N ARMA + N ARMO
+    num_records = 11 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
         + group(b"GLOB", glob_rec)
-        + group(b"MGEF", mgef_agi + mgef_cha)
-        + group(b"SPEL", spel_rec)
+        + group(b"MGEF", mgef_agi + mgef_cha + proximity_hit_mgef + proximity_cloak_mgef)
+        + group(b"SPEL", spel_rec + proximity_hit_spel + proximity_cloak_spel)
         + group(b"MESG", msg_rec)
         + group(b"ARMA", arma_blob)
         + group(b"ARMO", armo_blob)
@@ -639,6 +835,12 @@ def main() -> None:
     print(f"  MGEF 0x{FID_MGEF_AGI:08X} / 0x{FID_MGEF_CHA:08X} ValueMod AGI/CHA")
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
+    print(
+        f"  Proximity Cloak Ability SPEL 0x{FID_PROXIMITY_CLOAK_SPEL:08X} -> "
+        f"Cloak MGEF 0x{FID_PROXIMITY_CLOAK_MGEF:08X} (arch=35 Area={PROXIMITY_CLOAK_AREA}) -> "
+        f"Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X} -> Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X} "
+        f"(Glowing One clone, Ability EFIT Area={PROXIMITY_ABILITY_EFIT_AREA})"
+    )
     print(f"  ARMA/ARMO decay face variants={len(arma_recs)} (biped 54)")
     print(f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain")
     print(f"  QUST 0x{FID_PLAYER_QUEST:08X} PickmansWhisperPlayerCombat + PlayerAlias")

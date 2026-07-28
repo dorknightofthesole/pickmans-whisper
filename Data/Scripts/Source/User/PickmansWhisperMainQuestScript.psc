@@ -54,16 +54,24 @@ Keyword KW_ActorTypeAnimal
 Keyword KW_ActorTypeCreature
 Keyword KW_ActorTypeTurret
 
-; Kill watch — combat/crosshair victim died while blade out (primary); hit-tag is optional backup
-Actor PendingKillVictim
-Actor[] KillWatchList
-Int KillWatchCount = 0
-Int KILL_WATCH_MAX = 12
-Int[] BladeTaggedIds
+; Blade-tagged victims — a confirmed player+blade hit registers OnDeath and adds here;
+; cleared (with UnregisterForRemoteEvent) the moment their death is processed, or by the
+; periodic reconcile sweep if they wander off / never die. This is the ONLY tracking list
+; the kill-credit path needs — eligibility is decided live at OnDeath (IsBladeEquipped +
+; killer==player + IsValidTarget), not by whether ambient scanning happened to notice them.
+Actor[] BladeTagged
 Int BladeTaggedCount = 0
 Int BLADE_TAGGED_MAX = 24
+; Hit-watching dedup — TrackLivingNear runs every nearby actor every KillerScan tick;
+; without this, RegisterForHitEvent got called on the same actor over and over for as
+; long as they stayed nearby. Add-only, no unregister needed (unlike BladeTagged's
+; OnDeath registration, a lingering HitEvent registration is inert until WE attack them
+; again) — FIFO eviction just means an evicted actor gets re-armed next time they're
+; seen, a harmless repeat call, not a leak.
+Actor[] HitArmed
+Int HitArmedCount = 0
+Int HIT_ARMED_MAX = 32
 Float LastKnifeKillRealTime = 0.0
-Float CombatGraceUntilRealTime = 0.0
 Float KNIFE_KILL_COOLDOWN = 1.5
 Float KILL_WATCH_RADIUS = 800.0
 Float KILL_CORPSE_RADIUS = 400.0 ; Necromantic-ish close corpse window
@@ -71,9 +79,6 @@ String Property LastKillIgnoreReason = "" Auto
 Int LastDeathToastId = 0
 Int LastHandledKillId = 0
 Cell LastBladeToastCell
-Int[] AliveSeenIds
-Int AliveSeenCount = 0
-Int ALIVE_SEEN_MAX = 32
 ; FormIDs first seen while NOT hostile to player — settlers you later attack still count.
 ; Hostiles (raiders) seen already angry never get this stamp → no satiation.
 Int[] FriendlySeenIds
@@ -789,7 +794,7 @@ Function HandleKillerScanKnifeAimWarm()
 		If IsBladeEquipped()
 			bladeBit = "blade=YES"
 		EndIf
-		ToastDebug("PW scan [" + DEBUG_BUILD + "] #" + KillScanTickCount + " near=" + KillWatchCount + " goeA=" + LastGoeAliveCount + " goeD=" + LastGoeDeadCount + " det=" + LastDetectCount + " " + bladeBit + " notice=" + LastNoticeStatus)
+		ToastDebug("PW scan [" + DEBUG_BUILD + "] #" + KillScanTickCount + " near=" + BladeTaggedCount + " goeA=" + LastGoeAliveCount + " goeD=" + LastGoeDeadCount + " det=" + LastDetectCount + " " + bladeBit + " notice=" + LastNoticeStatus)
 	EndIf
 EndFunction
 
@@ -1006,6 +1011,12 @@ Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference ak
 		Return
 	EndIf
 	DrawnWeaponStateValid = True
+	; Slice J5 — any weapon equip (Pickman's Blade included) ends the beat-before-kill
+	; scuffle; her death is meant to come from the blade normally, not while essential.
+	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+	If beat
+		beat.ClearAllEssentialOnWeaponEquip()
+	EndIf
 	Bool isPickmans = FormLooksLikePickmansBlade(akBaseObject, akReference)
 	If !isPickmans && FormIsCombatKnife(akBaseObject)
 		; akReference often None — GoE sees the real equipped instance name/mods
@@ -1023,7 +1034,6 @@ Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference ak
 		ToastDebug("PW debug: blade DRAWN [" + DEBUG_BUILD + "] " + nm)
 	Else
 		BladeCurrentlyDrawn = False
-		ClearKillWatchForWeaponSwap()
 		ToastDebug("PW debug: other weapon DRAWN — " + akBaseObject.GetName())
 	EndIf
 EndEvent
@@ -1062,8 +1072,7 @@ Event OnTimer(Int aiTimerID)
 EndEvent
 
 Event Actor.OnDeath(Actor akSender, Actor akKiller)
-	ToastHumanKillDetected(akSender, "OnDeath")
-	HandlePotentialKnifeKill(akSender, akKiller)
+	HandleNPCDeath(akSender, akKiller, "OnDeath")
 EndEvent
 
 ; Soft backup only — quiet settler kills often never raise combat state.
@@ -1073,7 +1082,15 @@ Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatSta
 	EndIf
 	If aeCombatState == 1 && akTarget
 		TrackLivingNear(akTarget)
+		PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+		If beat
+			beat.OnPlayerEnterCombatWith(akTarget)
+		EndIf
 	EndIf
+	; No aeCombatState==0 handling here — Slice J's essential reversal is weapon-equip
+	; only now (see PickmansWhisperBeatBeforeKillScript's top-of-file note: an "out of
+	; combat" reversal raced with an essential actor's own protected-collapse moment and
+	; actively broke the feature).
 EndEvent
 
 Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource, Projectile akProjectile, Bool abPowerAttack, Bool abSneakAttack, Bool abBashAttack, Bool abHitBlocked, String asMaterialName)
@@ -1662,10 +1679,13 @@ Bool Function IsBladeKillWeaponReady()
 	Return IsBladeEquipped()
 EndFunction
 
-; Voice / whisper gate — blade must be on the player (owned / inventory), not necessarily drawn.
-; Kill satiation / butcher still use IsBladeEquipped / IsBladeKillWeaponReady (drawn only).
+; Voice / whisper gate — blade must be EQUIPPED (drawn), same requirement as kill
+; satiation (IsBladeEquipped / IsBladeKillWeaponReady). Was ownership-only ("on the
+; player, not necessarily drawn") — confirmed live that let ambient notice lines speak
+; with the blade merely owned/sheathed; the blade is what "speaks" to the player, so it
+; must be in hand, matching every other credited-action gate in the mod.
 Bool Function IsVoiceWeaponReady()
-	Return PlayerHasBlade()
+	Return IsBladeEquipped()
 EndFunction
 
 String Function GetDrawnWeaponDebugName()
@@ -2890,6 +2910,28 @@ Function WriteDecayStageStatusToMcm()
 	WriteDecayStageStatusToMcmForActor(ResolveVictimsAimActor())
 EndFunction
 
+; Slice J1 — checkbox-style status row for the aimed NPC's beat-mode essential state.
+; ☑/☐ so it reads at a glance, matching the "Toggle essential" button right below it.
+Function WriteBeatEssentialStatusToMcm(Actor aimed)
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If !aimed || aimed == PlayerRef
+		MCM.SetModSettingString(MOD_NAME, "sBeatEssential:Victims", "☐ (no aim — Load targeted victim)")
+		Return
+	EndIf
+	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+	If !beat
+		MCM.SetModSettingString(MOD_NAME, "sBeatEssential:Victims", "☐ (BeatBeforeKill script missing)")
+		Return
+	EndIf
+	If beat.IsTrackedEssential(aimed)
+		MCM.SetModSettingString(MOD_NAME, "sBeatEssential:Victims", "☑ essential (beat mode) — toggle to clear")
+	Else
+		MCM.SetModSettingString(MOD_NAME, "sBeatEssential:Victims", "☐ not essential — toggle to set")
+	EndIf
+EndFunction
+
 ; VictimsScript CallFunctionNoWait after aimed push — decay/summary/status without stalling MCM.
 Function WriteVictimsMcmAuxRows()
 	PickmansWhisperVictimsScript v = Victims()
@@ -2907,6 +2949,7 @@ Function WriteVictimsMcmAuxRows()
 		EndIf
 	EndIf
 	WriteDecayStageStatusToMcmForActor(aimed)
+	WriteBeatEssentialStatusToMcm(aimed)
 	WriteVictimsSummaryToMcm()
 	WriteVictimsStatusToMcm()
 EndFunction
@@ -3858,33 +3901,39 @@ Function LoadModConfig()
 		Return
 	EndIf
 	ModConfigLoadBusy = True
-	RenamePromptFemaleNPC = ""
-	BedGiftWakeToast = ""
-	BedGiftCooldownDays = -1.0
-	BedGiftWoundAlpha = -1.0
-	DesperateNameSuffix = ""
-	NamedKillToast = ""
-	NamedKillAudio = ""
-	EatRipeCorpseToast = ""
-	AteRipeCorpseToast = ""
-	EatRipeCorpseEndBuffAmount = -1.0
-	EatRipeCorpseEndBuffMaxDelta = -1.0
-	EatRipeCorpseEndBuffHours = -1.0
+	; Parse into locals, commit to the live fields only after a full successful read —
+	; same "Pending then Commit" principle as decay stages below. Clearing the live
+	; fields up front (old behavior) left a window where a concurrently-dispatched
+	; reader (e.g. DesperateRenameScript.SyncFromKillerScanSnapshot, KillerScan-fired
+	; mid-reload) would read "" instead of the real value. Confirmed live: frequent
+	; reload triggers (loading screens re-run HandleGameResume -> LoadLineBanks ->
+	; LoadModConfig) raced ambient reads often enough to flicker desperateNameSuffix
+	; empty for seconds at a time.
+	String nextRenamePromptFemaleNPC = ""
+	String nextBedGiftWakeToast = ""
+	Float nextBedGiftCooldownDays = -1.0
+	Float nextBedGiftWoundAlpha = -1.0
+	String nextDesperateNameSuffix = ""
+	String nextNamedKillToast = ""
+	String nextNamedKillAudio = ""
+	String nextEatRipeCorpseToast = ""
+	String nextAteRipeCorpseToast = ""
+	Float nextEatRipeCorpseEndBuffAmount = -1.0
+	Float nextEatRipeCorpseEndBuffMaxDelta = -1.0
+	Float nextEatRipeCorpseEndBuffHours = -1.0
 	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = NoticeConfigPath()
-	ModConfigLoadStatus = "READ FAILED (GoE2 missing?)"
-	; Trace-only on load — Notification steals/clobbers voice toasts.
+	; Do NOT touch ModConfigLoadStatus / live fields on a failed read — leave whatever
+	; the last successful load produced in place rather than blanking it out.
 	If !GardenOfEden2.DoesFileExist(fileName, path)
-		ModConfigLoadStatus = "MISSING FILE (" + path + fileName + ")"
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — MISSING FILE (" + path + fileName + ")")
 		ModConfigLoadBusy = False
 		Return
 	EndIf
 	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
 	If !raw || raw.Length == 0
-		ModConfigLoadStatus = "EMPTY/UNREADABLE"
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — EMPTY/UNREADABLE")
 		ModConfigLoadBusy = False
 		Return
 	EndIf
@@ -3911,53 +3960,53 @@ Function LoadModConfig()
 				String key = ConfigFieldTrim(GardenOfEden.SubStr(line, 0, eq))
 				String val = ConfigFieldTrim(GardenOfEden.SubStr(line, eq + 1, -1))
 				If key == "renamePromptFemaleNPC"
-					RenamePromptFemaleNPC = val
+					nextRenamePromptFemaleNPC = val
 				ElseIf key == "bedGiftWakeToast"
-					BedGiftWakeToast = val
+					nextBedGiftWakeToast = val
 				ElseIf key == "desperateNameSuffix"
 					; Keep leading/trailing spaces — " Dumb Bitch" is intentional.
-					DesperateNameSuffix = GardenOfEden.SubStr(line, eq + 1, -1)
+					nextDesperateNameSuffix = GardenOfEden.SubStr(line, eq + 1, -1)
 				ElseIf key == "bedGiftCooldownDays"
 					If val && GardenOfEden.StrLength(val) > 0
 						Float days = val as Float
 						If days > 0.0
-							BedGiftCooldownDays = days
+							nextBedGiftCooldownDays = days
 						EndIf
 					EndIf
 				ElseIf key == "bedGiftWoundAlpha"
 					If val && GardenOfEden.StrLength(val) > 0
 						Float a = val as Float
 						If a >= 0.0 && a <= 1.0
-							BedGiftWoundAlpha = a
+							nextBedGiftWoundAlpha = a
 						EndIf
 					EndIf
 				ElseIf key == "namedKillToast"
-					NamedKillToast = val
+					nextNamedKillToast = val
 				ElseIf key == "namedKillAudio"
-					NamedKillAudio = val
+					nextNamedKillAudio = val
 				ElseIf key == "eatRipeCorpseToast"
-					EatRipeCorpseToast = val
+					nextEatRipeCorpseToast = val
 				ElseIf key == "ateRipeCorpseToast"
-					AteRipeCorpseToast = val
+					nextAteRipeCorpseToast = val
 				ElseIf key == "ateRipeCorpseEndBuffAmount"
 					If val && GardenOfEden.StrLength(val) > 0
 						Float endAmt = val as Float
 						If endAmt > 0.0
-							EatRipeCorpseEndBuffAmount = endAmt
+							nextEatRipeCorpseEndBuffAmount = endAmt
 						EndIf
 					EndIf
 				ElseIf key == "ateRipeCorpseEndBuffMaxDelta"
 					If val && GardenOfEden.StrLength(val) > 0
 						Float endMax = val as Float
 						If endMax > 0.0
-							EatRipeCorpseEndBuffMaxDelta = endMax
+							nextEatRipeCorpseEndBuffMaxDelta = endMax
 						EndIf
 					EndIf
 				ElseIf key == "ateRipeCorpseEndBuffHours"
 					If val && GardenOfEden.StrLength(val) > 0
 						Float endHours = val as Float
 						If endHours > 0.0
-							EatRipeCorpseEndBuffHours = endHours
+							nextEatRipeCorpseEndBuffHours = endHours
 						EndIf
 					EndIf
 				ElseIf key == "decayStage0"
@@ -3974,6 +4023,20 @@ Function LoadModConfig()
 			EndIf
 		EndIf
 	EndWhile
+	; Commit all-or-nothing, now that the full file read succeeded — no reader can
+	; observe a half-cleared state.
+	RenamePromptFemaleNPC = nextRenamePromptFemaleNPC
+	BedGiftWakeToast = nextBedGiftWakeToast
+	BedGiftCooldownDays = nextBedGiftCooldownDays
+	BedGiftWoundAlpha = nextBedGiftWoundAlpha
+	DesperateNameSuffix = nextDesperateNameSuffix
+	NamedKillToast = nextNamedKillToast
+	NamedKillAudio = nextNamedKillAudio
+	EatRipeCorpseToast = nextEatRipeCorpseToast
+	AteRipeCorpseToast = nextAteRipeCorpseToast
+	EatRipeCorpseEndBuffAmount = nextEatRipeCorpseEndBuffAmount
+	EatRipeCorpseEndBuffMaxDelta = nextEatRipeCorpseEndBuffMaxDelta
+	EatRipeCorpseEndBuffHours = nextEatRipeCorpseEndBuffHours
 	If BedGiftCooldownDays <= 0.0
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftCooldownDays missing or <=0")
 	EndIf
@@ -4258,6 +4321,10 @@ EndFunction
 
 PickmansWhisperBuffTrackerScript Function BuffTracker()
 	Return (Self as Quest) as PickmansWhisperBuffTrackerScript
+EndFunction
+
+PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
+	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
 EndFunction
 
 Float Function GetEatRipeCorpseEndBuffAmount()
@@ -5675,10 +5742,8 @@ String Function EnsureCombatKillHooks()
 	If !PlayerRef
 		PlayerRef = Game.GetPlayer()
 	EndIf
-	EnsureKillWatchList()
-	EnsureAliveSeenList()
 	StartKillerScanLoop()
-	String status = "scan WORLD+T16 living=" + KillWatchCount
+	String status = "scan WORLD+T16 tagged=" + BladeTaggedCount
 	ToastDebug("PW [" + DEBUG_BUILD + "]: " + status)
 	Debug.Trace("PickmansWhisper: EnsureCombatKillHooks " + DEBUG_BUILD + " " + status)
 	AnnounceKillScanArmed()
@@ -5715,17 +5780,12 @@ Function ProcessKnifeCreditFromKillerScan(PickmansWhisperKillerScanScript scan)
 	EndIf
 
 	Actor ct = scan.CombatTarget
-	If ct && !ct.IsDead() && IsBladeEquipped()
-		TrackLivingNear(ct)
-	EndIf
+	TrackLivingNear(ct)
 
-	Bool bladeReady = scan.BladeKillReady
 	Actor[] alive = scan.ScanAlive
 	Actor[] detecting = scan.ScanDetecting
-	Actor[] dead = scan.ScanDead
 	Int aliveCount = scan.ScanAliveCount
 	Int detectCount = scan.ScanDetectCount
-	Int deadCount = scan.ScanDeadCount
 
 	Int i = 0
 	Int n = aliveCount
@@ -5737,9 +5797,7 @@ Function ProcessKnifeCreditFromKillerScan(PickmansWhisperKillerScanScript scan)
 		If alive
 			ak = alive[i]
 		EndIf
-		If ak && ak != PlayerRef && !ak.IsDead() && !ak.IsDisabled()
-			TrackLivingNear(ak)
-		EndIf
+		TrackLivingNear(ak)
 		i += 1
 	EndWhile
 
@@ -5753,60 +5811,14 @@ Function ProcessKnifeCreditFromKillerScan(PickmansWhisperKillerScanScript scan)
 		If detecting
 			ak = detecting[i]
 		EndIf
-		If ak && ak != PlayerRef && !ak.IsDead() && !ak.IsDisabled()
-			TrackLivingNear(ak)
-		EndIf
+		TrackLivingNear(ak)
 		i += 1
 	EndWhile
 
-	EnsureKillWatchList()
-	i = 0
-	While i < KillWatchCount
-		Actor ak = KillWatchList[i]
-		If !ak
-			RemoveKillWatchAt(i)
-		ElseIf ak.IsDead()
-			ToastHumanKillDetected(ak, "live-dead")
-			HandlePotentialKnifeKill(ak, PlayerRef)
-			RemoveKillWatchAt(i)
-		ElseIf !ak.Is3DLoaded() || PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
-			RemoveKillWatchAt(i)
-		Else
-			i += 1
-		EndIf
-	EndWhile
-
-	i = 0
-	n = deadCount
-	If n > 16
-		n = 16
-	EndIf
-	While i < n
-		Actor ak = None
-		If dead
-			ak = dead[i]
-		EndIf
-		If ak && ak != PlayerRef && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
-			Int id = ak.GetFormID()
-			If WasAliveSeen(ak) || IsInKillWatchList(ak) || (ak == PendingKillVictim)
-				ToastHumanKillDetected(ak, "dead-scan")
-				HandlePotentialKnifeKill(ak, PlayerRef)
-				NoteBackgroundDead(id)
-			ElseIf !IsBackgroundDead(id)
-				If KillScanTickCount <= 2 || !bladeReady
-					NoteBackgroundDead(id)
-				ElseIf WasFriendlySeen(ak)
-					NoteAliveSeen(ak)
-					ToastHumanKillDetected(ak, "new-corpse")
-					HandlePotentialKnifeKill(ak, PlayerRef)
-					NoteBackgroundDead(id)
-				Else
-					NoteBackgroundDead(id)
-				EndIf
-			EndIf
-		EndIf
-		i += 1
-	EndWhile
+	; Kill detection itself is event-driven now (HandleBladeHit registers OnDeath on a
+	; confirmed hit; HandleNPCDeath credits + cleans up). This sweep only evicts blade-tagged
+	; actors who were hit but never died and wandered off, so their registration doesn't leak.
+	ReconcileBladeTagged()
 EndFunction
 
 ; Overlay sync moved to CorpseDecay (OnKillerScan → CallFunctionNoWait). Kept for MCM/debug callers.
@@ -5858,86 +5870,44 @@ Function NoteBackgroundDead(Int id)
 	BackgroundDeadCount += 1
 EndFunction
 
-Function RemoveKillWatchAt(Int index)
-	EnsureKillWatchList()
-	If index < 0 || index >= KillWatchCount
-		Return
-	EndIf
-	Actor gone = KillWatchList[index]
-	If gone
-		RemoveAliveSeenId(gone.GetFormID())
-	EndIf
-	Int j = index
-	While j < KillWatchCount - 1
-		KillWatchList[j] = KillWatchList[j + 1]
-		j += 1
-	EndWhile
-	KillWatchList[KillWatchCount - 1] = None
-	KillWatchCount -= 1
-EndFunction
-
-; Drop active watch when switching to a non-blade weapon. Keep AliveSeen / FriendlySeen.
-Function ClearKillWatchForWeaponSwap()
-	PendingKillVictim = None
-	KillWatchCount = 0
-	If KillWatchList
-		Int i = 0
-		While i < KillWatchList.Length
-			KillWatchList[i] = None
-			i += 1
-		EndWhile
-	EndIf
-	BladeTaggedCount = 0
-EndFunction
-
-Function RemoveAliveSeenId(Int id)
-	If id == 0 || !AliveSeenIds
-		Return
-	EndIf
-	Int i = 0
-	While i < AliveSeenCount
-		If AliveSeenIds[i] == id
-			Int j = i
-			While j < AliveSeenCount - 1
-				AliveSeenIds[j] = AliveSeenIds[j + 1]
-				j += 1
-			EndWhile
-			AliveSeenCount -= 1
-			Return
-		EndIf
-		i += 1
-	EndWhile
-EndFunction
-
 Function TrackLivingNear(Actor ak)
-	; Track loosely — validity (sex / hostility / essential) enforced at kill time.
+	; Ambient sighting for WasFriendlySeen (IsValidTarget's hostility-history check), AND
+	; the ONLY place that proactively arms hit detection. RegisterForHitEvent is otherwise
+	; only ever called reactively, inside HandleBladeHit, to re-arm AFTER a hit already
+	; landed — nothing else registers a fresh, never-hit actor, so without this call here
+	; Actor.OnHit can never fire for a target's first strike (confirmed live: a whole
+	; session produced zero "blade-tagged" traces — HandleBladeHit never ran at all for
+	; any kill, because nothing had armed hit-watching on the victim beforehand). This is
+	; exactly the ambient sweep that already runs for every nearby actor every KillerScan
+	; tick, so it is the natural place to close that gap. Not gated on IsBladeEquipped
+	; here — HandleBladeHit and HandleNPCDeath both independently re-check blade state
+	; live, so gating here would only be an unverified micro-optimization, not a
+	; correctness requirement; HitArmed dedup is what actually keeps this cheap.
 	If !ak || ak == PlayerRef || ak.IsDead() || ak.IsDisabled()
 		Return
 	EndIf
+
 	; Bed hallucination / wound lab PlaceAtMe bodies must never enter kill-watch.
 	If IsNonGameplayCorpse(ak)
 		Return
 	EndIf
+
 	If IsChildNpc(ak) && !IsChildTargetAllowed()
 		Return
 	EndIf
-	NoteAliveSeen(ak)
+
 	; Stamp disposition while still living — before the player turns a settler hostile.
 	If PlayerRef && ak.IsHostileToActor(PlayerRef)
 		; Hostile when first/ongoing seen — do not mark friendly
 	Else
 		NoteFriendlySeen(ak)
 	EndIf
-	If IsInKillWatchList(ak)
-		Return
+
+	If !WasHitArmed(ak)
+		Debug.Trace("Pickman's Whisper: RegisterForHitEvent")
+		RegisterForHitEvent(ak, PlayerRef)
+		MarkHitArmed(ak)
 	EndIf
-	EnsureKillWatchList()
-	If KillWatchCount >= KILL_WATCH_MAX
-		RemoveKillWatchAt(0)
-	EndIf
-	KillWatchList[KillWatchCount] = ak
-	KillWatchCount += 1
-	Debug.Trace("PickmansWhisper: track living id=" + ak.GetFormID() + " n=" + KillWatchCount)
 EndFunction
 
 Function EnsureFriendlySeenList()
@@ -6093,92 +6063,11 @@ Bool Function IsAdultFemale(Actor ak)
 	Return True
 EndFunction
 
-Function ArmCombatTarget(Actor ak)
-	TrackLivingNear(ak)
-	If ak && !ak.IsDead()
-		PendingKillVictim = ak
-	EndIf
-EndFunction
-
-Function EnsureKillWatchList()
-	If !KillWatchList || KillWatchList.Length == 0
-		KillWatchList = new Actor[12]
-		KillWatchCount = 0
-	EndIf
-EndFunction
-
 Function EnsureBladeTaggedList()
-	If !BladeTaggedIds || BladeTaggedIds.Length == 0
-		BladeTaggedIds = new Int[24]
+	If !BladeTagged || BladeTagged.Length == 0
+		BladeTagged = new Actor[24]
 		BladeTaggedCount = 0
 	EndIf
-EndFunction
-
-Function EnsureAliveSeenList()
-	If !AliveSeenIds || AliveSeenIds.Length == 0
-		AliveSeenIds = new Int[32]
-		AliveSeenCount = 0
-	EndIf
-EndFunction
-
-Function ClearAliveSeen()
-	AliveSeenCount = 0
-EndFunction
-
-Function NoteAliveSeen(Actor ak)
-	If !ak || ak.IsDead()
-		Return
-	EndIf
-	EnsureAliveSeenList()
-	Int id = ak.GetFormID()
-	Int i = 0
-	While i < AliveSeenCount
-		If AliveSeenIds[i] == id
-			Return
-		EndIf
-		i += 1
-	EndWhile
-	If AliveSeenCount >= ALIVE_SEEN_MAX
-		Int j = 0
-		While j < ALIVE_SEEN_MAX - 1
-			AliveSeenIds[j] = AliveSeenIds[j + 1]
-			j += 1
-		EndWhile
-		AliveSeenCount = ALIVE_SEEN_MAX - 1
-	EndIf
-	AliveSeenIds[AliveSeenCount] = id
-	AliveSeenCount += 1
-EndFunction
-
-Bool Function WasAliveSeen(Actor ak)
-	If !ak
-		Return False
-	EndIf
-	EnsureAliveSeenList()
-	Int id = ak.GetFormID()
-	Int i = 0
-	While i < AliveSeenCount
-		If AliveSeenIds[i] == id
-			Return True
-		EndIf
-		i += 1
-	EndWhile
-	Return False
-EndFunction
-
-Bool Function IsInKillWatchList(Actor ak)
-	If !ak
-		Return False
-	EndIf
-	EnsureKillWatchList()
-	Int i = 0
-	While i < KillWatchCount
-		If KillWatchList[i] == ak
-			Return True
-		EndIf
-		i += 1
-	EndWhile
-	Return False
 EndFunction
 
 Bool Function WasBladeTagged(Actor ak)
@@ -6186,10 +6075,9 @@ Bool Function WasBladeTagged(Actor ak)
 		Return False
 	EndIf
 	EnsureBladeTaggedList()
-	Int id = ak.GetFormID()
 	Int i = 0
 	While i < BladeTaggedCount
-		If BladeTaggedIds[i] == id
+		If BladeTagged[i] == ak
 			Return True
 		EndIf
 		i += 1
@@ -6197,188 +6085,153 @@ Bool Function WasBladeTagged(Actor ak)
 	Return False
 EndFunction
 
-Function TagBladeVictim(Actor ak)
-	If !ak
+; Add-only — caller has already decided to register OnDeath; this just remembers we did,
+; so a repeat hit on the same actor doesn't re-register. Actor refs (not FormIDs) so the
+; reconcile sweep (ReconcileBladeTagged) can check distance/dead state directly.
+Function MarkBladeTagged(Actor ak)
+	If !ak || WasBladeTagged(ak)
 		Return
 	EndIf
 	EnsureBladeTaggedList()
-	Int id = ak.GetFormID()
-	If WasBladeTagged(ak)
-		Return
-	EndIf
 	If BladeTaggedCount >= BLADE_TAGGED_MAX
 		Int j = 0
 		While j < BLADE_TAGGED_MAX - 1
-			BladeTaggedIds[j] = BladeTaggedIds[j + 1]
+			BladeTagged[j] = BladeTagged[j + 1]
 			j += 1
 		EndWhile
 		BladeTaggedCount = BLADE_TAGGED_MAX - 1
 	EndIf
-	BladeTaggedIds[BladeTaggedCount] = id
+	BladeTagged[BladeTaggedCount] = ak
 	BladeTaggedCount += 1
-	RegisterForRemoteEvent(ak, "OnDeath")
-	NoteAliveSeen(ak)
-	LastKillIgnoreReason = "blade hit → tagged id=" + id
-	ToastDebug("PW debug: blade HIT tagged id=" + id)
-	Debug.Trace("PickmansWhisper: blade-tagged victim id=" + id)
+	Debug.Trace("PickmansWhisper: blade-tagged victim id=" + ak.GetFormID())
 EndFunction
 
-Function OnPlayerCombatBegan(String path)
-	; Soft backup — living scan is primary; do not clear the living track list.
-	CombatGraceUntilRealTime = Utility.GetCurrentRealTime() + 10.0
-	If PlayerRef
-		Actor ctNow = PlayerRef.GetCombatTarget()
-		If ctNow && IsBladeEquipped()
-			TrackLivingNear(ctNow)
-		EndIf
-	EndIf
-	Debug.Trace("PickmansWhisper: combat began path=" + path)
-EndFunction
-
-Function OnPlayerCombatEnded(String path)
-	PollWatchedForDeath()
-	Debug.Trace("PickmansWhisper: combat ended path=" + path + " livingTrack=" + KillWatchCount)
-EndFunction
-
-Function ReArmHitEventsOnWatched()
-	EnsureKillWatchList()
-	Int i = 0
-	While i < KillWatchCount
-		Actor ak = KillWatchList[i]
-		If ak && !ak.IsDead()
-			RegisterForHitEvent(ak, PlayerRef)
-		EndIf
-		i += 1
-	EndWhile
-EndFunction
-
-Function ScanNearbyLivingCandidates()
-	If !PlayerRef
+; Sole cleanup point — pairs the tag-list removal with the actual engine unregister, so
+; OnDeath registrations never outlive our own bookkeeping (confirmed live: the old
+; the old tagging code called RegisterForRemoteEvent liberally but never once
+; called UnregisterForRemoteEvent anywhere in this file — every tagged actor stayed
+; registered for the rest of the session, dead, fled, or otherwise). Called from
+; HandleNPCDeath (the normal path — death was just processed) and ReconcileBladeTagged
+; (the safety-valve path — tagged but never died, wandered off).
+Function ForgetBladeTagged(Actor ak)
+	If !ak
 		Return
 	EndIf
-	Actor[] found = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, -1, 1, -1, -1, -1, -1, None, None, "", 0, 1, 1)
-	If !found || found.Length == 0
-		Actor[] detect = GardenOfEden2.GetActorsDetecting(PlayerRef, False)
-		If detect && detect.Length > 0
-			found = detect
-		Else
+	UnregisterForRemoteEvent(ak, "OnDeath")
+	Int i = 0
+	While i < BladeTaggedCount
+		If BladeTagged[i] == ak
+			Int j = i
+			While j < BladeTaggedCount - 1
+				BladeTagged[j] = BladeTagged[j + 1]
+				j += 1
+			EndWhile
+			BladeTagged[BladeTaggedCount - 1] = None
+			BladeTaggedCount -= 1
 			Return
 		EndIf
-	EndIf
-	Int n = found.Length
-	If n > 16
-		n = 16
-	EndIf
-	Int i = 0
-	While i < n
-		Actor ak = found[i]
-		If ak && ak != PlayerRef && !ak.IsDead()
-			NoteAliveSeen(ak)
-			WatchKillCandidate(ak, False)
-		EndIf
 		i += 1
 	EndWhile
 EndFunction
 
-Function ScanNearbyDeadForKnifeKills(String path)
-	If !PlayerRef
+; Safety-valve sweep — the primary cleanup path is HandleNPCDeath (fires the moment a
+; tagged victim's death is processed). This only catches actors who were hit and tagged
+; but never died (fled, player broke off, etc.) — evicts + unregisters them once they're
+; out of range so the registration doesn't linger for the rest of the session.
+Function ReconcileBladeTagged()
+	If BladeTaggedCount <= 0 || !PlayerRef
 		Return
 	EndIf
-	; aiLifeState=0 → dead (Necromantic ScanCravingCorpses / FindNearestDeadFemale)
-	Actor[] found = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 0, 1, -1, -1, -1, -1, None, None, "", 0, 1, 1)
-	If !found || found.Length == 0
-		Return
+	Int i = BladeTaggedCount - 1
+	While i >= 0
+		Actor ak = BladeTagged[i]
+		If !ak || ak.IsDead() || !ak.Is3DLoaded() || PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
+			ForgetBladeTagged(ak)
+		EndIf
+		i -= 1
+	EndWhile
+EndFunction
+
+Function EnsureHitArmedList()
+	If !HitArmed || HitArmed.Length == 0
+		HitArmed = new Actor[32]
+		HitArmedCount = 0
 	EndIf
-	Int n = found.Length
-	If n > 16
-		n = 16
+EndFunction
+
+Bool Function WasHitArmed(Actor ak)
+	If !ak
+		Return False
 	EndIf
-	Bool combatGrace = Utility.GetCurrentRealTime() <= CombatGraceUntilRealTime
+	EnsureHitArmedList()
 	Int i = 0
-	While i < n
-		Actor ak = found[i]
-		If ak && ak != PlayerRef && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
-			; Prefer people we saw alive / hit / watched. combatGrace allows short-fight misses.
-			If WasAliveSeen(ak) || WasBladeTagged(ak) || IsInKillWatchList(ak) || (ak == PendingKillVictim) || combatGrace
-				ToastHumanKillDetected(ak, path)
-				HandlePotentialKnifeKill(ak, PlayerRef)
-			EndIf
+	While i < HitArmedCount
+		If HitArmed[i] == ak
+			Return True
 		EndIf
 		i += 1
 	EndWhile
+	Return False
 EndFunction
 
-Function PollWatchedForDeath()
-	EnsureKillWatchList()
-	Int i = 0
-	While i < KillWatchCount
-		Actor ak = KillWatchList[i]
-		If ak && ak.IsDead()
-			ToastHumanKillDetected(ak, "watch-poll")
-			HandlePotentialKnifeKill(ak, PlayerRef)
-			RemoveKillWatchAt(i)
-		Else
-			i += 1
-		EndIf
-	EndWhile
-EndFunction
-
-Function WatchKillCandidate(Actor ak, Bool abRequireValidFilter = True)
-	If !ak || ak == PlayerRef
+Function MarkHitArmed(Actor ak)
+	If !ak || WasHitArmed(ak)
 		Return
 	EndIf
-	If ak.IsDead()
-		Return
-	EndIf
-	If abRequireValidFilter && !IsValidTarget(ak, True)
-		Return
-	EndIf
-	NoteAliveSeen(ak)
-	RegisterForHitEvent(ak, PlayerRef)
-	If IsInKillWatchList(ak)
-		Return
-	EndIf
-	EnsureKillWatchList()
-	RegisterForRemoteEvent(ak, "OnDeath")
-	If KillWatchCount >= KILL_WATCH_MAX
+	EnsureHitArmedList()
+	If HitArmedCount >= HIT_ARMED_MAX
 		Int j = 0
-		While j < KILL_WATCH_MAX - 1
-			KillWatchList[j] = KillWatchList[j + 1]
+		While j < HIT_ARMED_MAX - 1
+			HitArmed[j] = HitArmed[j + 1]
 			j += 1
 		EndWhile
-		KillWatchCount = KILL_WATCH_MAX - 1
+		HitArmedCount = HIT_ARMED_MAX - 1
 	EndIf
-	KillWatchList[KillWatchCount] = ak
-	KillWatchCount += 1
-	Debug.Trace("PickmansWhisper: watching + hit-armed id=" + ak.GetFormID() + " watched=" + KillWatchCount)
+	HitArmed[HitArmedCount] = ak
+	HitArmedCount += 1
 EndFunction
 
 Function HandleBladeHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource)
 	Actor victim = akTarget as Actor
 	Actor agg = akAggressor as Actor
+	
+	Debug.Trace("Pickman's Whisper: HandleBladeHit 0")
+
 	If !victim || agg != PlayerRef
 		If victim && IsBladeEquipped()
 			RegisterForHitEvent(victim, PlayerRef)
 		EndIf
 		Return
 	EndIf
-	Bool fromBlade = IsPickmansBladeForm(akSource) && IsBladeEquipped()
-	If fromBlade
-		NoteAliveSeen(victim)
-		If victim.IsDead()
-			TagBladeVictim(victim)
-			ToastHumanKillDetected(victim, "hit-dead")
-			HandlePotentialKnifeKill(victim, PlayerRef)
-		Else
-			TagBladeVictim(victim)
-			WatchKillCandidate(victim, False)
-		EndIf
-	Else
+	If !IsPickmansBladeForm(akSource) || !IsBladeEquipped()
 		LastKillIgnoreReason = "hit not with blade; drawn=" + GetDrawnWeaponDebugName()
+		If !victim.IsDead()
+			RegisterForHitEvent(victim, PlayerRef)
+		EndIf
+		Return
 	EndIf
-	If victim && !victim.IsDead() && IsBladeEquipped()
-		RegisterForHitEvent(victim, PlayerRef)
+
+	Debug.Trace("Pickman's Whisper: HandleBladeHit 1")
+
+	; Stamp disposition while we can — same rule as TrackLivingNear (raiders already hostile
+	; at hit-time still fail IsValidTarget's WasFriendlySeen check; a stealth kill on someone
+	; who never got the chance to react correctly passes).
+	If !PlayerRef || !victim.IsHostileToActor(PlayerRef)
+		NoteFriendlySeen(victim)
 	EndIf
+	If victim.IsDead()
+		Debug.Trace("Pickman's Whisper: HandleBladeHit 2")
+
+		HandleNPCDeath(victim, PlayerRef, "hit-dead")
+		Return
+	EndIf
+	If !WasBladeTagged(victim)
+		Debug.Trace("Pickman's Whisper: HandleBladeHit 3")
+
+		RegisterForRemoteEvent(victim, "OnDeath")
+		MarkBladeTagged(victim)
+	EndIf
+	RegisterForHitEvent(victim, PlayerRef)
 EndFunction
 
 Function ToastHumanKillDetected(Actor victim, String path)
@@ -6581,50 +6434,64 @@ Bool Function IsNonGameplayCorpse(Actor ak)
 	Return False
 EndFunction
 
-Function HandlePotentialKnifeKill(Actor victim, Actor akKiller)
+; Sole credit-and-cleanup entry point for a confirmed NPC death — called either directly
+; from HandleBladeHit (the blade hit landed on an already-dead actor) or from the real
+; Actor.OnDeath event (the common case: death happens after the hit that tagged them).
+; Cleanup (ForgetBladeTagged) runs unconditionally up front, before any credit decision —
+; once we're evaluating this death we're done tracking the actor regardless of outcome.
+; Shared rejection path for HandleNPCDeath's gate — collapses the "set reason, maybe
+; toast, always trace" pattern each gate repeated. abToastDebug=False for reasons that
+; are routine/expected (non-gameplay corpse, cooldown) rather than something worth a
+; debug toast every time.
+Function RejectKill(String reason, Bool abToastDebug = True)
+	LastKillIgnoreReason = reason
+	If abToastDebug
+		ToastDebug("PW debug: kill ignored — " + reason)
+	EndIf
+	Debug.Trace("PickmansWhisper: kill ignored — " + reason)
+EndFunction
+
+; Sole credit-and-cleanup entry point for a confirmed NPC death — called either directly
+; from HandleBladeHit (the blade hit landed on an already-dead actor) or from the real
+; Actor.OnDeath event (the common case: death happens after the hit that tagged them).
+; Cleanup (ForgetBladeTagged) runs unconditionally up front, before any credit decision —
+; once we're evaluating this death we're done tracking the actor regardless of outcome.
+Function HandleNPCDeath(Actor victim, Actor akKiller, String path)
+	Debug.Trace("Pickman's Whisper: HandleNPCDeath")
+	Debug.Notification("Pickman's Whisper: HandleNPCDeath")
 	If !victim
 		Return
 	EndIf
 	Int vid = victim.GetFormID()
+	ToastHumanKillDetected(victim, path)
+	ForgetBladeTagged(victim)
 	If vid == LastHandledKillId
 		Return
 	EndIf
 	; Bed gift / wound lab KillSilent(player) must not clear hunger (docs: no satiation).
 	If KnifeKillCreditSuppressed || IsNonGameplayCorpse(victim)
-		LastKillIgnoreReason = "non-gameplay corpse (bed/lab)"
-		Debug.Trace("PickmansWhisper: kill ignored — bed gift / wound lab id=" + vid)
+		RejectKill("non-gameplay corpse (bed/lab)", False)
 		NoteBackgroundDead(vid)
 		Return
 	EndIf
 	If akKiller && akKiller != PlayerRef
-		LastKillIgnoreReason = "killer was not player"
-		ToastDebug("PW debug: kill ignored — not player killer")
-		Debug.Trace("PickmansWhisper: kill ignored — killer not player")
+		RejectKill("killer was not player")
 		Return
 	EndIf
 	; Drawn weapon must be Pickman's Blade right now. No finish window, no hit-tag waiver.
 	String drawn = GetDrawnWeaponDebugName()
 	If !IsBladeEquipped()
-		LastKillIgnoreReason = "not blade; drawn=" + drawn
-		ToastDebug("PW debug: kill ignored — " + LastKillIgnoreReason)
+		RejectKill("not blade; drawn=" + drawn)
 		Return
 	EndIf
-	Bool tagged = WasBladeTagged(victim)
-	Bool seenAlive = IsInKillWatchList(victim) || (victim == PendingKillVictim) || WasAliveSeen(victim)
-	If !tagged && !seenAlive
-		LastKillIgnoreReason = "blade out but victim not linked; drawn=" + drawn
-		ToastDebug("PW debug: kill ignored — " + LastKillIgnoreReason)
-		Debug.Trace("PickmansWhisper: kill ignored — no blade-link id=" + vid)
+	If !IsValidTarget(victim, False)
+		; IsValidTarget already set its own specific reason — pass it through as-is.
+		RejectKill(LastKillIgnoreReason)
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
 	If (now - LastKnifeKillRealTime) < KNIFE_KILL_COOLDOWN
-		LastKillIgnoreReason = "cooldown"
-		Return
-	EndIf
-	If !IsValidTarget(victim, False)
-		ToastDebug("PW debug: kill ignored — " + LastKillIgnoreReason)
-		Debug.Trace("PickmansWhisper: kill ignored — " + LastKillIgnoreReason + " id=" + vid)
+		RejectKill("cooldown", False)
 		Return
 	EndIf
 	LastKnifeKillRealTime = now
@@ -7317,7 +7184,7 @@ Function DebugTestNoticeLine()
 	EndIf
 	Actor target = PickNoticeTarget()
 	If !target
-		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nKillWatch: " + KillWatchCount + "\nRadius: " + (KILL_WATCH_RADIUS as Int) + "\nNeed adult female, not hostile, not essential.")
+		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nTagged: " + BladeTaggedCount + "\nRadius: " + (KILL_WATCH_RADIUS as Int) + "\nNeed adult female, not hostile, not essential.")
 		Return
 	EndIf
 	String npcName = GetActorDisplayName(target)
@@ -7496,7 +7363,7 @@ Function RefreshDebugStatus()
 	EndIf
 
 	String aliasStatus = EnsureCombatKillHooks()
-	MCM.SetModSettingString(MOD_NAME, "sWatch:Debug", "watch " + KillWatchCount + " | " + aliasStatus)
+	MCM.SetModSettingString(MOD_NAME, "sWatch:Debug", "tagged " + BladeTaggedCount + " | " + aliasStatus)
 
 	Int noticeStage = GetNoticeStage()
 	String stageSrc = "auto"

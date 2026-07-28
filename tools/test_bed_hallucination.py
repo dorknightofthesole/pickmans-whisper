@@ -308,11 +308,11 @@ def test_bed_script(bed: str) -> None:
     main_txt = PSC.read_text(encoding="utf-8", errors="replace")
     if "IsNonGameplayCorpse" not in main_txt:
         fail("Main must expose IsNonGameplayCorpse for bed/lab ignore")
-    handle = extract_function(main_txt, "HandlePotentialKnifeKill")
+    handle = extract_function(main_txt, "HandleNPCDeath")
     if "KnifeKillCreditSuppressed" not in handle or "IsNonGameplayCorpse" not in handle:
-        fail("HandlePotentialKnifeKill must skip bed gift / wound lab corpses")
+        fail("HandleNPCDeath must skip bed gift / wound lab corpses")
     if "SatiateHunger" in handle:
-        fail("HandlePotentialKnifeKill must not call SatiateHunger directly (ProcessKnifeKill does)")
+        fail("HandleNPCDeath must not call SatiateHunger directly (ProcessKnifeKill does)")
     track = extract_function(main_txt, "TrackLivingNear")
     if "IsNonGameplayCorpse" not in track:
         fail("TrackLivingNear must skip bed gift / wound lab corpses")

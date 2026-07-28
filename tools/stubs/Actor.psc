@@ -2,6 +2,8 @@ Scriptname Actor extends ObjectReference Native
 
 Bool Function IsDead() Native
 Bool Function IsInCombat() Native
+Bool Function IsEssential() Native
+Function SetEssential(Bool abEssential) Native
 Bool Function IsGhost() Native
 Bool Function IsChild() Native
 Bool Function IsPlayerTeammate() Native

@@ -504,6 +504,10 @@ Function MaybeWarmBedGiftBody()
 		SetBedGiftStatus("warm skip: not bonded")
 		Return
 	EndIf
+	If !m.IsBladeEquipped()
+		SetBedGiftStatus("warm skip: Pickman's Blade not equipped")
+		Return
+	EndIf
 	If !IsBedGiftEnabled()
 		SetBedGiftStatus("warm skip: MCM bed gift off")
 		Return
@@ -543,6 +547,10 @@ Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
 		PickmansWhisperMainQuestScript m = Main()
 		If !m || !m.BondStarted
 			SetBedGiftStatus("skip: not bonded")
+			Return False
+		EndIf
+		If !m.IsBladeEquipped()
+			SetBedGiftStatus("skip: Pickman's Blade not equipped")
 			Return False
 		EndIf
 		If !IsBedGiftEnabled()

@@ -1,0 +1,333 @@
+#!/usr/bin/env python3
+"""Proximity cloak — exact Glowing One chain contracts.
+
+Ability SPEL (crGlowingOneCloak clone) → Cloak MGEF (RadiationCloak clone, arch=35,
+NO VMAD, Assoc=hit SPEL, Area=15) → Hit SPEL (RadiationHazardToken clone) → Hit MGEF
+(Script + PickmansWhisperProximityEffect VMAD; no radiation).
+
+Locks:
+  - FormIDs 0x870–0x873 + NEXT_OID 0x874
+  - Vanilla sources: Ability 0xDB3AD, Cloak 0xDB3AE, Token 0xDF451, Hazard 0x9252A
+  - Cloak Assoc Item == Hit SPEL; Cloak has no VMAD; Hit has proximity script
+  - Cloak Area=15; Ability EFIT Area=40
+  - Alias GetFormFromFile uses LOCAL id 0x00000873
+  - Deploy compiles PickmansWhisperProximityEffect.psc (not CloakHost)
+
+Usage:
+  python tools/test_proximity_cloak.py
+"""
+from __future__ import annotations
+
+import re
+import struct
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
+ESP = ROOT / "Data" / "PickmansWhisper.esp"
+STUB = ROOT / "tools" / "stubs" / "ActiveMagicEffect.psc"
+EFFECT_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperProximityEffect.psc"
+ALIAS_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
+DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
+DEPLOY_SH = ROOT / "tools" / "build-deploy-local.sh"
+
+FID_PROXIMITY_HIT_MGEF = 0x01000870
+FID_PROXIMITY_HIT_SPEL = 0x01000871
+FID_PROXIMITY_CLOAK_MGEF = 0x01000872
+FID_PROXIMITY_CLOAK_SPEL = 0x01000873
+PROXIMITY_CLOAK_AREA = 15
+PROXIMITY_ABILITY_EFIT_AREA = 40
+
+
+def fail(msg: str) -> None:
+    print(f"FAIL: {msg}", file=sys.stderr)
+    raise SystemExit(1)
+
+
+def ok(msg: str) -> None:
+    print(f"OK: {msg}")
+
+
+def parse_esp_records(data: bytes) -> list[tuple[str, int, bytes]]:
+    i = 0
+    while i + 24 <= len(data):
+        if data[i : i + 4] == b"TES4":
+            size = struct.unpack_from("<I", data, i + 4)[0]
+            i += 24 + size
+            break
+        i += 1
+    out: list[tuple[str, int, bytes]] = []
+    while i + 24 <= len(data):
+        tag = data[i : i + 4]
+        if tag == b"GRUP":
+            gsize = struct.unpack_from("<I", data, i + 4)[0]
+            end = i + gsize
+            j = i + 24
+            while j + 24 <= end:
+                if data[j : j + 4] == b"GRUP":
+                    j += struct.unpack_from("<I", data, j + 4)[0]
+                    continue
+                rtype = data[j : j + 4].decode("ascii", "replace")
+                size = struct.unpack_from("<I", data, j + 4)[0]
+                formid = struct.unpack_from("<I", data, j + 12)[0]
+                body = data[j + 24 : j + 24 + size]
+                out.append((rtype, formid, body))
+                j += 24 + size
+            i = end
+            continue
+        rtype = tag.decode("ascii", "replace")
+        size = struct.unpack_from("<I", data, i + 4)[0]
+        formid = struct.unpack_from("<I", data, i + 12)[0]
+        body = data[i + 24 : i + 24 + size]
+        out.append((rtype, formid, body))
+        i += 24 + size
+    return out
+
+
+def fields_last(body: bytes) -> dict[str, bytes]:
+    out: dict[str, bytes] = {}
+    j = 0
+    while j + 6 <= len(body):
+        t = body[j : j + 4].decode("ascii", "replace")
+        sz = struct.unpack_from("<H", body, j + 4)[0]
+        out[t] = body[j + 6 : j + 6 + sz]
+        j += 6 + sz
+    return out
+
+
+def fields_all(body: bytes) -> list[tuple[str, bytes]]:
+    out: list[tuple[str, bytes]] = []
+    j = 0
+    while j + 6 <= len(body):
+        t = body[j : j + 4].decode("ascii", "replace")
+        sz = struct.unpack_from("<H", body, j + 4)[0]
+        out.append((t, body[j + 6 : j + 6 + sz]))
+        j += 6 + sz
+    return out
+
+
+def zfield(blob: bytes) -> str:
+    return blob.split(b"\x00", 1)[0].decode("latin1", "replace")
+
+
+def main() -> None:
+    builder_text = BUILDER.read_text(encoding="utf-8", errors="replace")
+    for needle, label in [
+        ("FID_PROXIMITY_HIT_MGEF = 0x01000870", "HIT_MGEF"),
+        ("FID_PROXIMITY_HIT_SPEL = 0x01000871", "HIT_SPEL"),
+        ("FID_PROXIMITY_CLOAK_MGEF = 0x01000872", "CLOAK_MGEF"),
+        ("FID_PROXIMITY_CLOAK_SPEL = 0x01000873", "CLOAK_SPEL"),
+        ("NEXT_OID = 0x00000874", "NEXT_OID"),
+        ("VANILLA_CLOAK_ABILITY_SPEL_SOURCE = 0x000DB3AD", "ability source"),
+        ("VANILLA_CLOAK_MGEF_SOURCE = 0x000DB3AE", "cloak source"),
+        ("VANILLA_CLOAK_HIT_SPEL_SOURCE = 0x000DF451", "hit spel source"),
+        ("VANILLA_CLOAK_HIT_MGEF_SOURCE = 0x0009252A", "hit mgef source"),
+        ("PROXIMITY_CLOAK_AREA = 15", "cloak area"),
+        ("PROXIMITY_ABILITY_EFIT_AREA = 40", "ability efit area"),
+    ]:
+        if needle not in builder_text:
+            fail(f"build_hunger_spell_esp.py must declare {label}: {needle}")
+    if "PickmansWhisperProximityCloakHost" in builder_text:
+        fail("builder must not reference PickmansWhisperProximityCloakHost (Cloak has no VMAD)")
+    if "0x00247A40" in builder_text or "DetectLife" in builder_text:
+        fail("builder must not still clone DetectLife cloak sources")
+    ok("builder reserves Glowing One clone FormIDs 0x870-0x873, NEXT_OID=0x874")
+
+    if not STUB.is_file():
+        fail("tools/stubs/ActiveMagicEffect.psc missing")
+    stub_text = STUB.read_text(encoding="utf-8", errors="replace")
+    if "extends ScriptObject Native Hidden" not in stub_text:
+        fail("ActiveMagicEffect stub must match real FO4 source: extends ScriptObject Native Hidden")
+    if "Event OnEffectStart(Actor akTarget, Actor akCaster)" not in stub_text:
+        fail("ActiveMagicEffect stub must declare OnEffectStart(Actor akTarget, Actor akCaster)")
+    if "Event OnEffectFinish(Actor akTarget, Actor akCaster)" not in stub_text:
+        fail("ActiveMagicEffect stub must declare OnEffectFinish(Actor akTarget, Actor akCaster)")
+    if "Native" in re.sub(r"^Scriptname.*$", "", stub_text, flags=re.MULTILINE):
+        fail("ActiveMagicEffect stub must declare zero Native functions (events only)")
+    ok("ActiveMagicEffect stub matches real FO4 source signature, events-only")
+
+    if not EFFECT_PSC.is_file():
+        fail("PickmansWhisperProximityEffect.psc missing")
+    effect_text = EFFECT_PSC.read_text(encoding="utf-8", errors="replace")
+    if "extends ActiveMagicEffect" not in effect_text:
+        fail("PickmansWhisperProximityEffect must extend ActiveMagicEffect")
+    if "Event OnEffectStart(Actor akTarget, Actor akCaster)" not in effect_text:
+        fail("PickmansWhisperProximityEffect must implement OnEffectStart")
+    if "Event OnEffectFinish(Actor akTarget, Actor akCaster)" not in effect_text:
+        fail("PickmansWhisperProximityEffect must implement OnEffectFinish")
+    if "akTarget == akCaster" not in effect_text:
+        fail("PickmansWhisperProximityEffect must guard against the caster reporting on itself")
+    if "hit MGEF" not in effect_text.lower() and "ProximityHitEffect" not in effect_text:
+        fail("PickmansWhisperProximityEffect docstring must describe the hit MGEF / Cloak chain")
+    ok("PickmansWhisperProximityEffect: correct base, both events, self-guard")
+
+    host_psc = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperProximityCloakHost.psc"
+    if host_psc.is_file():
+        fail("PickmansWhisperProximityCloakHost.psc must be removed (Cloak MGEF has no script)")
+    ok("ProximityCloakHost removed (matches RadiationCloak: no cloak VMAD)")
+
+    alias_text = ALIAS_PSC.read_text(encoding="utf-8", errors="replace")
+    if "Function GrantProximityCloak()" not in alias_text:
+        fail("PlayerAliasScript must declare GrantProximityCloak()")
+    grant_body_m = re.search(r"Function GrantProximityCloak\(\).*?EndFunction", alias_text, re.DOTALL)
+    if not grant_body_m:
+        fail("could not extract GrantProximityCloak body")
+    grant_body = grant_body_m.group(0)
+    if "GrantProximityCloak enter" not in grant_body:
+        fail("GrantProximityCloak must Trace on enter (Notifications alone never hit Papyrus.0.log)")
+    if "GetFormFromFile" not in grant_body:
+        fail("GrantProximityCloak must GetFormFromFile the cloak Ability")
+    if "AddSpell(cloak, False)" not in grant_body:
+        fail("GrantProximityCloak must AddSpell silently (abVerbose=False)")
+    if "RemoveSpell(cloak)" not in grant_body:
+        fail("GrantProximityCloak must RemoveSpell+AddSpell when already owned (refresh Constant Effect)")
+    if "HadSpell" not in grant_body and "re-applied" not in grant_body:
+        fail("GrantProximityCloak HasSpell path must Trace (was silent — hid Phase 1 failures)")
+    if "FID_PROXIMITY_CLOAK_SPELL = 0x00000873" not in alias_text:
+        fail("PlayerAliasScript must use local GetFormFromFile id 0x00000873 (not 0x01……)")
+    if re.search(r"FID_PROXIMITY_CLOAK_SPELL\s*=\s*0x01000873", alias_text):
+        fail("PlayerAliasScript must not assign plugin-prefixed FormID to FID_PROXIMITY_CLOAK_SPELL")
+    on_alias_init_m = re.search(r"Event OnAliasInit\(\).*?EndEvent", alias_text, re.DOTALL)
+    on_load_m = re.search(r"Event OnPlayerLoadGame\(\).*?EndEvent", alias_text, re.DOTALL)
+    if not on_alias_init_m or "GrantProximityCloak()" not in on_alias_init_m.group(0):
+        fail("OnAliasInit must call GrantProximityCloak()")
+    if not on_load_m or "GrantProximityCloak()" not in on_load_m.group(0):
+        fail("OnPlayerLoadGame must call GrantProximityCloak()")
+    magic_reg_m = re.search(
+        r"Function RegisterMagicEffectDetect\(\).*?EndFunction", alias_text, re.DOTALL
+    )
+    if not magic_reg_m or "GrantProximityCloak()" not in magic_reg_m.group(0):
+        fail(
+            "RegisterMagicEffectDetect must call GrantProximityCloak — "
+            "stale OnPlayerLoadGame save-stacks call this but never Grant themselves"
+        )
+    ok("PlayerAliasScript grants cloak via load hooks + RegisterMagicEffectDetect (save-stack bypass)")
+
+    if not ESP.is_file():
+        fail(f"missing built ESP: {ESP} (run tools/build_hunger_spell_esp.py first)")
+    records = parse_esp_records(ESP.read_bytes())
+    by_id = {(rtype, fid): body for rtype, fid, body in records}
+
+    hit_mgef = by_id.get(("MGEF", FID_PROXIMITY_HIT_MGEF))
+    if hit_mgef is None:
+        fail(f"built ESP missing Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}")
+    hmf = fields_last(hit_mgef)
+    if zfield(hmf.get("EDID", b"")) != "PickmansWhisperProximityHitEffect":
+        fail("hit MGEF EDID mismatch")
+    if "VMAD" not in hmf or b"PickmansWhisperProximityEffect" not in hmf["VMAD"]:
+        fail("hit MGEF VMAD must attach PickmansWhisperProximityEffect")
+    hdata = hmf.get("DATA", b"")
+    if len(hdata) < 88:
+        fail(f"hit MGEF DATA too short ({len(hdata)})")
+    if struct.unpack_from("<I", hdata, 64)[0] != 1:
+        fail("hit MGEF Archetype must be 1 (Script)")
+    if struct.unpack_from("<i", hdata, 68)[0] != 0:
+        fail("hit MGEF Primary AV must be 0 (no Radiation)")
+    if struct.unpack_from("<i", hdata, 16)[0] != 0:
+        fail("hit MGEF Resist AV must be 0 (no Radiation resist)")
+    if struct.unpack_from("<I", hdata, 80)[0] != 2 or struct.unpack_from("<I", hdata, 84)[0] != 1:
+        fail("hit MGEF must keep RadiationHazardEffect cast=FireAndForget(2) deliv=Touch(1)")
+    ok(f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + VMAD, no radiation AV")
+
+    cloak_mgef = by_id.get(("MGEF", FID_PROXIMITY_CLOAK_MGEF))
+    if cloak_mgef is None:
+        fail(f"built ESP missing Cloak MGEF 0x{FID_PROXIMITY_CLOAK_MGEF:08X}")
+    cmf = fields_last(cloak_mgef)
+    if zfield(cmf.get("EDID", b"")) != "PickmansWhisperProximityCloakEffect":
+        fail("cloak MGEF EDID mismatch")
+    if "VMAD" in cmf:
+        fail("Cloak MGEF must have NO VMAD (RadiationCloak has none; script is on hit MGEF)")
+    cdata = cmf.get("DATA", b"")
+    if len(cdata) < 88:
+        fail(f"cloak MGEF DATA too short ({len(cdata)})")
+    arch = struct.unpack_from("<I", cdata, 64)[0]
+    assoc = struct.unpack_from("<I", cdata, 8)[0]
+    area = struct.unpack_from("<I", cdata, 44)[0]
+    cast_t = struct.unpack_from("<I", cdata, 80)[0]
+    deliv = struct.unpack_from("<I", cdata, 84)[0]
+    if arch != 35:
+        fail(f"cloak MGEF Archetype must be 35 (Cloak), got {arch}")
+    if assoc != FID_PROXIMITY_HIT_SPEL:
+        fail(f"cloak MGEF Assoc Item must be Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}, got 0x{assoc:08X}")
+    if area != PROXIMITY_CLOAK_AREA:
+        fail(f"cloak MGEF Area must be {PROXIMITY_CLOAK_AREA}, got {area}")
+    if cast_t != 0 or deliv != 0:
+        fail(f"cloak MGEF must be Constant Effect / Self (cast={cast_t} deliv={deliv})")
+    ok(f"Cloak MGEF 0x{FID_PROXIMITY_CLOAK_MGEF:08X}: arch=35 Assoc=HitSPEL Area={area} no VMAD")
+
+    hit_spel = by_id.get(("SPEL", FID_PROXIMITY_HIT_SPEL))
+    if hit_spel is None:
+        fail(f"built ESP missing Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}")
+    hsf = fields_last(hit_spel)
+    if zfield(hsf.get("EDID", b"")) != "PickmansWhisperProximityHit":
+        fail("hit SPEL EDID mismatch")
+    spit = hsf.get("SPIT", b"")
+    if len(spit) < 24:
+        fail(f"hit SPEL SPIT too short ({len(spit)})")
+    if struct.unpack_from("<I", spit, 8)[0] != 0:
+        fail("hit SPEL Type must be 0 (Spell) like RadiationHazardToken")
+    if struct.unpack_from("<I", spit, 16)[0] != 2:
+        fail("hit SPEL CastType must be 2 (FireAndForget)")
+    if struct.unpack_from("<I", spit, 20)[0] != 1:
+        fail("hit SPEL TargetType must be 1 (Touch)")
+    efids = [sd for t, sd in fields_all(hit_spel) if t == "EFID"]
+    efits = [sd for t, sd in fields_all(hit_spel) if t == "EFIT"]
+    if len(efids) != 2:
+        fail(f"hit SPEL must keep two EFIDs like RadiationHazardToken, got {len(efids)}")
+    for i, efid in enumerate(efids):
+        if len(efid) < 4 or struct.unpack_from("<I", efid, 0)[0] != FID_PROXIMITY_HIT_MGEF:
+            fail(f"hit SPEL EFID[{i}] must point at Hit MGEF")
+    if len(efits) != 2:
+        fail(f"hit SPEL must keep two EFITs, got {len(efits)}")
+    mag0, area0, dur0 = struct.unpack_from("<fII", efits[0], 0)
+    mag1, area1, dur1 = struct.unpack_from("<fII", efits[1], 0)
+    if (area0, dur0) != (0, 1) or (area1, dur1) != (0, 1):
+        fail(f"hit SPEL EFITs must keep vanilla area/dur 0/1, got {(area0, dur0)} {(area1, dur1)}")
+    if abs(mag0 - 5.0) > 0.01 or abs(mag1 - 0.5) > 0.01:
+        fail(f"hit SPEL EFITs must keep vanilla mag 5.0 and 0.5, got {mag0} {mag1}")
+    ok(f"Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}: Token clone, 2x EFID->Hit MGEF")
+
+    cloak_spel = by_id.get(("SPEL", FID_PROXIMITY_CLOAK_SPEL))
+    if cloak_spel is None:
+        fail(f"built ESP missing Cloak Ability SPEL 0x{FID_PROXIMITY_CLOAK_SPEL:08X}")
+    csf = fields_last(cloak_spel)
+    if zfield(csf.get("EDID", b"")) != "PickmansWhisperProximityCloak":
+        fail("cloak SPEL EDID mismatch")
+    spit = csf.get("SPIT", b"")
+    if len(spit) < 24:
+        fail(f"cloak SPEL SPIT too short ({len(spit)})")
+    if struct.unpack_from("<I", spit, 8)[0] != 4:
+        fail("cloak SPEL Type must be 4 (Ability)")
+    if struct.unpack_from("<I", spit, 16)[0] != 0:
+        fail("cloak SPEL CastType must be 0 (Constant Effect)")
+    if struct.unpack_from("<I", spit, 20)[0] != 0:
+        fail("cloak SPEL TargetType must be 0 (Self)")
+    cef = csf.get("EFID", b"")
+    if len(cef) < 4 or struct.unpack_from("<I", cef, 0)[0] != FID_PROXIMITY_CLOAK_MGEF:
+        fail("cloak Ability SPEL EFID must point at Cloak MGEF")
+    efit = csf.get("EFIT", b"")
+    if len(efit) < 12:
+        fail("cloak Ability EFIT missing")
+    mag, efit_area, dur = struct.unpack_from("<fII", efit, 0)
+    if efit_area != PROXIMITY_ABILITY_EFIT_AREA:
+        fail(f"cloak Ability EFIT Area must be {PROXIMITY_ABILITY_EFIT_AREA}, got {efit_area}")
+    if dur != 0:
+        fail(f"cloak Ability EFIT Duration must be 0, got {dur}")
+    if abs(mag - 10.0) > 0.01:
+        fail(f"cloak Ability EFIT Magnitude must be 10.0 (crGlowingOneCloak), got {mag}")
+    ok(f"Cloak Ability SPEL 0x{FID_PROXIMITY_CLOAK_SPEL:08X}: Ability/Self mag=10 area=40 -> Cloak MGEF")
+
+    for deploy_path in (DEPLOY_PS1, DEPLOY_SH):
+        deploy_text = deploy_path.read_text(encoding="utf-8", errors="replace")
+        if "PickmansWhisperProximityEffect.psc" not in deploy_text:
+            fail(f"{deploy_path.name} does not compile/deploy PickmansWhisperProximityEffect.psc")
+        if "PickmansWhisperProximityCloakHost" in deploy_text:
+            fail(f"{deploy_path.name} must not compile/deploy ProximityCloakHost")
+    ok("deploy gate compiles + ships hit ActiveMagicEffect only")
+
+    print("All proximity-cloak (Glowing One clone) contracts passed.")
+
+
+if __name__ == "__main__":
+    main()

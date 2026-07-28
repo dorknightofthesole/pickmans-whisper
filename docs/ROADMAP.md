@@ -147,10 +147,11 @@ Honor direction: never rename **essential** story NPCs. Editable suffix in `ModC
 
 Let the player **pretend to beat** a qualified woman before finishing her with the knife — she won’t die during the scuffle and ideally **fights back**. Soft with Victims (C5) and knife-kill rules (B).
 
-- [ ] **J1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear when player is done / on blade kill path / MCM off.
+- [ ] **J1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear via J5 / MCM off / blade kill path.
 - [ ] **J2 — Auto on unarmed attack** — If the player attacks a **qualified** NPC **without a weapon armed** (fists / no drawn weapon), auto-enter the same temp-essential + fight-back state. **Exception:** Pickman's Blade need **not** be drawn for this path (blade still required later to sate / praise).
 - [ ] **J3 — Fight back** — Aggro / combat so she resists instead of crumpling; exit cleanly when essential is cleared so a later blade kill can work.
 - [ ] **J4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
+- [ ] **J5 — Clear essential on rearm** — When the player **rearms any weapon** (draws / equips a weapon again after the unarmed beat), mark her **unessential** (restore prior state) so she can be finished with the blade.
 
 Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
 
@@ -226,7 +227,7 @@ Honor direction: no AAF/sex content here; never break essential/protected story 
 - Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
 - Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; decay vs L preserve race; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn.
 - Desperate rename (I): GoE2 display names vs Potential Victims overrides; strip cleanly when hunger drops; never touch essentials.
-- Victim beat (J): FO4 `SetEssential` is often **ActorBase**-scoped (shared templates); must restore prior essential/protected state; unarmed hit detection without false positives; don’t block later blade kill / satiation; never sticky-essential story NPCs.
+- Victim beat (J): FO4 `SetEssential` is often **ActorBase**-scoped (shared templates); must restore prior essential/protected state on J5 rearm; unarmed hit detection without false positives; don’t block later blade kill / satiation; never sticky-essential story NPCs.
 - Hunger pacing (K): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (N): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 - Private cells / quests (P): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs M overlap; Pickman house ownership without breaking Gallery bond trigger.

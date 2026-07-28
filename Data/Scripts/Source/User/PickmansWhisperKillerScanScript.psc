@@ -54,6 +54,10 @@ PickmansWhisperBuffTrackerScript Function BuffTracker()
 	Return (Self as Quest) as PickmansWhisperBuffTrackerScript
 EndFunction
 
+PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
+	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
+EndFunction
+
 PickmansWhisperBedGiftScript Function BedGift()
 	Return (Self as Quest) as PickmansWhisperBedGiftScript
 EndFunction
@@ -231,6 +235,17 @@ Function DispatchListeners()
 		buffs.CallFunctionNoWait("TickEndBuffExpiry", None)
 	Else
 		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — BuffTracker missing")
+	EndIf
+
+	; Slice J2-J5 — beat-before-kill ambient safety net: re-checks player weapon
+	; state only (clears all if re-armed but OnItemEquipped somehow missed it). Does NOT
+	; re-check combat state — that raced with an essential actor's own protected-
+	; collapse moment and actively broke the feature (see BeatBeforeKillScript header).
+	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+	If beat
+		beat.CallFunctionNoWait("TickEssentialReconcile", None)
+	Else
+		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — BeatBeforeKill missing")
 	EndIf
 
 	; Sync — deadlines are cheap; NoWait piled up and double-counted despawn scans.

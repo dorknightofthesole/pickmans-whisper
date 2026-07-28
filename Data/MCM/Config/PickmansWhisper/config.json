@@ -364,6 +364,35 @@
 					}
 				},
 				{
+					"text": "Beat before kill (temp essential)",
+					"type": "section"
+				},
+				{
+					"text": "Toggle \"can't be killed\" on the aimed NPC for a beat-before-kill fight (Slice J1). Same eligibility as a valid knife-kill target: human, adult female, not essential/child/teammate, seen non-hostile. Pressing again while she's essential (that this toggle set) turns it back off — an NPC essential for any other reason is never touched.",
+					"type": "text",
+					"html": true
+				},
+				{
+					"id": "sBeatEssential:Victims",
+					"text": "Essential (beat mode)",
+					"type": "textinput",
+					"help": "☑ = essential via this toggle right now; ☐ = not (or not eligible). Refreshes on \"Load targeted victim\" and after pressing Toggle essential below.",
+					"valueOptions": {
+						"sourceType": "ModSettingString"
+					}
+				},
+				{
+					"text": "Toggle essential",
+					"type": "button",
+					"help": "Sets/clears SetEssential on the aimed NPC. Status row above updates immediately after.",
+					"action": {
+						"type": "CallFunction",
+						"form": "PickmansWhisper.esp|800",
+						"function": "MCMToggleEssentialForAimed",
+						"scriptName": "PickmansWhisperVictimsScript"
+					}
+				},
+				{
 					"text": "Name / rename",
 					"type": "section"
 				},

@@ -127,8 +127,9 @@ def test_builder() -> None:
         "build_whisper_sndr_payload",
         "Desperate_Audio.txt",
         "WhisperSndrIds.txt",
-        # Past Slice I decay-face reserve (0x850..0x86F); decay-face contract owns the value.
-        "NEXT_OID = 0x00000870",
+        # Past Slice I decay-face reserve (0x850..0x86F) + proximity cloak MGEF/SPEL
+        # (0x870–0x873); decay-face / proximity-cloak contracts own the value.
+        "NEXT_OID = 0x00000874",
     ):
         if needle not in src:
             fail(f"build_hunger_spell_esp.py missing {needle!r}")

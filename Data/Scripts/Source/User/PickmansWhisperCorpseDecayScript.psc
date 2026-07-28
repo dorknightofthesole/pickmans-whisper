@@ -664,9 +664,15 @@ Bool Function EnsureDecayFaceArmorBanks()
 		FaceArmorLoadBusy = False
 		Return False
 	EndIf
-	FaceArmorLabels = new String[16]
-	FaceArmorArmoFids = new Int[16]
-	FaceArmorCount = 0
+	; Parse into locals; commit to the live FaceArmorLabels/FaceArmorArmoFids/FaceArmorCount
+	; only after a full successful parse. Wiping the live arrays up front (old behavior)
+	; left them observably empty ("known=[]") for the whole file-read + parse duration —
+	; long enough (20s+ confirmed under load, see FACE_ARMOR_LOAD_BUSY_TIMEOUT_SECONDS
+	; above) for a second in-flight caller (e.g. after the busy watchdog force-clears a
+	; stale flag post save-reload) to read the live arrays mid-wipe.
+	String[] nextLabels = new String[16]
+	Int[] nextArmoFids = new Int[16]
+	Int nextCount = 0
 	FaceArmorBanksLoaded = False
 	FaceArmorLoadStatus = "READ FAILED"
 
@@ -689,7 +695,7 @@ Bool Function EnsureDecayFaceArmorBanks()
 		Return False
 	EndIf
 	Int i = 0
-	While i < idRaw.Length && FaceArmorCount < FACE_ARMOR_MAX
+	While i < idRaw.Length && nextCount < FACE_ARMOR_MAX
 		String line = ConfigTrim(idRaw[i])
 		i += 1
 		If line == ""
@@ -706,9 +712,9 @@ Bool Function EnsureDecayFaceArmorBanks()
 					String armoStr = ConfigTrim(GardenOfEden.SubStr(val, comma + 1, -1))
 					Int armoFid = m.ParsePositiveInt(armoStr)
 					If armoFid > 0
-						FaceArmorLabels[FaceArmorCount] = label
-						FaceArmorArmoFids[FaceArmorCount] = armoFid
-						FaceArmorCount += 1
+						nextLabels[nextCount] = label
+						nextArmoFids[nextCount] = armoFid
+						nextCount += 1
 					Else
 						Debug.Trace("PickmansWhisper: WARN face ARMO id skip label=" + label + " bad armoFid from " + armoStr)
 					EndIf
@@ -716,7 +722,7 @@ Bool Function EnsureDecayFaceArmorBanks()
 			EndIf
 		EndIf
 	EndWhile
-	If FaceArmorCount <= 0
+	If nextCount <= 0
 		FaceArmorLoadStatus = "EMPTY rows " + FACE_ARMOR_IDS_FILE
 		SetCorpseDecayStatus("ERROR: " + FaceArmorLoadStatus)
 		Debug.Notification("Pickman's Whisper: " + FACE_ARMOR_IDS_FILE + " has no ARMO rows")
@@ -724,6 +730,11 @@ Bool Function EnsureDecayFaceArmorBanks()
 		FaceArmorLoadBusy = False
 		Return False
 	EndIf
+	; Commit now — ReloadDecayFaceStageMap() below reads FaceArmorLabels/FaceArmorArmoFids
+	; live via FindFaceArmorLabelIndex, so they must be in place before it runs.
+	FaceArmorLabels = nextLabels
+	FaceArmorArmoFids = nextArmoFids
+	FaceArmorCount = nextCount
 	Debug.Trace("PickmansWhisper: face ARMO ids loaded n=" + FaceArmorCount + " labels=[" + FaceArmorLabelsDebugList() + "]")
 
 	If !ReloadDecayFaceStageMap()

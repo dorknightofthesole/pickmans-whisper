@@ -36,6 +36,10 @@ PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
 EndFunction
 
+PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
+	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
+EndFunction
+
 Event OnInit()
 	EnsureMcmEventsRegistered()
 EndEvent
@@ -290,6 +294,43 @@ Function MCMNameAimedVictim()
 		DiagNotify("Pickman's Whisper — Apply name\n\nShe is " + shown + " now.")
 	Else
 		DiagNotify("Pickman's Whisper — Apply name\n\nFailed:\n" + m.LastVictimStatus)
+	EndIf
+	RefreshVictimsPanel(True)
+EndFunction
+
+; Slice J1 — MCM Victims "Toggle essential" button. Same aim-cache pattern as
+; MCMNameAimedVictim; the actual eligibility/tracking logic lives on BeatBeforeKillScript.
+Function MCMToggleEssentialForAimed()
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		DiagNotify("Pickman's Whisper — Toggle essential\n\nMain script missing.")
+		Return
+	EndIf
+	Actor player = Game.GetPlayer()
+	Actor aimed = ResolveVictimsAimActor()
+	If !aimed || aimed == player
+		m.LastVictimStatus = "no aim cache — face her in-world ~2s, then Toggle essential"
+		PushVictimsPanelStrings()
+		If MCM.IsInstalled()
+			MCM.RefreshMenu()
+			WriteVictimsAimedToMcm()
+			m.WriteVictimsStatusToMcm()
+		EndIf
+		DiagNotify("Pickman's Whisper — Toggle essential\n\nNo aim cache.\nFace her in-world for ~2s (killscan), then open MCM and try again.")
+		Return
+	EndIf
+	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+	If !beat
+		DiagNotify("Pickman's Whisper — Toggle essential\n\nBeatBeforeKillScript missing.")
+		Return
+	EndIf
+	If beat.ToggleEssentialForAimed(aimed)
+		DiagNotify("Pickman's Whisper — Toggle essential\n\n" + m.LastVictimStatus)
+	Else
+		DiagNotify("Pickman's Whisper — Toggle essential\n\nFailed:\n" + m.LastVictimStatus)
+	EndIf
+	If MCM.IsInstalled()
+		m.WriteVictimsStatusToMcm()
 	EndIf
 	RefreshVictimsPanel(True)
 EndFunction
