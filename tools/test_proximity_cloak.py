@@ -9,6 +9,7 @@ Locks:
   - FormIDs 0x870–0x873 + NEXT_OID 0x874
   - Vanilla sources: Ability 0xDB3AD, Cloak 0xDB3AE, Token 0xDF451, Hazard 0x9252A
   - Cloak Assoc Item == Hit SPEL; Cloak has no VMAD; Hit has proximity script
+  - Hit SPEL EFIT Duration=0; Hit MGEF flags include No Duration (0x80)
   - Cloak Area=15; Ability EFIT Area=40
   - Alias GetFormFromFile uses LOCAL id 0x00000873
   - Deploy compiles PickmansWhisperProximityEffect.psc (not CloakHost)
@@ -318,7 +319,15 @@ def main() -> None:
         fail("hit MGEF Resist AV must be 0 (no Radiation resist)")
     if struct.unpack_from("<I", hdata, 80)[0] != 0 or struct.unpack_from("<I", hdata, 84)[0] != 3:
         fail("hit MGEF must be Constant Effect (0) / Target Actor (3)")
-    ok(f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + Constant/TargetActor + VMAD Main->0x800")
+    hit_flags = struct.unpack_from("<I", hdata, 0)[0]
+    if hit_flags & 0x00000080 == 0:
+        fail(f"hit MGEF must set No Duration flag (0x80), got flags=0x{hit_flags:08X}")
+    if hit_flags & 0x00000001:
+        fail(f"hit MGEF must not be Hostile, got flags=0x{hit_flags:08X}")
+    ok(
+        f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + Constant/TargetActor + "
+        f"NoDuration + VMAD Main->0x800"
+    )
 
     cloak_mgef = by_id.get(("MGEF", FID_PROXIMITY_CLOAK_MGEF))
     if cloak_mgef is None:
@@ -370,11 +379,11 @@ def main() -> None:
     if len(efits) != 1:
         fail(f"hit SPEL must have exactly one EFIT, got {len(efits)}")
     mag0, area0, dur0 = struct.unpack_from("<fII", efits[0], 0)
-    if (area0, dur0) != (0, 1):
-        fail(f"hit SPEL EFIT must be area/dur 0/1, got {(area0, dur0)}")
+    if (area0, dur0) != (0, 0):
+        fail(f"hit SPEL EFIT must be area/dur 0/0 (dur>0 expires inside cloak), got {(area0, dur0)}")
     if abs(mag0 - 5.0) > 0.01:
         fail(f"hit SPEL EFIT mag must be 5.0, got {mag0}")
-    ok(f"Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}: Constant/TargetActor + EFID->Hit MGEF EFIT 5/0/1")
+    ok(f"Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}: Constant/TargetActor + EFID->Hit MGEF EFIT 5/0/0")
 
     cloak_spel = by_id.get(("SPEL", FID_PROXIMITY_CLOAK_SPEL))
     if cloak_spel is None:

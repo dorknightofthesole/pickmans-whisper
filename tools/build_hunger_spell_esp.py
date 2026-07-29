@@ -495,7 +495,10 @@ def build_proximity_hit_mgef_payload() -> bytes:
             continue
         elif st == b"DATA" and len(sd) >= 88:
             data = bytearray(sd)
-            struct.pack_into("<I", data, 0, 0)  # flags — no hostile / radiation payload
+            # No Duration (0x80): Constant Effect lifespan is cloak radius, not EFIT seconds.
+            # Clear Hostile/Detrimental/etc. from the radiation clone.
+            struct.pack_into("<I", data, 0, 0x00000080)
+            struct.pack_into("<I", data, 8, 0)  # Assoc unused for Script archetype
             struct.pack_into("<i", data, 16, 0)  # Resist AV (was Radiation)
             struct.pack_into("<I", data, 32, 0)  # Hit Shader
             struct.pack_into("<I", data, 36, 0)  # Enchant Shader
@@ -521,8 +524,9 @@ def build_proximity_hit_mgef_payload() -> bytes:
 def build_proximity_hit_spel_payload() -> bytes:
     """Assoc SPEL (RadiationHazardToken clone) — Cloak applies this to actors in radius.
 
-    Single effect only: EFID → hit MGEF, EFIT mag/area/dur = 5/0/1.
-    (Vanilla token also had a 0.5/0/1 ghoul-heal slot — dropped; script events need one ref.)
+    Single effect only: EFID → hit MGEF, EFIT mag/area/dur = 5/0/0.
+    Duration MUST be 0 — a non-zero duration expires OnEffectFinish after N seconds while
+    the NPC is still inside the cloak, then the cloak re-applies (false leave/enter pulses).
     Radiation CTDAs dropped so the scripted hit is not filtered away.
     Cast/Target: Constant Effect / Target Actor — must match hit MGEF.
     """
@@ -548,8 +552,8 @@ def build_proximity_hit_spel_payload() -> bytes:
         elif st == b"EFIT" and len(sd) >= 12:
             if wrote_effect:
                 continue
-            # Single ref: mag=5 area=0 dur=1 (vanilla primary RadiationHazardToken slot).
-            out.append(field(b"EFIT", struct.pack("<fII", 5.0, 0, 1)))
+            # mag=5 area=0 dur=0 — dur>0 forces premature OnEffectFinish inside the cloak.
+            out.append(field(b"EFIT", struct.pack("<fII", 5.0, 0, 0)))
             wrote_effect = True
         elif st == b"CTDA":
             continue
@@ -577,7 +581,9 @@ def build_proximity_cloak_mgef_payload() -> bytes:
             continue
         elif st == b"DATA" and len(sd) >= 88:
             data = bytearray(sd)
-            struct.pack_into("<I", data, 8, FID_PROXIMITY_HIT_SPEL)  # Assoc Item = SPEL
+            # Assoc. Item 1 — Cloak archetype projects this SPEL onto actors in Area.
+            # Must be PickmansWhisperProximityHit (NONE = cloak never broadcasts the hit).
+            struct.pack_into("<I", data, 8, FID_PROXIMITY_HIT_SPEL)
             # Keep Area=15 from RadiationCloak (do not invent a different radius).
             if struct.unpack_from("<I", data, 44)[0] != PROXIMITY_CLOAK_AREA:
                 raise SystemExit(

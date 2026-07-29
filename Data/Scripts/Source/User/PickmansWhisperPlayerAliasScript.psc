@@ -32,9 +32,7 @@ Bool MagicEffectSniffRegistered = False
 
 Weapon Property CombatKnifeBase Auto Const
 Keyword Property PickmanModKeyword Auto Const
-
 Spell Property PickmansCloakSpell Auto Const
-
 Bool Property IsPickmansBladeEquipped = False Auto
 
 Event OnAliasInit()
@@ -42,7 +40,7 @@ Event OnAliasInit()
 	RegisterButcherKey()
 	RegisterBedGiftSleep()
 	RegisterMagicEffectDetect()
-	; GrantProximityCloak()
+	CheckIfBladeEquipped()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.EnsurePlayerCombatQuest()
@@ -58,7 +56,7 @@ Event OnPlayerLoadGame()
 	RegisterButcherKey()
 	RegisterBedGiftSleep()
 	RegisterMagicEffectDetect()
-	; GrantProximityCloak()
+	CheckIfBladeEquipped()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.HandlePlayerLoadFromAlias()
@@ -69,28 +67,36 @@ EndEvent
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
     Debug.Notification("PW PlayerAlias: OnItemEquipped")
-
-	if IsPickmansBlade(akBaseObject)
-		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
-		IsPickmansBladeEquipped = True
-		akSender.AddSpell(PickmansCloakSpell, false)
-	EndIf
+	CheckAndHandleBladeReady(akSender, akBaseObject)
 EndEvent
 
 Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
 	Debug.Notification("PW PlayerAlias: OnItemUnequipped")
 
-	if IsPickmansBlade(akBaseObject) || IsPickmansBladeEquipped
+	if IsPickmansBlade(akSender, akBaseObject) || IsPickmansBladeEquipped
 		Debug.Notification("PW PlayerAlias: Unequipping Pickman's Blade")
 		IsPickmansBladeEquipped = False
 		akSender.RemoveSpell(PickmansCloakSpell)
 	EndIf
 EndEvent
 
-Bool Function IsPickmansBlade(Form akBaseObject)
+Function CheckIfBladeEquipped()
+	; 1. Get the physical Actor reference from the alias
 	Actor PlayerRef = Self.GetActorReference()
+	Weapon CurrentWeapon = PlayerRef.GetEquippedWeapon()
+	CheckAndHandleBladeReady(PlayerRef, CurrentWeapon)
+EndFunction
 
-    If akBaseObject == CombatKnifeBase
+Function CheckAndHandleBladeReady(Actor PlayerRef, Form akBaseObject)
+	if IsPickmansBlade(PlayerRef, akBaseObject)
+		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
+		IsPickmansBladeEquipped = True
+		PlayerRef.AddSpell(PickmansCloakSpell, false)
+	EndIf
+EndFunction
+
+Bool Function IsPickmansBlade(Actor PlayerRef, Form akBaseObject)
+	If akBaseObject == CombatKnifeBase
         ; Add a microscopic delay to let the visual mods initialize on the skeleton
         Utility.Wait(0.1) 
         
