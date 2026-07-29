@@ -176,6 +176,9 @@ python "$ROOT/tools/test_decay_face_armor_esp.py" || exit 1
 echo "==> Proximity cloak (Phase 1) ESP contract test"
 python "$ROOT/tools/test_proximity_cloak.py" || exit 1
 
+echo "==> TrackedNPCs RefCollectionAlias contract test"
+python "$ROOT/tools/test_tracked_npcs_alias.py" || exit 1
+
 echo "==> Decay face stage equip contract test"
 python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
 

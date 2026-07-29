@@ -158,19 +158,78 @@ def parse_fields(payload: bytes):
     return fields
 
 
-def build_vmad_scripts(script_names: list[str], status: int = 0) -> bytes:
-    """FO4 quest VMAD with one or more scripts attached (no properties)."""
-    if not script_names:
-        raise ValueError("script_names must be non-empty")
-    data = struct.pack("<HHH", 6, 2, len(script_names))
-    for script_name in script_names:
-        data += wstring(script_name)
-        data += struct.pack("<BH", status & 0xFF, 0)
+def build_vmad_object_alias_property(
+    prop_name: str, alias_id: int, quest_fid: int, prop_status: int = 1
+) -> bytes:
+    """FO4 VMAD Object property bound to a quest alias (ofmt=2 layout).
+
+    Vanilla encodes: type=1, status, int16 0, int16 aliasId, formid quest.
+    Verified against RECheckpointQuestScript.DefenderCollection / RefCollectionToManage.
+    """
+    data = wstring(prop_name)
+    data += struct.pack("<BB", 1, prop_status & 0xFF)  # Object, status
+    data += struct.pack("<hhI", 0, alias_id, quest_fid & 0xFFFFFFFF)
     return data
 
 
-def build_vmad_script(script_name: str, status: int = 0) -> bytes:
-    return build_vmad_scripts([script_name], status=status)
+def build_vmad_object_form_property(
+    prop_name: str, form_fid: int, prop_status: int = 1
+) -> bytes:
+    """FO4 VMAD Object property bound to a Form (alias id = -1)."""
+    data = wstring(prop_name)
+    data += struct.pack("<BB", 1, prop_status & 0xFF)
+    data += struct.pack("<hhI", 0, -1, form_fid & 0xFFFFFFFF)
+    return data
+
+
+def build_vmad_scripts(
+    script_names: list[str],
+    status: int = 0,
+    script_properties: dict[str, list[bytes]] | None = None,
+) -> bytes:
+    """FO4 quest VMAD with one or more scripts attached.
+
+    script_properties: optional map of script name -> list of property blobs
+    (each from build_vmad_object_alias_property, etc.).
+    """
+    if not script_names:
+        raise ValueError("script_names must be non-empty")
+    props = script_properties or {}
+    data = struct.pack("<HHH", 6, 2, len(script_names))
+    for script_name in script_names:
+        data += wstring(script_name)
+        prop_list = props.get(script_name) or []
+        data += struct.pack("<BH", status & 0xFF, len(prop_list))
+        for prop in prop_list:
+            data += prop
+    return data
+
+
+def build_vmad_script(
+    script_name: str,
+    status: int = 0,
+    properties: list[bytes] | None = None,
+) -> bytes:
+    props = {script_name: properties} if properties else None
+    return build_vmad_scripts([script_name], status=status, script_properties=props)
+
+
+def build_proximity_effect_vmad() -> bytes:
+    """Hit MGEF VMAD: ProximityEffect + Auto Const Main → PickmansWhisperMain quest."""
+    return build_vmad_script(
+        "PickmansWhisperProximityEffect",
+        properties=[
+            build_vmad_object_form_property("Main", FID_QUEST),
+        ],
+    )
+
+# Alias IDs on PickmansWhisperMain for script-managed Actor hold (AddRef / RemoveRef).
+# RefCollectionAlias is NOT created by FNAM alone. Vanilla pattern (myActor→myObjects):
+#   ALST seed … ALED, then ALCS <collectionId>, ALMI, then ALST collection …
+# ALCS must sit AFTER the seed's ALED (not inside the alias body). Without that,
+# Papyrus fails: "alias TrackedNPCs … is not the right type".
+ALIAS_TRACKED_NPCS_SEED_ID = 0
+ALIAS_TRACKED_NPCS_ID = 1
 
 
 def build_vmad_alias_only(alias_script: str, quest_fid: int, status: int = 2) -> bytes:
@@ -206,30 +265,65 @@ def build_player_alias_fields() -> bytes:
     )
 
 
+def build_tracked_npcs_alias_fields() -> bytes:
+    """Empty RefCollectionAlias for script AddRef/RemoveRef (no find-matching fill).
+
+    Mirrors AO_Dogmeat_FindContainer myActor→myObjects: optional seed ReferenceAlias,
+    then post-ALED ALCS+ALMI pointing at TrackedNPCs (FNAM 0x20).
+    """
+    return b"".join(
+        [
+            # Optional empty ReferenceAlias — exists so ALCS can mark the collection.
+            field(b"ALST", u32(ALIAS_TRACKED_NPCS_SEED_ID)),
+            field(b"ALID", zstr("TrackedNPCsSeed")),
+            field(b"FNAM", u32(0x00000001)),  # Optional
+            field(b"VTCK", u32(0)),
+            field(b"ALED", b""),
+            # Trailer fields AFTER seed ALED (vanilla order); not inside either alias.
+            field(b"ALCS", u32(ALIAS_TRACKED_NPCS_ID)),
+            field(b"ALMI", bytes([0x00])),
+            field(b"ALST", u32(ALIAS_TRACKED_NPCS_ID)),
+            field(b"ALID", zstr("TrackedNPCs")),
+            field(b"FNAM", u32(0x00000020)),
+            field(b"VTCK", u32(0)),
+            field(b"ALED", b""),
+        ]
+    )
+
+
 def build_main_quest_payload() -> bytes:
+    main_scripts = [
+        "PickmansWhisperMainQuestScript",
+        "PickmansWhisperBedGiftScript",
+        "PickmansWhisperCorpseDecayScript",
+        "PickmansWhisperDecayWoundLabScript",
+        "PickmansWhisperVictimsScript",
+        "PickmansWhisperDesperateRenameScript",
+        "PickmansWhisperKillerScanScript",
+        "PickmansWhisperVoiceScanScript",
+        "PickmansWhisperBuffTrackerScript",
+        "PickmansWhisperBeatBeforeKillScript",
+    ]
+    tracked_prop = build_vmad_object_alias_property(
+        "TrackedNPCs", ALIAS_TRACKED_NPCS_ID, FID_QUEST
+    )
     body = b""
     body += field(b"EDID", zstr("PickmansWhisperMain"))
     body += field(
         b"VMAD",
         build_vmad_scripts(
-            [
-                "PickmansWhisperMainQuestScript",
-                "PickmansWhisperBedGiftScript",
-                "PickmansWhisperCorpseDecayScript",
-                "PickmansWhisperDecayWoundLabScript",
-                "PickmansWhisperVictimsScript",
-                "PickmansWhisperDesperateRenameScript",
-                "PickmansWhisperKillerScanScript",
-                "PickmansWhisperVoiceScanScript",
-                "PickmansWhisperBuffTrackerScript",
-                "PickmansWhisperBeatBeforeKillScript",
-            ]
+            main_scripts,
+            script_properties={
+                "PickmansWhisperMainQuestScript": [tracked_prop],
+            },
         ),
     )
     body += field(b"FULL", zstr("PickmansWhisperMain"))
     body += field(b"DNAM", bytes.fromhex("11005C730000000000000000"))
     body += field(b"NEXT", b"")
-    body += field(b"ANAM", u32(0))
+    # ANAM = next available alias id (highest ALST + 1).
+    body += field(b"ANAM", u32(ALIAS_TRACKED_NPCS_ID + 1))
+    body += build_tracked_npcs_alias_fields()
     return body
 
 
@@ -346,8 +440,11 @@ def build_spel_payload() -> bytes:
 def build_proximity_hit_mgef_payload() -> bytes:
     """Hit MGEF applied to NPCs in the cloak radius.
 
-    Cloned from RadiationHazardEffect for cast/deliv/timing (Fire+Forget / Touch), but:
+    Cloned from RadiationHazardEffect for timing/layout, but:
     Archetype=Script, radiation AV/resist cleared, no CTDA/KWDA, VMAD=ProximityEffect.
+    Cast/Delivery: Constant Effect / Target Actor (must match hit SPEL).
+    FO4 cast enum: 0=Constant, 1=FireAndForget, 2=Concentration.
+    FO4 delivery: 0=Self, 1=Touch, 3=TargetActor.
     """
     src = extract_esm_mgef_payload(VANILLA_CLOAK_HIT_MGEF_SOURCE)
     out = []
@@ -358,7 +455,7 @@ def build_proximity_hit_mgef_payload() -> bytes:
         elif st == b"FULL":
             out.append(field(b"FULL", zstr("Pickman's Whisper Proximity Hit")))
         elif st == b"VMAD":
-            out.append(field(b"VMAD", build_vmad_script("PickmansWhisperProximityEffect")))
+            out.append(field(b"VMAD", build_proximity_effect_vmad()))
             wrote_vmad = True
         elif st in (b"CTDA", b"KSIZ", b"KWDA"):
             # Radiation conditions / keywords — drop for event-only hit effect.
@@ -373,13 +470,8 @@ def build_proximity_hit_mgef_payload() -> bytes:
             struct.pack_into("<i", data, 68, 0)  # Primary AV (was Radiation)
             struct.pack_into("<I", data, 72, 0)  # Projectile
             struct.pack_into("<I", data, 76, 0)  # Explosion
-            # Keep cast=FireAndForget (2) / deliv=Touch (1) from RadiationHazardEffect.
-            if struct.unpack_from("<I", data, 80)[0] != 2 or struct.unpack_from("<I", data, 84)[0] != 1:
-                raise SystemExit(
-                    f"vanilla hit MGEF 0x{VANILLA_CLOAK_HIT_MGEF_SOURCE:08X} "
-                    f"expected cast=2 deliv=1, got cast={struct.unpack_from('<I', data, 80)[0]} "
-                    f"deliv={struct.unpack_from('<I', data, 84)[0]}"
-                )
+            struct.pack_into("<I", data, 80, 0)  # Constant Effect
+            struct.pack_into("<I", data, 84, 3)  # Target Actor
             out.append(field(b"DATA", bytes(data)))
         else:
             out.append(field(st, sd))
@@ -388,9 +480,7 @@ def build_proximity_hit_mgef_payload() -> bytes:
         for st, sd in parse_fields(b"".join(out)):
             rebuilt.append(field(st, sd))
             if st == b"EDID":
-                rebuilt.append(
-                    field(b"VMAD", build_vmad_script("PickmansWhisperProximityEffect"))
-                )
+                rebuilt.append(field(b"VMAD", build_proximity_effect_vmad()))
         return b"".join(rebuilt)
     return b"".join(out)
 
@@ -398,11 +488,14 @@ def build_proximity_hit_mgef_payload() -> bytes:
 def build_proximity_hit_spel_payload() -> bytes:
     """Assoc SPEL (RadiationHazardToken clone) — Cloak applies this to actors in radius.
 
-    Both EFIDs retarget our single scripted hit MGEF; EFITs keep vanilla mag/area/dur.
+    Single effect only: EFID → hit MGEF, EFIT mag/area/dur = 5/0/1.
+    (Vanilla token also had a 0.5/0/1 ghoul-heal slot — dropped; script events need one ref.)
     Radiation CTDAs dropped so the scripted hit is not filtered away.
+    Cast/Target: Constant Effect / Target Actor — must match hit MGEF.
     """
     src = extract_esm_spel_payload(VANILLA_CLOAK_HIT_SPEL_SOURCE)
     out = []
+    wrote_effect = False
     for st, sd in parse_fields(src):
         if st == b"EDID":
             out.append(field(b"EDID", zstr("PickmansWhisperProximityHit")))
@@ -410,15 +503,27 @@ def build_proximity_hit_spel_payload() -> bytes:
             out.append(field(b"FULL", zstr("Pickman's Whisper Proximity Hit")))
         elif st == b"DESC":
             out.append(field(b"DESC", zstr("")))
+        elif st == b"SPIT" and len(sd) >= 24:
+            spit = bytearray(sd)
+            struct.pack_into("<I", spit, 16, 0)  # CastType = Constant Effect
+            struct.pack_into("<I", spit, 20, 3)  # TargetType = Target Actor
+            out.append(field(b"SPIT", bytes(spit)))
         elif st == b"EFID":
+            if wrote_effect:
+                continue
             out.append(field(b"EFID", u32(FID_PROXIMITY_HIT_MGEF)))
         elif st == b"EFIT" and len(sd) >= 12:
-            # Preserve vanilla RadiationHazardToken EFITs (5/0/1 and 0.5/0/1).
-            out.append(field(b"EFIT", sd))
+            if wrote_effect:
+                continue
+            # Single ref: mag=5 area=0 dur=1 (vanilla primary RadiationHazardToken slot).
+            out.append(field(b"EFIT", struct.pack("<fII", 5.0, 0, 1)))
+            wrote_effect = True
         elif st == b"CTDA":
             continue
         else:
             out.append(field(st, sd))
+    if not wrote_effect:
+        raise SystemExit("proximity hit SPEL clone produced no EFID/EFIT")
     return b"".join(out)
 
 
@@ -842,7 +947,10 @@ def main() -> None:
         f"(Glowing One clone, Ability EFIT Area={PROXIMITY_ABILITY_EFIT_AREA})"
     )
     print(f"  ARMA/ARMO decay face variants={len(arma_recs)} (biped 54)")
-    print(f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain")
+    print(
+        f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain + RefCollectionAlias TrackedNPCs "
+        f"(ALST {ALIAS_TRACKED_NPCS_ID}, seed ALST {ALIAS_TRACKED_NPCS_SEED_ID}+ALCS)"
+    )
     print(f"  QUST 0x{FID_PLAYER_QUEST:08X} PickmansWhisperPlayerCombat + PlayerAlias")
     print(f"  SNDR count={len(sndr_recs)} (Desperate + Intimacy Start/End maps)")
 

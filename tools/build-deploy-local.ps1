@@ -253,6 +253,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_proximity_cloak.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> TrackedNPCs RefCollectionAlias contract test"
+& python (Join-Path $Root "tools\test_tracked_npcs_alias.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_tracked_npcs_alias.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> Decay face stage equip contract test"
 & python (Join-Path $Root "tools\test_decay_face_stage_equip.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {

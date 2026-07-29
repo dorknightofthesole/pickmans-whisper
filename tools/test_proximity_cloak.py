@@ -160,7 +160,15 @@ def main() -> None:
         fail("PickmansWhisperProximityEffect must guard against the caster reporting on itself")
     if "hit MGEF" not in effect_text.lower() and "ProximityHitEffect" not in effect_text:
         fail("PickmansWhisperProximityEffect docstring must describe the hit MGEF / Cloak chain")
-    ok("PickmansWhisperProximityEffect: correct base, both events, self-guard")
+    if "RegisterTarget" not in effect_text:
+        fail("PickmansWhisperProximityEffect must forward enter to Main.RegisterTarget")
+    if "PickmansWhisperMainQuestScript Property Main Auto Const" not in effect_text:
+        fail("ProximityEffect must declare Main Auto Const (bound from hit MGEF VMAD)")
+    if re.search(r"Game\.GetFormFromFile\s*\(", effect_text):
+        fail("ProximityEffect must not GetFormFromFile Main each pulse — use Auto Const Main")
+    if "Function GetMain()" in effect_text:
+        fail("ProximityEffect GetMain() retired — use Auto Const Main property")
+    ok("PickmansWhisperProximityEffect: Main Auto Const + RegisterTarget + self-guard")
 
     host_psc = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperProximityCloakHost.psc"
     if host_psc.is_file():
@@ -182,8 +190,10 @@ def main() -> None:
         fail("GrantProximityCloak must AddSpell silently (abVerbose=False)")
     if "RemoveSpell(cloak)" not in grant_body:
         fail("GrantProximityCloak must RemoveSpell+AddSpell when already owned (refresh Constant Effect)")
-    if "HadSpell" not in grant_body and "re-applied" not in grant_body:
-        fail("GrantProximityCloak HasSpell path must Trace (was silent — hid Phase 1 failures)")
+    if "had=" not in grant_body and "re-applied" not in grant_body:
+        fail("GrantProximityCloak must Trace had/re-apply outcome (silent path hid Constant Effect failures)")
+    if "Bool hadSpell = p.HasSpell(cloak)" not in grant_body:
+        fail("GrantProximityCloak must detect prior HasSpell before RemoveSpell+AddSpell refresh")
     if "FID_PROXIMITY_CLOAK_SPELL = 0x00000873" not in alias_text:
         fail("PlayerAliasScript must use local GetFormFromFile id 0x00000873 (not 0x01……)")
     if re.search(r"FID_PROXIMITY_CLOAK_SPELL\s*=\s*0x01000873", alias_text):
@@ -217,6 +227,25 @@ def main() -> None:
         fail("hit MGEF EDID mismatch")
     if "VMAD" not in hmf or b"PickmansWhisperProximityEffect" not in hmf["VMAD"]:
         fail("hit MGEF VMAD must attach PickmansWhisperProximityEffect")
+    vmad = hmf["VMAD"]
+    if b"Main" not in vmad:
+        fail("hit MGEF VMAD must bind property Main")
+    # Object form property: name Main + type1/status1 + 0 + alias-1 + quest fid
+    main_idx = vmad.find(b"Main")
+    if main_idx < 2:
+        fail("hit MGEF VMAD Main property offset invalid")
+    main_nlen = struct.unpack_from("<H", vmad, main_idx - 2)[0]
+    if main_nlen != len("Main"):
+        fail("hit MGEF VMAD Main wstring length mismatch")
+    poff = main_idx + main_nlen
+    ptype, pstat = vmad[poff], vmad[poff + 1]
+    zero, alias_id, quest_fid = struct.unpack_from("<hhI", vmad, poff + 2)
+    if ptype != 1 or pstat != 1:
+        fail(f"Main property type/status must be 1/1, got {ptype}/{pstat}")
+    if zero != 0 or alias_id != -1:
+        fail(f"Main property must be form bind (alias=-1), got zero={zero} alias={alias_id}")
+    if quest_fid != 0x01000800:
+        fail(f"Main property must point at PickmansWhisperMain 0x01000800, got 0x{quest_fid:08X}")
     hdata = hmf.get("DATA", b"")
     if len(hdata) < 88:
         fail(f"hit MGEF DATA too short ({len(hdata)})")
@@ -226,9 +255,9 @@ def main() -> None:
         fail("hit MGEF Primary AV must be 0 (no Radiation)")
     if struct.unpack_from("<i", hdata, 16)[0] != 0:
         fail("hit MGEF Resist AV must be 0 (no Radiation resist)")
-    if struct.unpack_from("<I", hdata, 80)[0] != 2 or struct.unpack_from("<I", hdata, 84)[0] != 1:
-        fail("hit MGEF must keep RadiationHazardEffect cast=FireAndForget(2) deliv=Touch(1)")
-    ok(f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + VMAD, no radiation AV")
+    if struct.unpack_from("<I", hdata, 80)[0] != 0 or struct.unpack_from("<I", hdata, 84)[0] != 3:
+        fail("hit MGEF must be Constant Effect (0) / Target Actor (3)")
+    ok(f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + Constant/TargetActor + VMAD Main->0x800")
 
     cloak_mgef = by_id.get(("MGEF", FID_PROXIMITY_CLOAK_MGEF))
     if cloak_mgef is None:
@@ -267,26 +296,24 @@ def main() -> None:
         fail(f"hit SPEL SPIT too short ({len(spit)})")
     if struct.unpack_from("<I", spit, 8)[0] != 0:
         fail("hit SPEL Type must be 0 (Spell) like RadiationHazardToken")
-    if struct.unpack_from("<I", spit, 16)[0] != 2:
-        fail("hit SPEL CastType must be 2 (FireAndForget)")
-    if struct.unpack_from("<I", spit, 20)[0] != 1:
-        fail("hit SPEL TargetType must be 1 (Touch)")
+    if struct.unpack_from("<I", spit, 16)[0] != 0:
+        fail("hit SPEL CastType must be 0 (Constant Effect)")
+    if struct.unpack_from("<I", spit, 20)[0] != 3:
+        fail("hit SPEL TargetType must be 3 (Target Actor)")
     efids = [sd for t, sd in fields_all(hit_spel) if t == "EFID"]
     efits = [sd for t, sd in fields_all(hit_spel) if t == "EFIT"]
-    if len(efids) != 2:
-        fail(f"hit SPEL must keep two EFIDs like RadiationHazardToken, got {len(efids)}")
-    for i, efid in enumerate(efids):
-        if len(efid) < 4 or struct.unpack_from("<I", efid, 0)[0] != FID_PROXIMITY_HIT_MGEF:
-            fail(f"hit SPEL EFID[{i}] must point at Hit MGEF")
-    if len(efits) != 2:
-        fail(f"hit SPEL must keep two EFITs, got {len(efits)}")
+    if len(efids) != 1:
+        fail(f"hit SPEL must have exactly one EFID, got {len(efids)}")
+    if len(efids[0]) < 4 or struct.unpack_from("<I", efids[0], 0)[0] != FID_PROXIMITY_HIT_MGEF:
+        fail("hit SPEL EFID must point at Hit MGEF")
+    if len(efits) != 1:
+        fail(f"hit SPEL must have exactly one EFIT, got {len(efits)}")
     mag0, area0, dur0 = struct.unpack_from("<fII", efits[0], 0)
-    mag1, area1, dur1 = struct.unpack_from("<fII", efits[1], 0)
-    if (area0, dur0) != (0, 1) or (area1, dur1) != (0, 1):
-        fail(f"hit SPEL EFITs must keep vanilla area/dur 0/1, got {(area0, dur0)} {(area1, dur1)}")
-    if abs(mag0 - 5.0) > 0.01 or abs(mag1 - 0.5) > 0.01:
-        fail(f"hit SPEL EFITs must keep vanilla mag 5.0 and 0.5, got {mag0} {mag1}")
-    ok(f"Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}: Token clone, 2x EFID->Hit MGEF")
+    if (area0, dur0) != (0, 1):
+        fail(f"hit SPEL EFIT must be area/dur 0/1, got {(area0, dur0)}")
+    if abs(mag0 - 5.0) > 0.01:
+        fail(f"hit SPEL EFIT mag must be 5.0, got {mag0}")
+    ok(f"Hit SPEL 0x{FID_PROXIMITY_HIT_SPEL:08X}: Constant/TargetActor + EFID->Hit MGEF EFIT 5/0/1")
 
     cloak_spel = by_id.get(("SPEL", FID_PROXIMITY_CLOAK_SPEL))
     if cloak_spel is None:

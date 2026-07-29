@@ -375,6 +375,10 @@ Bool AllowChildFemalesOverride = False
 Bool AllowRobotsOverride = False
 String Property LastTargetOverridesStatus = "" Auto ; MCM / trace — last load result
 
+; Valid target (living only?) NPCs
+RefCollectionAlias Property TrackedNPCs Auto Const
+
+
 Event OnInit()
 	; May fire on attach; often does NOT re-fire for mid-game saves — see HandleGameResume
 	; + alias OnPlayerLoadGame + TIMER_BOOT_ARM. Never rely on MCM Scan to start timers.
@@ -389,7 +393,22 @@ Event OnInit()
 	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
 	ScheduleBootArm()
+
+	ClearCollection(TrackedNPCs)
 EndEvent
+
+Function ClearCollection(RefCollectionAlias akCollection)
+    If akCollection
+        Int i = akCollection.GetCount()
+        While i > 0
+            i -= 1
+            ObjectReference kRef = akCollection.GetAt(i)
+            If kRef
+                akCollection.RemoveRef(kRef)
+            EndIf
+        EndWhile
+    EndIf
+EndFunction
 
 Event OnQuestInit()
 	DEBUG_BUILD = "1.3.0-KO"
@@ -509,6 +528,8 @@ Function EnsureSeverLimbMenu()
 		Debug.Trace("PickmansWhisper: ERROR PW_SeverLimbMenu 0x806 missing — rebuild ESP")
 	EndIf
 EndFunction
+
+
 
 ; Butcher aim (no timer): activate → camera → last butcher (if still facing) → one FindActors.
 ; Dual FindActors was the hitch before Message.Show when the camera ray missed.
@@ -1071,9 +1092,60 @@ Event OnTimer(Int aiTimerID)
 	EndIf
 EndEvent
 
+
+Function RegisterTarget(Actor akTarget, Actor akCaster)
+	If !akTarget
+		Debug.Trace("PickmansWhisper: RegisterTarget skip — akTarget None")
+		Return
+	EndIf
+	If !TrackedNPCs
+		; Usually ESP alias typed as ReferenceAlias (missing ALCS seed) — bind fails at load.
+		Debug.Trace("PickmansWhisper: RegisterTarget skip — TrackedNPCs None (alias bind failed)")
+		Debug.Notification("PW: TrackedNPCs unbound")
+		Return
+	EndIf
+
+	; TODO verify is a valid target, if not NOP
+
+
+	Bool IsTargetDead = akTarget.IsDead()
+
+	If !IsTargetDead && TrackedNPCs.Find(akTarget) < 0
+		; Register for the events on this specific NPC
+		RegisterForRemoteEvent(akTarget, "OnDeath")
+		TrackedNPCs.AddRef(akTarget)
+		Debug.Notification("PW Manager: Registering death event for " + akTarget.GetDisplayName())
+	ElseIf IsTargetDead
+		Debug.Notification("PW Manager: Target " + akTarget.GetDisplayName() + " is dead")
+		; TODO handle dead use cases
+	Else
+		; Not dead and currently tracked
+		Debug.Notification("Already tracking " + akTarget.GetDisplayName())
+		return	
+	EndIf
+
+	Debug.Trace("PW Manager: Registered events for " + akTarget.GetDisplayName())
+EndFunction
+
+function UnRegisterTarget(Actor akTarget, Actor akCaster)
+	; Check if NPC is out of range and only then do we deregister
+	UnregisterForRemoteEvent(akTarget, "OnDeath")
+	If TrackedNPCs
+		TrackedNPCs.RemoveRef(akTarget)
+	EndIf
+EndFunction
+
 Event Actor.OnDeath(Actor akSender, Actor akKiller)
-	HandleNPCDeath(akSender, akKiller, "OnDeath")
+	Debug.Notification("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
+	; HandleNPCDeath(akSender, akKiller, "OnDeath")
+
+	UnregisterForRemoteEvent(akSender, "OnDeath")
+
+	If TrackedNPCs
+		TrackedNPCs.RemoveRef(akSender)
+	EndIf
 EndEvent
+
 
 ; Soft backup only — quiet settler kills often never raise combat state.
 Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatState)

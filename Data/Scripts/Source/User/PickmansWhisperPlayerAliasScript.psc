@@ -84,22 +84,23 @@ Function GrantProximityCloak()
 		Debug.Notification("PW Cloak: form not Spell")
 		Return
 	EndIf
-	If p.HasSpell(cloak)
-		; Already granted — still Trace (silent HasSpell was hiding Phase 1 failures).
-		; Re-apply so a Constant Effect from a prior broken ESP build can refresh.
+	; Constant Effect Abilities: HasSpell can be true while the Cloak is NOT running.
+	; AddSpell alone is a no-op in that case — console player.addspell "works" because it
+	; forces a fresh apply. Always RemoveSpell then AddSpell so the Constant Cloak starts.
+	Bool hadSpell = p.HasSpell(cloak)
+	If hadSpell
 		p.RemoveSpell(cloak)
-		p.AddSpell(cloak, False)
-		ProximityCloakGranted = True
-		Debug.Trace("PickmansWhisper: alias GrantProximityCloak re-applied (HadSpell)")
-		Debug.Notification("PW Cloak: re-applied")
-		Return
 	EndIf
-	p.AddSpell(cloak, False)
+	Bool added = p.AddSpell(cloak, False)
 	ProximityCloakGranted = True
 	Bool nowHas = p.HasSpell(cloak)
-	Debug.Trace("PickmansWhisper: alias GrantProximityCloak AddSpell done has=" + nowHas + " fid=0x" + cloak.GetFormID())
+	Debug.Trace("PickmansWhisper: alias GrantProximityCloak done had=" + hadSpell + " add=" + added + " has=" + nowHas + " fid=0x" + cloak.GetFormID())
 	If nowHas
-		Debug.Notification("PW Cloak: granted")
+		If hadSpell
+			Debug.Notification("PW Cloak: re-applied")
+		Else
+			Debug.Notification("PW Cloak: granted")
+		EndIf
 	Else
 		Debug.Notification("PW Cloak: AddSpell failed")
 		Debug.Trace("PickmansWhisper: ERROR alias GrantProximityCloak — AddSpell did not stick")

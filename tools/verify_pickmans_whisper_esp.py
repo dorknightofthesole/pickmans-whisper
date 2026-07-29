@@ -84,7 +84,13 @@ def main() -> int:
     if b"PW_SeverLimbMenu\x00" not in data:
         print("FAIL PW_SeverLimbMenu EDID missing")
         return 10
-    print(f"OK size={len(data)} SPEL+Main+BedGift+DesperateRename+CorpseDecay+PlayerCombat+PlayerAlias+SeverMSG present")
+    if b"TrackedNPCs\x00" not in data:
+        print("FAIL TrackedNPCs alias EDID missing from Main quest")
+        return 11
+    print(
+        f"OK size={len(data)} SPEL+Main+BedGift+DesperateRename+CorpseDecay+"
+        f"PlayerCombat+PlayerAlias+SeverMSG+TrackedNPCs present"
+    )
     return 0
 
 
