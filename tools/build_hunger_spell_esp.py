@@ -67,6 +67,12 @@ FID_PROXIMITY_CLOAK_SPEL = 0x01000873  # Ability granted via AddSpell
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
 NEXT_OID = 0x00000874  # == (FID_PROXIMITY_CLOAK_SPEL & 0xFFFFFF) + 1
 
+# Pickman's Blade detection forms (Fallout4.esm) — PlayerAlias Auto Const binds.
+# LVLI 0x0022595F is the custom-item template (DoNotPlaceDirectly), not a Weapon.
+FID_COMBAT_KNIFE = 0x000913CA  # WEAP Knife
+# Injected by mod_melee_Knife_SerratedStealth (on Pickman's Blade) — WornHasKeyword sees this.
+FID_PICKMAN_MOD_KEYWORD = 0x0013AD45  # KYWD dn_HasMeleeMod_SerratedStealth
+
 # Vanilla PeakValueMod alcohol-withdrawal MGEFs we clone DATA from
 VANILLA_MGEF_AGI = 0x0010224F
 VANILLA_MGEF_CHA = 0x00102251
@@ -232,7 +238,12 @@ ALIAS_TRACKED_NPCS_SEED_ID = 0
 ALIAS_TRACKED_NPCS_ID = 1
 
 
-def build_vmad_alias_only(alias_script: str, quest_fid: int, status: int = 2) -> bytes:
+def build_vmad_alias_only(
+    alias_script: str,
+    quest_fid: int,
+    status: int = 2,
+    properties: list[bytes] | None = None,
+) -> bytes:
     """
     Match DialogueGenericPlayer:
       ver=6 ofmt=2 scriptCount=0
@@ -240,7 +251,9 @@ def build_vmad_alias_only(alias_script: str, quest_fid: int, status: int = 2) ->
       aliasCount=1
       object: aliasId=0, reserved=0, formID=quest
       nested: ver=6 ofmt=2 scriptCount=1 + alias script (status 2 like vanilla)
+            optional Object properties (form binds use aliasId=-1)
     """
+    props = properties or []
     data = struct.pack("<HHH", 6, 2, 0)  # no quest scripts
     data += struct.pack("<BHH", 3, 0, 0)  # fragVer, unk, fragCount
     data += struct.pack("<H", 1)  # aliasCount
@@ -248,7 +261,9 @@ def build_vmad_alias_only(alias_script: str, quest_fid: int, status: int = 2) ->
     data += u32(quest_fid & 0xFFFFFFFF)
     data += struct.pack("<HHH", 6, 2, 1)
     data += wstring(alias_script)
-    data += struct.pack("<BH", status & 0xFF, 0)
+    data += struct.pack("<BH", status & 0xFF, len(props))
+    for prop in props:
+        data += prop
     return data
 
 
@@ -333,7 +348,18 @@ def build_player_combat_quest_payload() -> bytes:
     body += field(
         b"VMAD",
         build_vmad_alias_only(
-            "PickmansWhisperPlayerAliasScript", FID_PLAYER_QUEST, status=2
+            "PickmansWhisperPlayerAliasScript",
+            FID_PLAYER_QUEST,
+            status=2,
+            properties=[
+                build_vmad_object_form_property("CombatKnifeBase", FID_COMBAT_KNIFE),
+                build_vmad_object_form_property(
+                    "PickmanModKeyword", FID_PICKMAN_MOD_KEYWORD
+                ),
+                build_vmad_object_form_property(
+                    "PickmansCloakSpell", FID_PROXIMITY_CLOAK_SPEL
+                ),
+            ],
         ),
     )
     body += field(b"FULL", zstr("PickmansWhisperPlayerCombat"))

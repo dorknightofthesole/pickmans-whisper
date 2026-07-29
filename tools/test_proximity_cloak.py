@@ -176,6 +176,35 @@ def main() -> None:
     ok("ProximityCloakHost removed (matches RadiationCloak: no cloak VMAD)")
 
     alias_text = ALIAS_PSC.read_text(encoding="utf-8", errors="replace")
+    if "Weapon Property CombatKnifeBase Auto Const" not in alias_text:
+        fail("PlayerAliasScript must declare Weapon Property CombatKnifeBase Auto Const")
+    if "Keyword Property PickmanModKeyword Auto Const" not in alias_text:
+        fail("PlayerAliasScript must declare Keyword Property PickmanModKeyword Auto Const")
+    if "Spell Property PickmansCloakSpell Auto Const" not in alias_text:
+        fail("PlayerAliasScript must declare Spell Property PickmansCloakSpell Auto Const")
+    if "ObjectMod Property mod_CombatKnife_Blade_Stealth" in alias_text:
+        fail("PlayerAliasScript must not declare mod_CombatKnife_Blade_Stealth (retired)")
+    if "ObjectMod Property mod_Legendary_Weapon_Bleed" in alias_text:
+        fail("PlayerAliasScript must not declare mod_Legendary_Weapon_Bleed (retired)")
+    if "Weapon Property TargetWeapon" in alias_text:
+        fail("PlayerAliasScript must not declare TargetWeapon (retired)")
+    if "FID_COMBAT_KNIFE = 0x000913CA" not in builder_text:
+        fail("builder must declare FID_COMBAT_KNIFE = 0x000913CA")
+    if "FID_PICKMAN_MOD_KEYWORD = 0x0013AD45" not in builder_text:
+        fail("builder must declare FID_PICKMAN_MOD_KEYWORD = dn_HasMeleeMod_SerratedStealth")
+    for needle in (
+        '"CombatKnifeBase", FID_COMBAT_KNIFE',
+        '"PickmanModKeyword", FID_PICKMAN_MOD_KEYWORD',
+        '"PickmansCloakSpell", FID_PROXIMITY_CLOAK_SPEL',
+    ):
+        if needle not in builder_text:
+            fail(f"PlayerCombat alias VMAD must bind {needle}")
+    if "mod_CombatKnife_Blade_Stealth" in builder_text or "mod_Legendary_Weapon_Bleed" in builder_text:
+        fail("builder must not bind retired OMOD properties")
+    if "TargetWeapon" in builder_text:
+        fail("builder must not bind TargetWeapon")
+    ok("PlayerAliasScript CombatKnifeBase + PickmanModKeyword + PickmansCloakSpell binds")
+
     if "Function GrantProximityCloak()" not in alias_text:
         fail("PlayerAliasScript must declare GrantProximityCloak()")
     grant_body_m = re.search(r"Function GrantProximityCloak\(\).*?EndFunction", alias_text, re.DOTALL)
@@ -200,10 +229,12 @@ def main() -> None:
         fail("PlayerAliasScript must not assign plugin-prefixed FormID to FID_PROXIMITY_CLOAK_SPELL")
     on_alias_init_m = re.search(r"Event OnAliasInit\(\).*?EndEvent", alias_text, re.DOTALL)
     on_load_m = re.search(r"Event OnPlayerLoadGame\(\).*?EndEvent", alias_text, re.DOTALL)
-    if not on_alias_init_m or "GrantProximityCloak()" not in on_alias_init_m.group(0):
-        fail("OnAliasInit must call GrantProximityCloak()")
-    if not on_load_m or "GrantProximityCloak()" not in on_load_m.group(0):
-        fail("OnPlayerLoadGame must call GrantProximityCloak()")
+    if not on_alias_init_m:
+        fail("OnAliasInit missing")
+    if not on_load_m:
+        fail("OnPlayerLoadGame missing")
+    # Direct Grant on init/load may be commented while aura is gated on TargetWeapon
+    # equip; RegisterMagicEffectDetect (below) must still Grant for save-stack bypass.
     magic_reg_m = re.search(
         r"Function RegisterMagicEffectDetect\(\).*?EndFunction", alias_text, re.DOTALL
     )
@@ -212,12 +243,42 @@ def main() -> None:
             "RegisterMagicEffectDetect must call GrantProximityCloak — "
             "stale OnPlayerLoadGame save-stacks call this but never Grant themselves"
         )
-    ok("PlayerAliasScript grants cloak via load hooks + RegisterMagicEffectDetect (save-stack bypass)")
+    ok("PlayerAliasScript grants cloak via RegisterMagicEffectDetect (save-stack bypass)")
 
     if not ESP.is_file():
         fail(f"missing built ESP: {ESP} (run tools/build_hunger_spell_esp.py first)")
     records = parse_esp_records(ESP.read_bytes())
     by_id = {(rtype, fid): body for rtype, fid, body in records}
+
+    player_combat = by_id.get(("QUST", 0x01000805))
+    if player_combat is None:
+        fail("built ESP missing PickmansWhisperPlayerCombat 0x01000805")
+    pc_vmad = fields_last(player_combat).get("VMAD", b"")
+    expected_binds = (
+        (b"CombatKnifeBase", 0x000913CA),
+        (b"PickmanModKeyword", 0x0013AD45),
+        (b"PickmansCloakSpell", 0x01000873),
+    )
+    for prop_name, want_fid in expected_binds:
+        if prop_name not in pc_vmad:
+            fail(f"PlayerCombat alias VMAD must contain {prop_name.decode()}")
+        idx = pc_vmad.find(prop_name)
+        nlen = struct.unpack_from("<H", pc_vmad, idx - 2)[0]
+        if nlen != len(prop_name):
+            fail(f"{prop_name.decode()} wstring length mismatch")
+        off = idx + nlen
+        ptype, pstat = pc_vmad[off], pc_vmad[off + 1]
+        zero, alias_id, fid = struct.unpack_from("<hhI", pc_vmad, off + 2)
+        if ptype != 1 or pstat != 1:
+            fail(f"{prop_name.decode()} type/status must be 1/1, got {ptype}/{pstat}")
+        if zero != 0 or alias_id != -1:
+            fail(f"{prop_name.decode()} must be form bind (alias=-1)")
+        if fid != want_fid:
+            fail(f"{prop_name.decode()} must bind 0x{want_fid:08X}, got 0x{fid:08X}")
+    for retired in (b"TargetWeapon", b"mod_CombatKnife_Blade_Stealth", b"mod_Legendary_Weapon_Bleed"):
+        if retired in pc_vmad:
+            fail(f"PlayerCombat VMAD must not contain {retired.decode()}")
+    ok("PlayerCombat VMAD CombatKnifeBase + PickmanModKeyword + PickmansCloakSpell bound")
 
     hit_mgef = by_id.get(("MGEF", FID_PROXIMITY_HIT_MGEF))
     if hit_mgef is None:

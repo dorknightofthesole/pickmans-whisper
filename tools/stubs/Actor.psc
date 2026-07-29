@@ -54,6 +54,8 @@ Function EquipItem(Form akItem, Bool abPreventRemoval = False, Bool abSilent = F
 ; FO4 native — unequip worn gear (pair with RemoveAllItems to strip corpses).
 Function UnequipAll() Native
 Function UnequipItem(Form akItem, Bool abPreventEquip = False, Bool abSilent = False) Native
+; FO4 native — true if any currently worn/equipped item has the keyword (incl. OMOD-injected).
+Bool Function WornHasKeyword(Keyword akKeyword) Native
 Event OnItemEquipped(Form akBaseObject, ObjectReference akReference)
 EndEvent
 Event OnItemUnequipped(Form akBaseObject, ObjectReference akReference)

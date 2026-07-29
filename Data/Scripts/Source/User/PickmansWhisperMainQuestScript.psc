@@ -1032,27 +1032,27 @@ Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference ak
 		Return
 	EndIf
 	DrawnWeaponStateValid = True
+	
 	; Slice J5 — any weapon equip (Pickman's Blade included) ends the beat-before-kill
 	; scuffle; her death is meant to come from the blade normally, not while essential.
 	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+	
 	If beat
 		beat.ClearAllEssentialOnWeaponEquip()
 	EndIf
+	
 	Bool isPickmans = FormLooksLikePickmansBlade(akBaseObject, akReference)
 	If !isPickmans && FormIsCombatKnife(akBaseObject)
 		; akReference often None — GoE sees the real equipped instance name/mods
 		isPickmans = (FindEquippedPickmansBladeIndex() >= 0)
 	EndIf
+
 	If isPickmans
 		BladeCurrentlyDrawn = True
 		RuntimeBladeForm = akBaseObject
 		MarkOwnedBlade("equipped")
-		Int idx = FindEquippedPickmansBladeIndex()
-		String nm = "(goe)"
-		If idx >= 0
-			nm = GardenOfEden.GetNthItemName(PlayerRef, idx)
-		EndIf
-		ToastDebug("PW debug: blade DRAWN [" + DEBUG_BUILD + "] " + nm)
+		
+		; Add Cloak
 	Else
 		BladeCurrentlyDrawn = False
 		ToastDebug("PW debug: other weapon DRAWN — " + akBaseObject.GetName())
@@ -1092,7 +1092,6 @@ Event OnTimer(Int aiTimerID)
 	EndIf
 EndEvent
 
-
 Function RegisterTarget(Actor akTarget, Actor akCaster)
 	If !akTarget
 		Debug.Trace("PickmansWhisper: RegisterTarget skip — akTarget None")
@@ -1106,7 +1105,6 @@ Function RegisterTarget(Actor akTarget, Actor akCaster)
 	EndIf
 
 	; TODO verify is a valid target, if not NOP
-
 
 	Bool IsTargetDead = akTarget.IsDead()
 

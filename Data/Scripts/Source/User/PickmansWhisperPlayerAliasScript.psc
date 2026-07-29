@@ -30,12 +30,19 @@ Bool BedSleepRegistered = False
 Bool MagicEffectDetectRegistered = False
 Bool MagicEffectSniffRegistered = False
 
+Weapon Property CombatKnifeBase Auto Const
+Keyword Property PickmanModKeyword Auto Const
+
+Spell Property PickmansCloakSpell Auto Const
+
+Bool Property IsPickmansBladeEquipped = False Auto
+
 Event OnAliasInit()
 	EnsurePlayerFill()
 	RegisterButcherKey()
 	RegisterBedGiftSleep()
 	RegisterMagicEffectDetect()
-	GrantProximityCloak()
+	; GrantProximityCloak()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.EnsurePlayerCombatQuest()
@@ -51,7 +58,7 @@ Event OnPlayerLoadGame()
 	RegisterButcherKey()
 	RegisterBedGiftSleep()
 	RegisterMagicEffectDetect()
-	GrantProximityCloak()
+	; GrantProximityCloak()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.HandlePlayerLoadFromAlias()
@@ -59,6 +66,43 @@ Event OnPlayerLoadGame()
 		Debug.Trace("PickmansWhisper: alias OnPlayerLoadGame — main quest script not found (timers not armed)")
 	EndIf
 EndEvent
+
+Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
+    Debug.Notification("PW PlayerAlias: OnItemEquipped")
+
+	if IsPickmansBlade(akBaseObject)
+		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
+		IsPickmansBladeEquipped = True
+		akSender.AddSpell(PickmansCloakSpell, false)
+	EndIf
+EndEvent
+
+Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
+	Debug.Notification("PW PlayerAlias: OnItemUnequipped")
+
+	if IsPickmansBlade(akBaseObject) || IsPickmansBladeEquipped
+		Debug.Notification("PW PlayerAlias: Unequipping Pickman's Blade")
+		IsPickmansBladeEquipped = False
+		akSender.RemoveSpell(PickmansCloakSpell)
+	EndIf
+EndEvent
+
+Bool Function IsPickmansBlade(Form akBaseObject)
+	Actor PlayerRef = Self.GetActorReference()
+
+    If akBaseObject == CombatKnifeBase
+        ; Add a microscopic delay to let the visual mods initialize on the skeleton
+        Utility.Wait(0.1) 
+        
+        ; WornHasKeyword checks the player's actively equipped gear for the injected keyword
+        If PlayerRef.WornHasKeyword(PickmanModKeyword)
+            Debug.Notification("Pickman's Blade Mod Detected!")
+            return true
+        EndIf
+    EndIf
+
+	return false
+EndFunction
 
 ; Idempotent grant of the proximity Cloak Ability.
 ; IMPORTANT: also invoked from RegisterMagicEffectDetect — that function is proven to run
@@ -220,6 +264,10 @@ Function EnsurePlayerFill()
 	If cur != (p as ObjectReference)
 		ForceRefTo(p)
 	EndIf
+
+	; Add the remote event registrations here
+	RegisterForRemoteEvent(p, "OnItemEquipped")
+	RegisterForRemoteEvent(p, "OnItemUnequipped")
 EndFunction
 
 PickmansWhisperMainQuestScript Function GetMain()
