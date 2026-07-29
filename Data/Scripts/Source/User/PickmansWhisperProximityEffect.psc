@@ -18,13 +18,12 @@ Event OnEffectStart(Actor akTarget, Actor akCaster)
 		Return
 	EndIf
 
-	Debug.Notification("PickmansWhisper: ProximityEffect OnEffectStart target=" + akTarget.GetDisplayName())
 	Debug.Trace("PickmansWhisper: ProximityEffect OnEffectStart target=" + akTarget.GetDisplayName())
 	Main.RegisterTarget(akTarget, akCaster)
 EndEvent
 
 Event OnEffectFinish(Actor akTarget, Actor akCaster)
-	Debug.Notification("PickmansWhisper: ProximityEffect OnEffectFinish target=" + akTarget.GetDisplayName())
+	Debug.Trace("PickmansWhisper: ProximityEffect OnEffectFinish target=" + akTarget.GetDisplayName())
 	; The function below should only deregister is the NPC is out of range
 	; Main.UnRegisterTarget(akTarget, akCaster)
 EndEvent

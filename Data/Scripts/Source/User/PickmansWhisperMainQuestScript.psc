@@ -370,6 +370,13 @@ String Property LastVictimStatus = "" Auto ; MCM Victims — last apply / aimed 
 String Property LastVictimsSummary = "" Auto ; MCM Victims — short list
 ; Aim cache + MCM Advance timer live on PickmansWhisperVictimsScript (own lock).
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Killer aura var start
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 ; TargetOverrides.txt — opt-in filter gates (default off = current safe blocks).
 Bool AllowChildFemalesOverride = False
 Bool AllowRobotsOverride = False
@@ -377,6 +384,8 @@ String Property LastTargetOverridesStatus = "" Auto ; MCM / trace — last load 
 
 ; Valid target (living only?) NPCs
 RefCollectionAlias Property TrackedNPCs Auto Const
+; CK/VMAD: bound to PickmansWhisperPlayerCombat ALST 0 (PickmansWhisperPlayerAliasScript).
+PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const
 
 
 Event OnInit()
@@ -529,6 +538,83 @@ Function EnsureSeverLimbMenu()
 	EndIf
 EndFunction
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Killer aura handling Start
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+Function RegisterTarget(Actor akTarget, Actor akCaster)
+	If !akTarget
+		Debug.Trace("PickmansWhisper: RegisterTarget skip — akTarget None")
+		Return
+	EndIf
+	If !TrackedNPCs
+		; Usually ESP alias typed as ReferenceAlias (missing ALCS seed) — bind fails at load.
+		Debug.Trace("PickmansWhisper: RegisterTarget skip — TrackedNPCs None (alias bind failed)")
+		Debug.Notification("PW: TrackedNPCs unbound")
+		Return
+	EndIf
+
+	; TODO verify is a valid target, if not NOP
+
+	Bool isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
+	Bool IsTargetDead = akTarget.IsDead()
+
+	Debug.Notification("PW RegisterTarget: Is Pickman's Blade Equipped " + isPickmansBladeEquipped + " for " + akTarget.GetDisplayName())
+
+	If !IsTargetDead && TrackedNPCs.Find(akTarget) < 0
+		; Register for the events on this specific NPC
+		RegisterForRemoteEvent(akTarget, "OnDeath")
+		RegisterForHitEvent(akTarget, akCaster)
+		TrackedNPCs.AddRef(akTarget)
+		Debug.Notification("PW RegisterTarget: Registering death event for " + akTarget.GetDisplayName())
+	ElseIf IsTargetDead
+		Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " is dead")
+		; TODO handle dead use cases
+	Else
+		; Not dead and currently tracked
+		Debug.Notification("PW RegisterTarget: Already tracking " + akTarget.GetDisplayName())
+		return	
+	EndIf
+
+	Debug.Trace("PW RegisterTarget: Registered events for " + akTarget.GetDisplayName())
+EndFunction
+
+function UnRegisterTarget(Actor akTarget, Actor akCaster)
+	; Check if NPC is out of range and only then do we deregister
+	UnregisterForRemoteEvent(akTarget, "OnDeath")
+	If TrackedNPCs
+		TrackedNPCs.RemoveRef(akTarget)
+	EndIf
+EndFunction
+
+Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource, Projectile akProjectile, Bool abPowerAttack, Bool abSneakAttack, Bool abBashAttack, Bool abHitBlocked, String asMaterialName)
+	If !akTarget
+		Return
+	EndIf
+
+	Debug.Notification("PW OnHit " + akTarget.GetDisplayName())
+	; HandleBladeHit(akTarget, akAggressor, akSource)
+EndEvent
+
+Event Actor.OnDeath(Actor akSender, Actor akKiller)
+	Debug.Notification("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
+	; HandleNPCDeath(akSender, akKiller, "OnDeath")
+
+	UnregisterForRemoteEvent(akSender, "OnDeath")
+
+	If TrackedNPCs
+		TrackedNPCs.RemoveRef(akSender)
+	EndIf
+EndEvent
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Killer aura handling Stop; Begin of sus code
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
 ; Butcher aim (no timer): activate → camera → last butcher (if still facing) → one FindActors.
@@ -1092,59 +1178,6 @@ Event OnTimer(Int aiTimerID)
 	EndIf
 EndEvent
 
-Function RegisterTarget(Actor akTarget, Actor akCaster)
-	If !akTarget
-		Debug.Trace("PickmansWhisper: RegisterTarget skip — akTarget None")
-		Return
-	EndIf
-	If !TrackedNPCs
-		; Usually ESP alias typed as ReferenceAlias (missing ALCS seed) — bind fails at load.
-		Debug.Trace("PickmansWhisper: RegisterTarget skip — TrackedNPCs None (alias bind failed)")
-		Debug.Notification("PW: TrackedNPCs unbound")
-		Return
-	EndIf
-
-	; TODO verify is a valid target, if not NOP
-
-	Bool IsTargetDead = akTarget.IsDead()
-
-	If !IsTargetDead && TrackedNPCs.Find(akTarget) < 0
-		; Register for the events on this specific NPC
-		RegisterForRemoteEvent(akTarget, "OnDeath")
-		TrackedNPCs.AddRef(akTarget)
-		Debug.Notification("PW Manager: Registering death event for " + akTarget.GetDisplayName())
-	ElseIf IsTargetDead
-		Debug.Notification("PW Manager: Target " + akTarget.GetDisplayName() + " is dead")
-		; TODO handle dead use cases
-	Else
-		; Not dead and currently tracked
-		Debug.Notification("Already tracking " + akTarget.GetDisplayName())
-		return	
-	EndIf
-
-	Debug.Trace("PW Manager: Registered events for " + akTarget.GetDisplayName())
-EndFunction
-
-function UnRegisterTarget(Actor akTarget, Actor akCaster)
-	; Check if NPC is out of range and only then do we deregister
-	UnregisterForRemoteEvent(akTarget, "OnDeath")
-	If TrackedNPCs
-		TrackedNPCs.RemoveRef(akTarget)
-	EndIf
-EndFunction
-
-Event Actor.OnDeath(Actor akSender, Actor akKiller)
-	Debug.Notification("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
-	; HandleNPCDeath(akSender, akKiller, "OnDeath")
-
-	UnregisterForRemoteEvent(akSender, "OnDeath")
-
-	If TrackedNPCs
-		TrackedNPCs.RemoveRef(akSender)
-	EndIf
-EndEvent
-
-
 ; Soft backup only — quiet settler kills often never raise combat state.
 Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatState)
 	If akSender != PlayerRef
@@ -1161,10 +1194,6 @@ Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatSta
 	; only now (see PickmansWhisperBeatBeforeKillScript's top-of-file note: an "out of
 	; combat" reversal raced with an essential actor's own protected-collapse moment and
 	; actively broke the feature).
-EndEvent
-
-Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource, Projectile akProjectile, Bool abPowerAttack, Bool abSneakAttack, Bool abBashAttack, Bool abHitBlocked, String asMaterialName)
-	HandleBladeHit(akTarget, akAggressor, akSource)
 EndEvent
 
 Function ResolveVanillaForms()
@@ -1255,15 +1284,6 @@ MagicEffect Function GetRestoreHealthGenericEffect()
 	Return RestoreHealthGenericEffect
 EndFunction
 
-PickmansWhisperPlayerAliasScript Function PlayerAlias()
-	Quest pq = Game.GetFormFromFile(FID_PLAYER_COMBAT_QUEST, "PickmansWhisper.esp") as Quest
-	If !pq
-		Debug.Trace("PickmansWhisper: ERROR PlayerAlias — PlayerCombat quest 0x805 missing")
-		Return None
-	EndIf
-	Return pq.GetAlias(0) as PickmansWhisperPlayerAliasScript
-EndFunction
-
 ; MCM Debug switcher handler — delegates the actual (un)registration to the alias, since
 ; RegisterForMagicEffectApplyEvent(Self) there is what's proven to work; this script just
 ; tracks the flag for HandlePlayerMagicEffectApply's Trace-or-not decision.
@@ -1272,12 +1292,12 @@ Function SyncMagicEffectSniffer()
 	If MCM.IsInstalled()
 		want = MCM.GetModSettingBool(MOD_NAME, "bSniffMagicEffects:Debug")
 	EndIf
-	PickmansWhisperPlayerAliasScript pAlias = PlayerAlias()
-	If !pAlias
-		Debug.Trace("PickmansWhisper: ERROR SyncMagicEffectSniffer — PlayerAlias missing")
+	If !PlayerAlias
+		Debug.Trace("PickmansWhisper: ERROR SyncMagicEffectSniffer — PlayerAlias property unbound")
+		Debug.Notification("PW: PlayerAlias unbound")
 		Return
 	EndIf
-	pAlias.SyncMagicEffectSniff(want)
+	PlayerAlias.SyncMagicEffectSniff(want)
 	DebugSniffMagicEffects = want
 EndFunction
 

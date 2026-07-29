@@ -23,7 +23,7 @@ Locks:
   - ModConfig ateRipeCorpseToast ships with {name} support
   - LoadModConfig parses + resets ateRipeCorpseToast
   - tools/stubs/ScriptObject.psc declares RegisterForMagicEffectApplyEvent + OnMagicEffectApply
-  - MainQuestScript.GetRestoreHealthGenericEffect + PlayerAlias() facade
+  - MainQuestScript.GetRestoreHealthGenericEffect + PlayerAlias Auto Const (VMAD → PlayerCombat ALST 0)
   - PlayerAliasScript.RegisterMagicEffectDetect: RegisterForMagicEffectApplyEvent(Self, ...)
     filtered to RestoreHealthGenericEffect, called from OnAliasInit + OnPlayerLoadGame
   - PlayerAliasScript.Event OnMagicEffectApply (3-param local form) calls
@@ -150,9 +150,12 @@ def test_main_wiring() -> None:
     if "ResolveVanillaForms()" not in getter or "Return RestoreHealthGenericEffect" not in getter:
         fail("GetRestoreHealthGenericEffect must ResolveVanillaForms then return the field (alias-callable getter)")
 
-    facade = extract_function(text, "PlayerAlias")
-    if "FID_PLAYER_COMBAT_QUEST" not in facade or "GetAlias(0)" not in facade:
-        fail("PlayerAlias facade must resolve the PlayerCombat quest's alias 0")
+    if "PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const" not in text:
+        fail("Main must declare PlayerAlias Auto Const (CK/VMAD bind to PlayerCombat)")
+    if "Function PlayerAlias()" in text:
+        fail("PlayerAlias() GetFormFromFile facade retired — use Auto Const property")
+    if "Return pq.GetAlias(0)" in text:
+        fail("retired PlayerAlias facade must not GetAlias(0) via PlayerCombat")
 
     if "RegisterEatCorpseDetection" in text or "Event Actor.OnMagicEffectApply" in text:
         fail("Quest-level RegisterForMagicEffectApplyEvent detection must be fully removed (confirmed dead live; moved to PlayerAliasScript)")
@@ -173,8 +176,10 @@ def test_main_wiring() -> None:
     sniffer = extract_function(text, "SyncMagicEffectSniffer")
     if 'MCM.GetModSettingBool(MOD_NAME, "bSniffMagicEffects:Debug")' not in sniffer:
         fail("SyncMagicEffectSniffer must read bSniffMagicEffects:Debug")
-    if "PlayerAlias()" not in sniffer or "SyncMagicEffectSniff(want)" not in sniffer:
-        fail("SyncMagicEffectSniffer must delegate to PlayerAlias().SyncMagicEffectSniff (alias owns real registration)")
+    if "PlayerAlias.SyncMagicEffectSniff(want)" not in sniffer:
+        fail("SyncMagicEffectSniffer must call PlayerAlias.SyncMagicEffectSniff (Auto Const property)")
+    if "!PlayerAlias" not in sniffer:
+        fail("SyncMagicEffectSniffer must guard unbound PlayerAlias property")
 
     if 'id == "bSniffMagicEffects:Debug"' not in extract_function(text, "OnMCMSettingChange"):
         fail("OnMCMSettingChange must dispatch bSniffMagicEffects:Debug to SyncMagicEffectSniffer")

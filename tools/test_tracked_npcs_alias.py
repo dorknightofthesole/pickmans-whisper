@@ -23,6 +23,7 @@ MAIN_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQ
 STUB = ROOT / "tools" / "stubs" / "RefCollectionAlias.psc"
 
 FID_QUEST = 0x01000800
+FID_PLAYER_QUEST = 0x01000805
 ALIAS_TRACKED_NPCS_SEED_ID = 0
 ALIAS_TRACKED_NPCS_ID = 1
 
@@ -94,6 +95,8 @@ def main() -> None:
         fail("builder must emit ALMI after ALCS (vanilla trailer)")
     if '"TrackedNPCs", ALIAS_TRACKED_NPCS_ID' not in builder:
         fail("builder must VMAD-bind TrackedNPCs property on MainQuestScript")
+    if '"PlayerAlias", 0, FID_PLAYER_QUEST' not in builder:
+        fail("builder must VMAD-bind PlayerAlias → PlayerCombat ALST 0")
     # ALCS must follow seed ALED, not sit inside an alias body before VTCK.
     seed_fn = builder.split("def build_tracked_npcs_alias_fields", 1)[1].split(
         "\ndef ", 1
@@ -115,6 +118,10 @@ def main() -> None:
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     if "RefCollectionAlias Property TrackedNPCs Auto Const" not in psc:
         fail("MainQuestScript must declare TrackedNPCs Auto Const")
+    if "PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const" not in psc:
+        fail("MainQuestScript must declare PlayerAlias Auto Const")
+    if "Function PlayerAlias()" in psc:
+        fail("MainQuestScript must not keep PlayerAlias() facade (conflicts with property)")
     if "TrackedNPCs.AddRef" not in psc:
         fail("MainQuestScript must AddRef into TrackedNPCs")
     if "TrackedNPCs.RemoveRef" not in psc:
@@ -211,6 +218,28 @@ def main() -> None:
     if quest_fid != FID_QUEST:
         fail(f"TrackedNPCs property quest form must be 0x{FID_QUEST:08X}, got 0x{quest_fid:08X}")
     ok(f"VMAD TrackedNPCs Object property bound to Main ALST {ALIAS_TRACKED_NPCS_ID}")
+
+    if b"PlayerAlias" not in vmad:
+        fail("Main VMAD must contain property name PlayerAlias")
+    pidx = vmad.find(b"PlayerAlias")
+    if pidx < 2:
+        fail("PlayerAlias property name offset invalid")
+    pnlen = struct.unpack_from("<H", vmad, pidx - 2)[0]
+    if pnlen != len("PlayerAlias"):
+        fail("PlayerAlias wstring length mismatch")
+    poff = pidx + pnlen
+    pptype, ppstat = vmad[poff], vmad[poff + 1]
+    pzero, palias_id, pquest_fid = struct.unpack_from("<hhI", vmad, poff + 2)
+    if pptype != 1 or ppstat != 1:
+        fail(f"PlayerAlias property type/status must be 1/1, got {pptype}/{ppstat}")
+    if pzero != 0 or palias_id != 0:
+        fail(f"PlayerAlias must bind alias id 0, got zero={pzero} alias={palias_id}")
+    if pquest_fid != FID_PLAYER_QUEST:
+        fail(
+            f"PlayerAlias property quest form must be 0x{FID_PLAYER_QUEST:08X}, "
+            f"got 0x{pquest_fid:08X}"
+        )
+    ok("VMAD PlayerAlias Object property bound to PlayerCombat ALST 0")
 
     print("All TrackedNPCs RefCollectionAlias contracts passed.")
 

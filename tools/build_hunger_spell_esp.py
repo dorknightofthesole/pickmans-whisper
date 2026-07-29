@@ -322,6 +322,10 @@ def build_main_quest_payload() -> bytes:
     tracked_prop = build_vmad_object_alias_property(
         "TrackedNPCs", ALIAS_TRACKED_NPCS_ID, FID_QUEST
     )
+    # CK-style: Main.PlayerAlias → PickmansWhisperPlayerCombat ALST 0 (script host).
+    player_alias_prop = build_vmad_object_alias_property(
+        "PlayerAlias", 0, FID_PLAYER_QUEST
+    )
     body = b""
     body += field(b"EDID", zstr("PickmansWhisperMain"))
     body += field(
@@ -329,7 +333,10 @@ def build_main_quest_payload() -> bytes:
         build_vmad_scripts(
             main_scripts,
             script_properties={
-                "PickmansWhisperMainQuestScript": [tracked_prop],
+                "PickmansWhisperMainQuestScript": [
+                    tracked_prop,
+                    player_alias_prop,
+                ],
             },
         ),
     )
