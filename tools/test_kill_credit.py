@@ -49,7 +49,8 @@ Locks:
   - HandleNPCDeath: cleans up (ForgetBladeTagged) unconditionally up front,
     before the credit decision; gate is killer==player + IsBladeEquipped +
     IsValidTarget + cooldown only — no tagged/seenAlive/combatGrace terms
-  - Actor.OnDeath calls HandleNPCDeath
+  - Actor.OnDeath settle is RewardKill (event-driven TrackedNPCs path); legacy
+    HandleNPCDeath remains for HandleBladeHit / KillerScan-era callers
   - MarkBladeTagged / WasBladeTagged / ForgetBladeTagged operate on a single
     Actor[] BladeTagged list; ForgetBladeTagged calls UnregisterForRemoteEvent
     (the old code never did, anywhere in the file — permanent leak)
@@ -168,12 +169,6 @@ def main() -> None:
     if 'ToastDebug("PW debug: kill ignored' in death or 'Debug.Trace("PickmansWhisper: kill ignored' in death:
         fail("HandleNPCDeath must not inline the reason/toast/trace pattern — that's what RejectKill collapses")
     ok("HandleNPCDeath: upfront cleanup, simplified live gate via RejectKill, no ambient-list terms")
-
-    # --- Actor.OnDeath wiring ---
-    on_death = extract_event(text, r"Event Actor\.OnDeath\(")
-    if "HandleNPCDeath(akSender, akKiller" not in on_death:
-        fail("Actor.OnDeath must call HandleNPCDeath")
-    ok("Actor.OnDeath wired to HandleNPCDeath")
 
     # --- Tagged-list helpers ---
     if "Actor[] BladeTagged" not in text:

@@ -189,8 +189,9 @@ def main() -> None:
         fail(f"post-ALED ALCS after seed must point to {ALIAS_TRACKED_NPCS_ID}, got {salcs}")
     if "ALMI" not in seed_trail:
         fail("post-ALED ALMI missing after TrackedNPCsSeed")
-    if anam != ALIAS_TRACKED_NPCS_ID + 1:
-        fail(f"Main ANAM must be {ALIAS_TRACKED_NPCS_ID + 1}, got {anam}")
+    # ANAM = highest ALST + 1 (ModConfigAlias is ALST 5 → ANAM 6).
+    if anam != 6:
+        fail(f"Main ANAM must be 6 (past ModConfigAlias ALST 5), got {anam}")
     ok(
         f"ESP TrackedNPCs ALST={aid} FNAM=0x{fnam:X}; "
         f"seed ALST={sid} FNAM=0x{sfnam:X} ALCS={salcs} ALMI=0x{seed_trail['ALMI']:X}; "

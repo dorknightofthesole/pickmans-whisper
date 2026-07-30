@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 # Build Pickman's Whisper (Caprica), deploy into a local MO2 mod folder, and write
 # dist/PickmansWhisper-<version>.zip (FOMOD) for Install Mod in MO2.
 #
@@ -65,6 +65,7 @@ PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 PSC_BUFF_TRACKER="PickmansWhisperBuffTrackerScript.psc"
 PSC_BEAT_BEFORE_KILL="PickmansWhisperBeatBeforeKillScript.psc"
 PSC_PROXIMITY_EFFECT="PickmansWhisperProximityEffect.psc"
+PSC_KILL_REWARD="PickmansWhisperKillRewardScript.psc"
 
 to_win_path() {
   local p="$1"
@@ -179,16 +180,23 @@ python "$ROOT/tools/test_proximity_cloak.py" || exit 1
 echo "==> TrackedNPCs RefCollectionAlias contract test"
 python "$ROOT/tools/test_tracked_npcs_alias.py" || exit 1
 
+echo "==> KillRewardAlias contract test"
+python "$ROOT/tools/test_kill_reward_alias.py" || exit 1
+python "$ROOT/tools/test_register_reward_path.py" || exit 1
+
+echo "==> Blade hit / kill-credit ActorValue (AVIF) contract test"
+python "$ROOT/tools/test_blade_hit_av.py" || exit 1
+
 echo "==> Decay face stage equip contract test"
 python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
 
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_PROXIMITY_EFFECT"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_PROXIMITY_EFFECT + $PSC_KILL_REWARD"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_PROXIMITY_EFFECT"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_PROXIMITY_EFFECT" "$PSC_KILL_REWARD"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -247,6 +255,10 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperProximityEffect.pex" ]]; then
   echo "ERROR: compile produced no ProximityEffect .pex" >&2
   exit 1
 fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperKillRewardScript.pex" ]]; then
+  echo "ERROR: compile produced no KillReward .pex" >&2
+  exit 1
+fi
 
 echo "==> Deploying to $DEPLOY"
 mkdir -p \
@@ -272,6 +284,7 @@ cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBeatBeforeKillScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperProximityEffect.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperKillRewardScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
@@ -283,6 +296,7 @@ cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBuffTrackerScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBeatBeforeKillScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperProximityEffect.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperKillRewardScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"

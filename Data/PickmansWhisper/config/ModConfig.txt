@@ -2,6 +2,7 @@
 # Edit and reload via MCM Voice > Reload line banks (or reopen MCM / reload save).
 # Blank and # lines ignored. Values are everything after the first '='.
 #
+# bondIntroGreeting — once-ever toast when bond first starts (StartBond). Missing/empty = skip toast (Trace).
 # renamePromptFemaleNPC — toast after 3+ recognition looks while she is still unnamed.
 # bedGiftWakeToast — Slice G: optional wake toast after bed corpse present (voice + blade).
 # bedGiftCooldownDays — Slice G: game-days between bed gifts (0.5 ≈ 12h). Required; <=0 fails load.
@@ -36,6 +37,7 @@
 #   (stay until next start; Black forever after). Trailing "scars" = all Scars_* from DecaySkinOverlays.txt.
 # Order must match MCM Wound Lab Decay stage stepper. Single source — do not bake RGBA/hours/skins in scripts.
 
+bondIntroGreeting=Something in the gallery leans closer... glad you came.
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
 bedGiftWakeToast=A gift for when you close your eyes.
 bedGiftCooldownDays=0.5

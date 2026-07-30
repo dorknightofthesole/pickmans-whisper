@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 NECRO = ROOT / "Data" / "PickmansWhisper" / "config" / "necromantic"
 START_NAMED = NECRO / "Intimacy_Start_Named.txt"
@@ -309,7 +310,8 @@ def test_e5_load_pick(text: str) -> None:
         fail("intimacy picks must use Utility.RandomInt")
     if "LastIntimacyStartLine" not in named_pick or "LastIntimacyEndLine" not in named_pick:
         fail("intimacy named picks must no-immediate-repeat")
-    load_cfg = extract_function(text, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_cfg = extract_function(modcfg, "LoadModConfig")
     if 'key == "namedIntimacyToast"' in load_cfg or 'key == "namedIntimacyEndToast"' in load_cfg:
         fail("LoadModConfig must not parse retired intimacy toast keys")
     if 'key == "namedIntimacyAudio"' in load_cfg:

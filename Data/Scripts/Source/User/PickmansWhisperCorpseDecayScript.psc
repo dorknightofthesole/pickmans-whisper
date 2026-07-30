@@ -1593,8 +1593,13 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 		SetCorpseDecayStatus("ERROR: Main script missing — cannot apply decay stage")
 		Return False
 	EndIf
-	If !m.EnsureDecayStagesLoaded()
-		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
+	PickmansWhisperModConfigScript cfg = m.ModConfigAlias
+	If !cfg || !cfg.EnsureDecayStagesLoaded()
+		String st = ""
+		If cfg
+			st = cfg.ModConfigLoadStatus
+		EndIf
+		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + st)
 		Debug.Notification("Pickman's Whisper: decay stages not loaded — check ModConfig.txt")
 		Debug.Trace("PickmansWhisper: ERROR ApplyDecayStageOverlays — " + LastCorpseDecayStatus)
 		Return False
@@ -1604,7 +1609,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 		Return False
 	EndIf
 	If !abForcePaint && !IsDecayVisualsEnabled()
-		String stageNameOff = m.GetDecayStageName(aiStage)
+		String stageNameOff = cfg.GetDecayStageName(aiStage)
 		SetCorpseDecayStatus("stage " + aiStage + " " + stageNameOff + " — visuals OFF (MCM; clock still advances)")
 		Debug.Trace("PickmansWhisper: ApplyDecayStageOverlays skip paint — visuals OFF stage=" + aiStage + " formId=" + akCorpse.GetFormID())
 		Return True
@@ -1626,11 +1631,11 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 	EndIf
 	; Face ARMO FIRST — if LooksMenu body work stalls, mask is already on.
 	; Re-equip face after body (Overlays.Update can strip slot-54).
-	Float tintR = m.GetDecayStageTintR(aiStage)
-	Float tintG = m.GetDecayStageTintG(aiStage)
-	Float tintB = m.GetDecayStageTintB(aiStage)
-	Float tintA = m.GetDecayStageTintA(aiStage)
-	String stageName = m.GetDecayStageName(aiStage)
+	Float tintR = cfg.GetDecayStageTintR(aiStage)
+	Float tintG = cfg.GetDecayStageTintG(aiStage)
+	Float tintB = cfg.GetDecayStageTintB(aiStage)
+	Float tintA = cfg.GetDecayStageTintA(aiStage)
+	String stageName = cfg.GetDecayStageName(aiStage)
 	Bool faceOk = False
 	String faceStatus = "face skipped — head missing"
 	Bool headOk = bypassLimbGate || !akCorpse.IsDismembered("Head1")
@@ -1664,7 +1669,7 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 		String[] stageBank = new String[64]
 		Int n = 0
 		String[] skins = new String[8]
-		skinCount = m.FillDecayStageSkins(aiStage, skins)
+		skinCount = cfg.FillDecayStageSkins(aiStage, skins)
 		Int s = 0
 		While s < skinCount
 			If skins[s] != ""
@@ -1759,8 +1764,13 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 		Debug.Trace("PickmansWhisper: SyncDecay skip | no kill slot formId=" + formId)
 		Return
 	EndIf
-	If !m.EnsureDecayStagesLoaded()
-		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
+	PickmansWhisperModConfigScript cfg = m.ModConfigAlias
+	If !cfg || !cfg.EnsureDecayStagesLoaded()
+		String st = ""
+		If cfg
+			st = cfg.ModConfigLoadStatus
+		EndIf
+		SetCorpseDecayStatus("ERROR: ModConfig decayStage0..4 — " + st)
 		Debug.Trace("PickmansWhisper: ERROR SyncDecayForKnifeCorpse — " + LastCorpseDecayStatus)
 		Return
 	EndIf
@@ -1782,7 +1792,7 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 		; skipping her repaint once she reaches the max stage (nothing above it to
 		; trigger a fresh want!=last mismatch). Leave LastStage alone so the very next
 		; sync after visuals turn on detects the mismatch and paints for real.
-		SetCorpseDecayStatus("stage " + stage + " " + m.GetDecayStageName(stage) + " — visuals OFF (MCM; clock advances, paint deferred) formId=" + formId)
+		SetCorpseDecayStatus("stage " + stage + " " + cfg.GetDecayStageName(stage) + " — visuals OFF (MCM; clock advances, paint deferred) formId=" + formId)
 		Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
 		Return
 	EndIf
@@ -1791,7 +1801,7 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 		Int stageNow = m.ResolveDecayStageForKill(formId)
 		If stageNow == stage
 			m.SetDecayKillLastStage(formId, stage)
-			SetCorpseDecayStatus("knife sync stage " + stage + " " + m.GetDecayStageName(stage) + " formId=" + formId + " | " + LastCorpseDecayStatus)
+			SetCorpseDecayStatus("knife sync stage " + stage + " " + cfg.GetDecayStageName(stage) + " formId=" + formId + " | " + LastCorpseDecayStatus)
 			Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
 		Else
 			SetCorpseDecayStatus("knife sync aborted (clock moved during apply) was=" + stage + " now=" + stageNow + " formId=" + formId)
@@ -1816,24 +1826,29 @@ Function ApplyBedGiftDecayOverlays(Actor akCorpse)
 		Return
 	EndIf
 	; Bed gift vignette always paints (DeathMarks + Black stage) — not gated by bDecayVisuals.
-	If !m.EnsureDecayStagesLoaded()
-		; fall through to wounds-only if stages unavailable
+	PickmansWhisperModConfigScript cfg = m.ModConfigAlias
+	Float woundA = -1.0
+	If cfg
+		woundA = cfg.GetBedGiftWoundAlpha()
 	EndIf
-	Float woundA = m.GetBedGiftWoundAlpha()
 	Int stage = BED_GIFT_DECAY_STAGE
 	String woundStatus = ""
-	If m.DecayStagesReady() && woundA >= 0.0
+	If cfg && cfg.DecayStagesReady() && woundA >= 0.0
 		; DeathMarks first; darken via stage RGB, opacity from ModConfig.
-		ApplyDecayWoundOverlaysTinted(akCorpse, BED_GIFT_WOUND_COUNT, m.GetDecayStageTintR(stage), m.GetDecayStageTintG(stage), m.GetDecayStageTintB(stage), woundA)
+		ApplyDecayWoundOverlaysTinted(akCorpse, BED_GIFT_WOUND_COUNT, cfg.GetDecayStageTintR(stage), cfg.GetDecayStageTintG(stage), cfg.GetDecayStageTintB(stage), woundA)
 		woundStatus = LastCorpseDecayStatus
 		ApplyDecayStageOverlays(akCorpse, stage, True)
 		SetCorpseDecayStatus("bed gift | " + woundStatus + " | " + LastCorpseDecayStatus)
 		Return
 	EndIf
 	; Stage/alpha incomplete — still apply P1 DeathMarks so the vignette is not bare; fail loud.
-	If !m.DecayStagesReady()
+	If !cfg || !cfg.DecayStagesReady()
+		String st = ""
+		If cfg
+			st = cfg.ModConfigLoadStatus
+		EndIf
 		Debug.Notification("Pickman's Whisper: bed gift decay stages missing — wounds only; check ModConfig.txt")
-		Debug.Trace("PickmansWhisper: ERROR bed gift stage skip — " + m.ModConfigLoadStatus)
+		Debug.Trace("PickmansWhisper: ERROR bed gift stage skip — " + st)
 	ElseIf woundA < 0.0
 		Debug.Notification("Pickman's Whisper: bedGiftWoundAlpha missing — pale wounds only; check ModConfig.txt")
 		Debug.Trace("PickmansWhisper: ERROR bed gift wound alpha missing")

@@ -6,10 +6,11 @@ NO VMAD, Assoc=hit SPEL, Area=15) → Hit SPEL (RadiationHazardToken clone) → 
 (Script + PickmansWhisperProximityEffect VMAD; no radiation).
 
 Locks:
-  - FormIDs 0x870–0x873 + NEXT_OID 0x874
+  - FormIDs 0x870–0x873 (NEXT_OID sits past blade/reward AVIFs at 0x877)
   - Vanilla sources: Ability 0xDB3AD, Cloak 0xDB3AE, Token 0xDF451, Hazard 0x9252A
   - Cloak Assoc Item == Hit SPEL; Cloak has no VMAD; Hit has proximity script
-  - Hit SPEL EFIT Duration=0; Hit MGEF flags include No Duration (0x80)
+  - Hit SPEL EFIT Duration=0; Hit MGEF No Duration (FO4 0x200)
+  - Both MGEFs: No Hit Event | Painless | No Hit Effect (trial; may roll back)
   - Cloak Area=15; Ability EFIT Area=40
   - Alias GetFormFromFile uses LOCAL id 0x00000873
   - Deploy compiles PickmansWhisperProximityEffect.psc (not CloakHost)
@@ -39,6 +40,13 @@ FID_PROXIMITY_CLOAK_MGEF = 0x01000872
 FID_PROXIMITY_CLOAK_SPEL = 0x01000873
 PROXIMITY_CLOAK_AREA = 15
 PROXIMITY_ABILITY_EFIT_AREA = 40
+MGEF_FLAG_NO_HIT_EVENT = 0x00000010
+MGEF_FLAG_NO_DURATION = 0x00000200
+MGEF_FLAG_PAINLESS = 0x04000000
+MGEF_FLAG_NO_HIT_EFFECT = 0x08000000
+PROXIMITY_MGEF_TRIAL_FLAGS = (
+    MGEF_FLAG_NO_HIT_EVENT | MGEF_FLAG_PAINLESS | MGEF_FLAG_NO_HIT_EFFECT
+)
 
 
 def fail(msg: str) -> None:
@@ -119,7 +127,7 @@ def main() -> None:
         ("FID_PROXIMITY_HIT_SPEL = 0x01000871", "HIT_SPEL"),
         ("FID_PROXIMITY_CLOAK_MGEF = 0x01000872", "CLOAK_MGEF"),
         ("FID_PROXIMITY_CLOAK_SPEL = 0x01000873", "CLOAK_SPEL"),
-        ("NEXT_OID = 0x00000874", "NEXT_OID"),
+        ("NEXT_OID = 0x00000877", "NEXT_OID"),
         ("VANILLA_CLOAK_ABILITY_SPEL_SOURCE = 0x000DB3AD", "ability source"),
         ("VANILLA_CLOAK_MGEF_SOURCE = 0x000DB3AE", "cloak source"),
         ("VANILLA_CLOAK_HIT_SPEL_SOURCE = 0x000DF451", "hit spel source"),
@@ -133,7 +141,7 @@ def main() -> None:
         fail("builder must not reference PickmansWhisperProximityCloakHost (Cloak has no VMAD)")
     if "0x00247A40" in builder_text or "DetectLife" in builder_text:
         fail("builder must not still clone DetectLife cloak sources")
-    ok("builder reserves Glowing One clone FormIDs 0x870-0x873, NEXT_OID=0x874")
+    ok("builder reserves Glowing One clone FormIDs 0x870-0x873; NEXT_OID past blade AVIFs")
 
     if not STUB.is_file():
         fail("tools/stubs/ActiveMagicEffect.psc missing")
@@ -320,13 +328,17 @@ def main() -> None:
     if struct.unpack_from("<I", hdata, 80)[0] != 0 or struct.unpack_from("<I", hdata, 84)[0] != 3:
         fail("hit MGEF must be Constant Effect (0) / Target Actor (3)")
     hit_flags = struct.unpack_from("<I", hdata, 0)[0]
-    if hit_flags & 0x00000080 == 0:
-        fail(f"hit MGEF must set No Duration flag (0x80), got flags=0x{hit_flags:08X}")
+    want_hit = PROXIMITY_MGEF_TRIAL_FLAGS | MGEF_FLAG_NO_DURATION
+    if hit_flags & want_hit != want_hit:
+        fail(
+            f"hit MGEF flags must include NoHitEvent|NoDuration|Painless|NoHitEffect "
+            f"(0x{want_hit:08X}), got 0x{hit_flags:08X}"
+        )
     if hit_flags & 0x00000001:
         fail(f"hit MGEF must not be Hostile, got flags=0x{hit_flags:08X}")
     ok(
         f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + Constant/TargetActor + "
-        f"NoDuration + VMAD Main->0x800"
+        f"flags=0x{hit_flags:08X} + VMAD Main->0x800"
     )
 
     cloak_mgef = by_id.get(("MGEF", FID_PROXIMITY_CLOAK_MGEF))
@@ -353,7 +365,16 @@ def main() -> None:
         fail(f"cloak MGEF Area must be {PROXIMITY_CLOAK_AREA}, got {area}")
     if cast_t != 0 or deliv != 0:
         fail(f"cloak MGEF must be Constant Effect / Self (cast={cast_t} deliv={deliv})")
-    ok(f"Cloak MGEF 0x{FID_PROXIMITY_CLOAK_MGEF:08X}: arch=35 Assoc=HitSPEL Area={area} no VMAD")
+    cloak_flags = struct.unpack_from("<I", cdata, 0)[0]
+    if cloak_flags & PROXIMITY_MGEF_TRIAL_FLAGS != PROXIMITY_MGEF_TRIAL_FLAGS:
+        fail(
+            f"cloak MGEF flags must include NoHitEvent|Painless|NoHitEffect "
+            f"(0x{PROXIMITY_MGEF_TRIAL_FLAGS:08X}), got 0x{cloak_flags:08X}"
+        )
+    ok(
+        f"Cloak MGEF 0x{FID_PROXIMITY_CLOAK_MGEF:08X}: arch=35 Assoc=HitSPEL "
+        f"Area={area} flags=0x{cloak_flags:08X} no VMAD"
+    )
 
     hit_spel = by_id.get(("SPEL", FID_PROXIMITY_HIT_SPEL))
     if hit_spel is None:

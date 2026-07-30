@@ -26,7 +26,10 @@ String Function MaybeSuffixDisplayName(Actor ak, String baseName)
 	If !m || m.GetNoticeStage() != 4
 		Return baseName
 	EndIf
-	String suffix = m.GetDesperateNameSuffix()
+	If !m.ModConfigAlias
+		Return baseName
+	EndIf
+	String suffix = m.ModConfigAlias.GetDesperateNameSuffix()
 	If !suffix
 		Return baseName
 	EndIf
@@ -174,7 +177,11 @@ Function SyncFromKillerScanSnapshot()
 		SetStatus("ERROR: KillerScan missing")
 		Return
 	EndIf
-	String suffix = m.GetDesperateNameSuffix()
+	If !m.ModConfigAlias
+		SetStatus("ERROR: ModConfigAlias unbound")
+		Return
+	EndIf
+	String suffix = m.ModConfigAlias.GetDesperateNameSuffix()
 	If !suffix
 		If !SuffixMissingToasted
 			SuffixMissingToasted = True

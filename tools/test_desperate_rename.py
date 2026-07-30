@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 USER = ROOT / "Data" / "Scripts" / "Source" / "User"
 MAIN = USER / "PickmansWhisperMainQuestScript.psc"
+MODCFG = USER / "PickmansWhisperModConfigScript.psc"
 RENAME = USER / "PickmansWhisperDesperateRenameScript.psc"
 KILLER = USER / "PickmansWhisperKillerScanScript.psc"
 MOD = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
@@ -79,8 +80,8 @@ def main() -> None:
         fail("IsRenameEligible must require IsAdultFemale")
     if "ExplainNoticeReject" in rename:
         fail("DesperateRename must not fall back to the shared ambient notice filter")
-    if "GetDesperateNameSuffix" not in rename:
-        fail("DesperateRename must read suffix via Main GetDesperateNameSuffix")
+    if "ModConfigAlias.GetDesperateNameSuffix" not in rename:
+        fail("DesperateRename must read suffix via ModConfigAlias")
     maybe = extract_function(rename, "MaybeSuffixDisplayName")
     if "GetNoticeStage() != 4" not in maybe and "GetNoticeStage() == 4" not in maybe:
         fail("MaybeSuffixDisplayName must only suffix at stage 4")
@@ -90,14 +91,13 @@ def main() -> None:
         fail("GetActorDisplayName must MaybeSuffixDisplayName (toast matches HUD)")
     if "Function DesperateRename()" not in main_txt:
         fail("Main must DesperateRename() façade")
-    if "GetDesperateNameSuffix" not in main_txt:
-        fail("Main must GetDesperateNameSuffix")
-    if 'key == "desperateNameSuffix"' not in main_txt:
-        fail("LoadModConfig must parse desperateNameSuffix")
+    if "ModConfigAlias Auto Const" not in main_txt:
+        fail("Main must expose ModConfigAlias")
     # Leading space preserved — must not ConfigFieldTrim the suffix value.
-    load = extract_function(main_txt, "LoadModConfig")
-    if "desperateNameSuffix" not in load:
-        fail("LoadModConfig must load desperateNameSuffix")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load = extract_function(modcfg, "LoadModConfig")
+    if 'key == "desperateNameSuffix"' not in load:
+        fail("LoadModConfig must parse desperateNameSuffix")
     if re.search(
         r'desperateNameSuffix[\s\S]{0,120}ConfigFieldTrim\(val\)',
         load,

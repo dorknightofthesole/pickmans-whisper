@@ -38,9 +38,13 @@ Function ApplyEatRipeCorpseEndBuff()
 		Debug.Trace("PickmansWhisper: ERROR ApplyEatRipeCorpseEndBuff — Main missing")
 		Return
 	EndIf
-	Float amount = m.GetEatRipeCorpseEndBuffAmount()
-	Float maxDelta = m.GetEatRipeCorpseEndBuffMaxDelta()
-	Float hours = m.GetEatRipeCorpseEndBuffHours()
+	If !m.ModConfigAlias
+		Debug.Trace("PickmansWhisper: ERROR ApplyEatRipeCorpseEndBuff — ModConfigAlias unbound")
+		Return
+	EndIf
+	Float amount = m.ModConfigAlias.GetEatRipeCorpseEndBuffAmount()
+	Float maxDelta = m.ModConfigAlias.GetEatRipeCorpseEndBuffMaxDelta()
+	Float hours = m.ModConfigAlias.GetEatRipeCorpseEndBuffHours()
 	If amount <= 0.0 || maxDelta <= 0.0 || hours <= 0.0
 		Debug.Trace("PickmansWhisper: ERROR ApplyEatRipeCorpseEndBuff — ModConfig ateRipeCorpseEndBuff Amount/MaxDelta/Hours missing or invalid (amount=" + amount + " max=" + maxDelta + " hours=" + hours + ")")
 		Return

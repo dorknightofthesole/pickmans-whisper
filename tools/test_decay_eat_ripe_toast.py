@@ -29,6 +29,7 @@ from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 STUB_ACTOR = ROOT / "tools" / "stubs" / "Actor.psc"
@@ -94,7 +95,8 @@ def test_modconfig() -> None:
 
 def test_main_wiring() -> None:
     text = MAIN.read_text(encoding="utf-8", errors="replace")
-    load_cfg = extract_function(text, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_cfg = extract_function(modcfg, "LoadModConfig")
     if 'key == "eatRipeCorpseToast"' not in load_cfg:
         fail("LoadModConfig must parse eatRipeCorpseToast")
 
@@ -158,7 +160,8 @@ def test_main_wiring() -> None:
     # (MCM Voice > Reload line banks, or a fresh load). LoadModConfig's own reset block
     # must clear EatRipeCorpseToast like every other ModConfig string, so a key removed
     # on a later reload doesn't leave a stale toast behind.
-    load_cfg = extract_function(text, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_cfg = extract_function(modcfg, "LoadModConfig")
     if "EatRipeCorpseToast = \"\"" not in load_cfg:
         fail("LoadModConfig must reset EatRipeCorpseToast at the top like the other ModConfig strings")
 

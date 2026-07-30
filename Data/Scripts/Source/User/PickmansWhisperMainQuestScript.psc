@@ -277,49 +277,12 @@ String LastSleepRecognitionLine = "" ; no-immediate-repeat (raw template)
 String SleepRecognitionLoadStatus = ""
 ; After this many recognition toasts on one NPC (still unnamed), nudge toward MCM Victims.
 Int RECOGNITION_NAME_PROMPT_AT = 3
-; Loaded from ModConfig.txt — files-only, no baked mirror.
-String RenamePromptFemaleNPC = ""
-String BedGiftWakeToast = "" ; Slice G optional wake toast
-String DesperateNameSuffix = "" ; Slice I — ModConfig desperateNameSuffix (empty = rename idle)
-Float BedGiftCooldownDays = -1.0 ; Slice G from ModConfig; -1 = missing/invalid
-Float BedGiftWoundAlpha = -1.0 ; Slice H bed DeathMarks opacity; -1 = missing/invalid
-String NamedKillToast = ""
-String NamedKillAudio = "" ; optional .xwm filename; omit until clip + SNDR exist
-; Slice H P4 — ModConfig eatRipeCorpseToast; Cannibal nag, shared cooldown across all corpses.
-String EatRipeCorpseToast = ""
+; ModConfig.txt fields + decayStage0..4 live on ModConfigAlias (PickmansWhisperModConfigScript).
+; Slice H P4 — Cannibal nag cooldown across all ripe corpses (not ModConfig).
 Float LastEatRipeCorpseToastGameTime = 0.0
 Float EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0
-; Slice H P5 — ModConfig ateRipeCorpseToast; fires once per detected eat (no cooldown needed
-; — each eat is a deliberate, spaced-out player action already).
-String AteRipeCorpseToast = ""
-; Slice H P5 bonus — END buff (BuffTrackerScript). -1 = missing/invalid, matching
-; BedGiftCooldownDays' convention (fail loud, no baked fallback).
-Float EatRipeCorpseEndBuffAmount = -1.0
-Float EatRipeCorpseEndBuffMaxDelta = -1.0
-Float EatRipeCorpseEndBuffHours = -1.0
+; Mirrored from ModConfigAlias after load / EnsureDecayStagesLoaded (Victims/CorpseDecay read this).
 String Property ModConfigLoadStatus = "" Auto
-Bool ModConfigLoadBusy = False ; nested LoadModConfig forbidden (Sync must not clear live stages)
-; Slice H P2 — decayStage0..4 from ModConfig (name;r;g;b;a;startHours;skins[+…];scars?).
-Int DECAY_STAGE_COUNT = 5
-String[] DecayStageNames
-Float[] DecayStageTintR
-Float[] DecayStageTintG
-Float[] DecayStageTintB
-Float[] DecayStageTintA
-Float[] DecayStageStartHours ; game-hours after kill when stage begins
-String[] DecayStageSkinsRaw ; e.g. SkinTexture_07 or SkinTexture_17+SkinTexture_18
-Bool[] DecayStageAllScars
-Int DecayStagesLoadedCount = 0
-; Pending arrays — LoadModConfig commits only when all 5 parse OK (live stages stay valid mid-load).
-String[] PendingDecayStageNames
-Float[] PendingDecayStageTintR
-Float[] PendingDecayStageTintG
-Float[] PendingDecayStageTintB
-Float[] PendingDecayStageTintA
-Float[] PendingDecayStageStartHours
-String[] PendingDecayStageSkinsRaw
-Bool[] PendingDecayStageAllScars
-Int PendingDecayStagesFilled = 0
 ; Knife-kill decay registry (credited ProcessKnifeKill only). Cap + FIFO eviction.
 Int DECAY_KILL_MAX = 32
 Int[] DecayKillIds
@@ -386,6 +349,15 @@ String Property LastTargetOverridesStatus = "" Auto ; MCM / trace — last load 
 RefCollectionAlias Property TrackedNPCs Auto Const
 ; CK/VMAD: bound to PickmansWhisperPlayerCombat ALST 0 (PickmansWhisperPlayerAliasScript).
 PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const
+
+ActorValue Property PW_HitWihPickmansBlade Auto Const
+ActorValue Property PW_Credit_For_PickmansBlade_Kill Auto Const
+
+; CK/VMAD: bound to PickmansWhisperMain ALST KillRewardAlias (UniqueActor=Player).
+PickmansWhisperKillRewardScript Property KillRewardAlias Auto Const
+
+; CK/VMAD: bound to PickmansWhisperMain ALST ModConfigAlias (UniqueActor=Player).
+PickmansWhisperModConfigScript Property ModConfigAlias Auto Const
 
 
 Event OnInit()
@@ -555,26 +527,55 @@ Function RegisterTarget(Actor akTarget, Actor akCaster)
 		Debug.Notification("PW: TrackedNPCs unbound")
 		Return
 	EndIf
+	If !PlayerAlias
+		Debug.Trace("PickmansWhisper Error: RegisterTarget — PlayerAlias unbound")
+		Return
+	EndIf
 
-	; TODO verify is a valid target, if not NOP
-
-	Bool isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
 	Bool IsTargetDead = akTarget.IsDead()
 
-	Debug.Notification("PW RegisterTarget: Is Pickman's Blade Equipped " + isPickmansBladeEquipped + " for " + akTarget.GetDisplayName())
+	If !IsValidTarget(akTarget, False)
+		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest. Debug reason " + LastKillIgnoreReason)
+		Debug.Trace("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest. Debug reason " + LastKillIgnoreReason)
+		Return
+	ElseIf !IsTargetDead
+		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is fresh meat.")
+	EndIf
 
-	If !IsTargetDead && TrackedNPCs.Find(akTarget) < 0
+	Bool isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
+
+	If !IsTargetDead && TrackedNPCs.Find(akTarget) < 0 && isPickmansBladeEquipped
 		; Register for the events on this specific NPC
 		RegisterForRemoteEvent(akTarget, "OnDeath")
 		RegisterForHitEvent(akTarget, akCaster)
 		TrackedNPCs.AddRef(akTarget)
 		Debug.Notification("PW RegisterTarget: Registering death event for " + akTarget.GetDisplayName())
-	ElseIf IsTargetDead
-		Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " is dead")
+		; TODO call whisper logic
+	ElseIf IsTargetDead && isPickmansBladeEquipped
+		Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " is dead. She belongs to the knife now.")
+		If akTarget.GetValue(PW_HitWihPickmansBlade) == 1.0 && akTarget.GetValue(PW_Credit_For_PickmansBlade_Kill) != 1.0
+			Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " likely killed with the blade")
+			; Missed-OnDeath backup — do not stamp credit here (that skipped ProcessKnifeKill).
+			If KillRewardAlias
+				KillRewardAlias.RegisterKillRewardCheck(akTarget, 20)
+			Else
+				Debug.Trace("PickmansWhisper Error: RegisterTarget dead — KillRewardAlias unbound")
+			EndIf
+		EndIf
 		; TODO handle dead use cases
-	Else
-		; Not dead and currently tracked
+	ElseIf isPickmansBladeEquipped
 		Debug.Notification("PW RegisterTarget: Already tracking " + akTarget.GetDisplayName())
+		; Not dead and currently tracked, ready for the kill
+		return
+	ElseIf !isPickmansBladeEquipped
+		; Not dead and currently tracked,
+		Debug.Notification("PW RegisterTarget: She needs a good beating " + akTarget.GetDisplayName())
+		; TODO handle beating use case
+		return
+	Else 
+		; Not dead and currently tracked
+		Debug.Trace("PW RegisterTarget: We should not get here for " + akTarget.GetDisplayName() + ". Might be a logic ERROR.")
+		Debug.Notification("PW RegisterTarget: We should not get here for " + akTarget.GetDisplayName())
 		return	
 	EndIf
 
@@ -583,31 +584,138 @@ EndFunction
 
 function UnRegisterTarget(Actor akTarget, Actor akCaster)
 	; Check if NPC is out of range and only then do we deregister
+	If !akTarget
+		Return
+	EndIf
 	UnregisterForRemoteEvent(akTarget, "OnDeath")
+	UnregisterForHitEvent(akTarget, akCaster)
 	If TrackedNPCs
 		TrackedNPCs.RemoveRef(akTarget)
 	EndIf
 EndFunction
 
 Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource, Projectile akProjectile, Bool abPowerAttack, Bool abSneakAttack, Bool abBashAttack, Bool abHitBlocked, String asMaterialName)
-	If !akTarget
+	Actor targetActor = akTarget as Actor
+	If !targetActor
 		Return
 	EndIf
 
-	Debug.Notification("PW OnHit " + akTarget.GetDisplayName())
+	Bool isPickmansBladeEquipped = False
+	If PlayerAlias
+		isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
+	EndIf
+	If isPickmansBladeEquipped
+		targetActor.SetValue(PW_HitWihPickmansBlade, 1.0)
+	EndIf
+
+	Debug.Notification("PW OnHit " + targetActor.GetDisplayName())
 	; HandleBladeHit(akTarget, akAggressor, akSource)
 EndEvent
 
 Event Actor.OnDeath(Actor akSender, Actor akKiller)
 	Debug.Notification("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
-	; HandleNPCDeath(akSender, akKiller, "OnDeath")
+	RewardKill(akSender)
+EndEvent
+
+; OnDeath / KillRewardAlias settle — credit a blade-hit kill if not already stamped.
+Function RewardKill(Actor akSender)
+	If !akSender
+		Debug.Trace("PickmansWhisper Error: RewardKill — null sender")
+		Return
+	EndIf
+	Bool KillRewardedAlready = CheckIfKillRewarded(akSender)
 
 	UnregisterForRemoteEvent(akSender, "OnDeath")
+	; Match RegisterForHitEvent(target, caster) without needing the original caster ref.
+	UnregisterForAllHitEvents(akSender)
 
 	If TrackedNPCs
 		TrackedNPCs.RemoveRef(akSender)
 	EndIf
-EndEvent
+
+	If KillRewardedAlready
+		Return
+	EndIf
+	If !PW_HitWihPickmansBlade || akSender.GetValue(PW_HitWihPickmansBlade) != 1.0
+		Debug.Trace("PickmansWhisper: RewardKill skip — no PW_HitWihPickmansBlade formId=" + akSender.GetFormID())
+		Return
+	EndIf
+	If !PlayerAlias || !PlayerAlias.IsPickmansBladeEquipped
+		Debug.Trace("PickmansWhisper: RewardKill skip — blade not equipped formId=" + akSender.GetFormID())
+		Return
+	EndIf
+	ProcessKnifeKill(akSender)
+	If PW_Credit_For_PickmansBlade_Kill
+		akSender.SetValue(PW_Credit_For_PickmansBlade_Kill, 1.0)
+	EndIf
+EndFunction
+
+; KillRewardAlias backup path — True when credit AV already stamped. Verify using TrackedNPCs actor instance
+Bool Function CheckIfKillRewarded(Actor akTarget)
+	If !akTarget || !TrackedNPCs || !PW_Credit_For_PickmansBlade_Kill
+		Return False
+	EndIf
+	Int targetRefIdx = TrackedNPCs.Find(akTarget)
+	If targetRefIdx < 0
+		Return False
+	EndIf
+	Actor targetRef = TrackedNPCs.GetAt(targetRefIdx) as Actor
+	If !targetRef
+		Return False
+	EndIf
+	Return targetRef.GetValue(PW_Credit_For_PickmansBlade_Kill) == 1.0
+EndFunction
+
+; TODO Refactor this mess 
+Function StartBond(String reason)
+	If BondStarted
+		Return
+	EndIf
+	
+	BondStarted = True
+	Float now = Utility.GetCurrentGameTime()
+	BondStartGameTime = now
+	
+	; Delete This
+	; If LastKnifeActivityGameTime <= 0.0
+	;	LastKnifeActivityGameTime = now
+	; EndIf
+	
+	; Delete This
+	; LastHungerPollGameTime = now
+	
+	Debug.Trace("PickmansWhisper: bond started (" + reason + ")")
+	
+	; Always-visible status toast — not gated by voice settings or the once-ever intro
+	; line, so re-bonding on a not-yet-bonded save is obvious instead of requiring an
+	; MCM Debug check every few seconds to see when it catches up.
+	Debug.Notification("Pickman's Whisper: bond active")
+	
+	If !IntroToastShown
+		IntroToastShown = True
+		String line = ""
+		If ModConfigAlias
+			line = ModConfigAlias.BondIntroGreeting
+		EndIf
+		If !line || GardenOfEden.StrLength(line) < 1
+			Debug.Trace("PickmansWhisper: ERROR bond intro — bondIntroGreeting missing/empty (ModConfig)")
+		Else
+			ToastVoice(line)
+		EndIf
+	EndIf
+
+	; Delete This
+	; ArmRuntimeLoops()
+
+	; MCM Hunger Panel update showing bonded status
+	RefreshHungerPanel(False)
+	
+	; TODO RefreshDebugBusy is sus
+	; MCM Debug panel update
+	If !RefreshDebugBusy
+		RefreshDebugStatus()
+	EndIf
+EndFunction
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1358,7 +1466,7 @@ Function MaybeRewardEatenRipeCorpse()
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse untracked formId=" + formId)
 		Return
 	EndIf
-	If ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)
+	If !ModConfigAlias || ResolveDecayStageForKill(formId) != (ModConfigAlias.DECAY_STAGE_COUNT - 1)
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse not max stage formId=" + formId)
 		Return
 	EndIf
@@ -1370,7 +1478,7 @@ Function ToastAteRipeCorpse(Actor akCorpse)
 	If !akCorpse
 		Return
 	EndIf
-	If !AteRipeCorpseToast || GardenOfEden.StrLength(AteRipeCorpseToast) < 1
+	If !ModConfigAlias || !ModConfigAlias.AteRipeCorpseToast || GardenOfEden.StrLength(ModConfigAlias.AteRipeCorpseToast) < 1
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no ateRipeCorpseToast (ModConfig not loaded / key empty)")
 		Return
 	EndIf
@@ -1378,7 +1486,7 @@ Function ToastAteRipeCorpse(Actor akCorpse)
 	If !overrideName
 		overrideName = "She"
 	EndIf
-	String line = ApplyNamePlaceholder(AteRipeCorpseToast, overrideName)
+	String line = ApplyNamePlaceholder(ModConfigAlias.AteRipeCorpseToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | empty line after placeholder")
 		Return
@@ -1865,37 +1973,6 @@ Function ToastBladeDetectStatus(String context)
 	; Blade toasts prove bond poll / load is alive — force-arm world scan there
 	StartKillerScanLoop()
 	AnnounceKillScanArmed()
-EndFunction
-
-Function StartBond(String reason)
-	If BondStarted
-		Return
-	EndIf
-	BondStarted = True
-	Float now = Utility.GetCurrentGameTime()
-	BondStartGameTime = now
-	If LastKnifeActivityGameTime <= 0.0
-		LastKnifeActivityGameTime = now
-	EndIf
-	LastHungerPollGameTime = now
-	Debug.Trace("PickmansWhisper: bond started (" + reason + ")")
-	; Always-visible status toast — not gated by voice settings or the once-ever intro
-	; line, so re-bonding on a not-yet-bonded save is obvious instead of requiring an
-	; MCM Debug check every few seconds to see when it catches up.
-	Debug.Notification("Pickman's Whisper: bond active")
-	If !IntroToastShown
-		IntroToastShown = True
-		String line = PickTrustLine()
-		If line == ""
-			line = "Something in the gallery leans closer... glad you came."
-		EndIf
-	ToastVoice(line)
-	EndIf
-	ArmRuntimeLoops()
-	RefreshHungerPanel(False)
-	If !RefreshDebugBusy
-		RefreshDebugStatus()
-	EndIf
 EndFunction
 
 ; --- Trust voice ---------------------------------------------------------------
@@ -2617,9 +2694,6 @@ Function SyncVictimDecayStageStepper(Int formId)
 		Return
 	EndIf
 	If !DecayStagesReady()
-		LoadModConfig()
-	EndIf
-	If !DecayStagesReady()
 		Return
 	EndIf
 	Int resolved = ResolveDecayStageForKill(formId)
@@ -2745,11 +2819,8 @@ EndFunction
 ; Backdate kill clock by ModConfig startHours so ResolveDecayStageForKill == aiStage.
 ; killTime = now - (startHours / 24). Stage 0 => now (0 hours).
 Bool Function ForceDecayKillClockToStage(Int formId, Int aiStage)
-	If formId == 0 || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias || formId == 0 || aiStage < 0 || aiStage >= ModConfigAlias.DECAY_STAGE_COUNT
 		Return False
-	EndIf
-	If !DecayStagesReady()
-		LoadModConfig()
 	EndIf
 	If !DecayStagesReady()
 		Return False
@@ -2949,9 +3020,6 @@ String Function FormatDecayStageStatusForFormId(Int formId, String label)
 		label = "kill"
 	EndIf
 	If !DecayStagesReady()
-		LoadModConfig()
-	EndIf
-	If !DecayStagesReady()
 		Return label + " — ModConfig stages missing"
 	EndIf
 	Int stage = ResolveDecayStageForKill(formId)
@@ -3122,15 +3190,16 @@ Function MaybePromptNameHer(Actor ak, Int recognitionToasts)
 	If GetVictimOverrideName(ak)
 		Return
 	EndIf
-	If !RenamePromptFemaleNPC
-		LoadModConfig()
-	EndIf
-	If !RenamePromptFemaleNPC
+	If !ModConfigAlias || !ModConfigAlias.RenamePromptFemaleNPC
 		; Trace only — Notification here would also clobber the recognition toast.
-		Debug.Trace("PickmansWhisper: ERROR rename prompt — " + ModConfigLoadStatus)
+		String st = ""
+		If ModConfigAlias
+			st = ModConfigAlias.ModConfigLoadStatus
+		EndIf
+		Debug.Trace("PickmansWhisper: ERROR rename prompt — " + st)
 		Return
 	EndIf
-	PendingRenamePrompt = RenamePromptFemaleNPC
+	PendingRenamePrompt = ModConfigAlias.RenamePromptFemaleNPC
 	CancelTimer(TIMER_RENAME_PROMPT)
 	PendingRenameAtReal = Utility.GetCurrentRealTime() + RENAME_PROMPT_DELAY
 	Debug.Trace("PickmansWhisper: name-her prompt queued (deadline) | id=0x" + GardenOfEden.GetHexFormID(ak))
@@ -3570,311 +3639,104 @@ Function LoadLineBanks()
 	LoadRecognitionLines()
 	LoadSleepRecognitionLines()
 	LoadIntimacyNamedLines()
-	LoadModConfig()
 	LoadTargetOverrides()
 EndFunction
 
-; Split s on single-char sep into out[]; returns field count (capped at out.Length).
-; Space-only trim for ModConfig fields. Never TrimString/GetWords here — GetWords
-; mangles semicolon / dotted values (decayStage RGBA + skins).
-String Function ConfigFieldTrim(String s)
-	If !s || s == ""
-		Return ""
-	EndIf
-	Int len = GardenOfEden.StrLength(s)
-	Int start = 0
-	While start < len && GardenOfEden.SubStr(s, start, 1) == " "
-		start += 1
-	EndWhile
-	Int endPos = len
-	While endPos > start && GardenOfEden.SubStr(s, endPos - 1, 1) == " "
-		endPos -= 1
-	EndWhile
-	If start >= endPos
-		Return ""
-	EndIf
-	Return GardenOfEden.SubStr(s, start, endPos - start)
-EndFunction
-
-Int Function SplitByChar(String s, String sep, String[] out)
-	If !out || !sep || GardenOfEden.StrLength(sep) != 1
-		Return 0
-	EndIf
-	Int outMax = out.Length
-	If outMax <= 0
-		Return 0
-	EndIf
-	If !s
-		Return 0
-	EndIf
-	Int n = 0
-	Int start = 0
-	Int len = GardenOfEden.StrLength(s)
-	Int i = 0
-	While i <= len && n < outMax
-		Bool atEnd = (i == len)
-		Bool isSep = False
-		If !atEnd
-			If GardenOfEden.SubStr(s, i, 1) == sep
-				isSep = True
-			EndIf
-		EndIf
-		If atEnd || isSep
-			Int flen = i - start
-			If flen < 0
-				flen = 0
-			EndIf
-			out[n] = ConfigFieldTrim(GardenOfEden.SubStr(s, start, flen))
-			n += 1
-			start = i + 1
-		EndIf
-		i += 1
-	EndWhile
-	Return n
-EndFunction
+; --- ModConfigAlias façades (bodies on PickmansWhisperModConfigScript) ----------
 
 Bool Function IsModConfigLoadBusy()
-	Return ModConfigLoadBusy
+	If !ModConfigAlias
+		Return False
+	EndIf
+	Return ModConfigAlias.IsModConfigLoadBusy()
 EndFunction
 
-; Sync / apply: use live stages if ready; otherwise one load (never nested).
 Bool Function EnsureDecayStagesLoaded()
-	If DecayStagesReady()
-		Return True
-	EndIf
-	If ModConfigLoadBusy
-		Debug.Trace("PickmansWhisper: EnsureDecayStagesLoaded skip — LoadModConfig in progress")
+	If !ModConfigAlias
+		Debug.Trace("PickmansWhisper Error: EnsureDecayStagesLoaded — ModConfigAlias unbound")
 		Return False
 	EndIf
-	LoadModConfig()
-	Return DecayStagesReady()
-EndFunction
-
-Function EnsureDecayStageArrays()
-	If !DecayStageNames || DecayStageNames.Length != DECAY_STAGE_COUNT
-		DecayStageNames = new String[5]
-		DecayStageTintR = new Float[5]
-		DecayStageTintG = new Float[5]
-		DecayStageTintB = new Float[5]
-		DecayStageTintA = new Float[5]
-		DecayStageStartHours = new Float[5]
-		DecayStageSkinsRaw = new String[5]
-		DecayStageAllScars = new Bool[5]
-	EndIf
-EndFunction
-
-Function EnsurePendingDecayStageArrays()
-	If !PendingDecayStageNames || PendingDecayStageNames.Length != DECAY_STAGE_COUNT
-		PendingDecayStageNames = new String[5]
-		PendingDecayStageTintR = new Float[5]
-		PendingDecayStageTintG = new Float[5]
-		PendingDecayStageTintB = new Float[5]
-		PendingDecayStageTintA = new Float[5]
-		PendingDecayStageStartHours = new Float[5]
-		PendingDecayStageSkinsRaw = new String[5]
-		PendingDecayStageAllScars = new Bool[5]
-	EndIf
-EndFunction
-
-Function ClearPendingDecayStages()
-	EnsurePendingDecayStageArrays()
-	PendingDecayStagesFilled = 0
-	Int i = 0
-	While i < DECAY_STAGE_COUNT
-		PendingDecayStageNames[i] = ""
-		PendingDecayStageTintR[i] = 0.0
-		PendingDecayStageTintG[i] = 0.0
-		PendingDecayStageTintB[i] = 0.0
-		PendingDecayStageTintA[i] = 0.0
-		PendingDecayStageStartHours[i] = -1.0
-		PendingDecayStageSkinsRaw[i] = ""
-		PendingDecayStageAllScars[i] = False
-		i += 1
-	EndWhile
-EndFunction
-
-; Commit pending → live only after a complete good parse (never wipe live mid-load).
-Function CommitPendingDecayStages()
-	EnsureDecayStageArrays()
-	EnsurePendingDecayStageArrays()
-	Int i = 0
-	While i < DECAY_STAGE_COUNT
-		DecayStageNames[i] = PendingDecayStageNames[i]
-		DecayStageTintR[i] = PendingDecayStageTintR[i]
-		DecayStageTintG[i] = PendingDecayStageTintG[i]
-		DecayStageTintB[i] = PendingDecayStageTintB[i]
-		DecayStageTintA[i] = PendingDecayStageTintA[i]
-		DecayStageStartHours[i] = PendingDecayStageStartHours[i]
-		DecayStageSkinsRaw[i] = PendingDecayStageSkinsRaw[i]
-		DecayStageAllScars[i] = PendingDecayStageAllScars[i]
-		i += 1
-	EndWhile
-	DecayStagesLoadedCount = DECAY_STAGE_COUNT
-EndFunction
-
-; Parse name;r;g;b;a;startHours;skins[+…];scars? into Pending* (not live).
-; skins=none means no body overlays (default body; face still applies).
-Bool Function ParseDecayStageValue(Int aiStage, String val)
-	If aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
-		Return False
-	EndIf
-	If !val || val == ""
-		Return False
-	EndIf
-	EnsurePendingDecayStageArrays()
-	String[] fields = new String[9]
-	Int n = SplitByChar(val, ";", fields)
-	If n < 7
-		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " needs name;r;g;b;a;startHours;skins — got " + n + " fields")
-		Return False
-	EndIf
-	String name = fields[0]
-	String skins = fields[6]
-	If !name || name == "" || !skins || skins == ""
-		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " empty name or skins (use none for no body)")
-		Return False
-	EndIf
-	Float r = fields[1] as Float
-	Float g = fields[2] as Float
-	Float b = fields[3] as Float
-	Float a = fields[4] as Float
-	Float startH = fields[5] as Float
-	If startH < 0.0
-		Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " startHours must be >= 0")
-		Return False
-	EndIf
-	Bool scars = False
-	If n >= 8 && fields[7] == "scars"
-		scars = True
-	EndIf
-	; none = intentional empty body bank (still a valid ModConfig field).
-	If skins == "none"
-		If scars
-			Debug.Trace("PickmansWhisper: ERROR decayStage" + aiStage + " skins=none cannot use scars")
-			Return False
-		EndIf
-	EndIf
-	PendingDecayStageNames[aiStage] = name
-	PendingDecayStageTintR[aiStage] = r
-	PendingDecayStageTintG[aiStage] = g
-	PendingDecayStageTintB[aiStage] = b
-	PendingDecayStageTintA[aiStage] = a
-	PendingDecayStageStartHours[aiStage] = startH
-	PendingDecayStageSkinsRaw[aiStage] = skins
-	PendingDecayStageAllScars[aiStage] = scars
-	Return True
+	Bool ok = ModConfigAlias.EnsureDecayStagesLoaded()
+	ModConfigLoadStatus = ModConfigAlias.ModConfigLoadStatus
+	Return ok
 EndFunction
 
 Bool Function DecayStagesReady()
-	Return DecayStagesLoadedCount == DECAY_STAGE_COUNT
-EndFunction
-
-; True if startHours[0..4] are nondecreasing (required for threshold resolve).
-Bool Function DecayStageHoursOrdered()
-	If !DecayStagesReady()
+	If !ModConfigAlias
 		Return False
 	EndIf
-	Int i = 1
-	While i < DECAY_STAGE_COUNT
-		If DecayStageStartHours[i] < DecayStageStartHours[i - 1]
-			Return False
-		EndIf
-		i += 1
-	EndWhile
-	Return True
+	ModConfigLoadStatus = ModConfigAlias.ModConfigLoadStatus
+	Return ModConfigAlias.DecayStagesReady()
 EndFunction
 
-Bool Function PendingDecayStageHoursOrdered()
-	EnsurePendingDecayStageArrays()
-	Int i = 1
-	While i < DECAY_STAGE_COUNT
-		If PendingDecayStageStartHours[i] < PendingDecayStageStartHours[i - 1]
-			Return False
-		EndIf
-		i += 1
-	EndWhile
-	Return True
+Bool Function DecayStageHoursOrdered()
+	If !ModConfigAlias
+		Return False
+	EndIf
+	Return ModConfigAlias.DecayStageHoursOrdered()
 EndFunction
 
 String Function GetDecayStageName(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return ""
 	EndIf
-	Return DecayStageNames[aiStage]
+	Return ModConfigAlias.GetDecayStageName(aiStage)
 EndFunction
 
 Float Function GetDecayStageTintR(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return 0.0
 	EndIf
-	Return DecayStageTintR[aiStage]
+	Return ModConfigAlias.GetDecayStageTintR(aiStage)
 EndFunction
 
 Float Function GetDecayStageTintG(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return 0.0
 	EndIf
-	Return DecayStageTintG[aiStage]
+	Return ModConfigAlias.GetDecayStageTintG(aiStage)
 EndFunction
 
 Float Function GetDecayStageTintB(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return 0.0
 	EndIf
-	Return DecayStageTintB[aiStage]
+	Return ModConfigAlias.GetDecayStageTintB(aiStage)
 EndFunction
 
 Float Function GetDecayStageTintA(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return 0.0
 	EndIf
-	Return DecayStageTintA[aiStage]
+	Return ModConfigAlias.GetDecayStageTintA(aiStage)
 EndFunction
 
 Float Function GetDecayStageStartHours(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return -1.0
 	EndIf
-	Return DecayStageStartHours[aiStage]
+	Return ModConfigAlias.GetDecayStageStartHours(aiStage)
 EndFunction
 
 Bool Function GetDecayStageAllScars(Int aiStage)
-	If !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return False
 	EndIf
-	Return DecayStageAllScars[aiStage]
+	Return ModConfigAlias.GetDecayStageAllScars(aiStage)
 EndFunction
 
-; Highest stage with startHours <= elapsedHours. -1 if stages not ready.
 Int Function ResolveDecayStageFromElapsedHours(Float afElapsedHours)
-	If !DecayStagesReady()
+	If !ModConfigAlias
 		Return -1
 	EndIf
-	Float elapsed = afElapsedHours
-	If elapsed < 0.0
-		elapsed = 0.0
-	EndIf
-	Int stage = 0
-	Int i = 0
-	While i < DECAY_STAGE_COUNT
-		If elapsed >= DecayStageStartHours[i]
-			stage = i
-		EndIf
-		i += 1
-	EndWhile
-	Return stage
+	Return ModConfigAlias.ResolveDecayStageFromElapsedHours(afElapsedHours)
 EndFunction
 
-; Expand skins[+skin…] into outTemplates; returns count.
 Int Function FillDecayStageSkins(Int aiStage, String[] outTemplates)
-	If !outTemplates || !DecayStagesReady() || aiStage < 0 || aiStage >= DECAY_STAGE_COUNT
+	If !ModConfigAlias
 		Return 0
 	EndIf
-	String raw = DecayStageSkinsRaw[aiStage]
-	If !raw || raw == "" || raw == "none"
-		Return 0
-	EndIf
-	Return SplitByChar(raw, "+", outTemplates)
+	Return ModConfigAlias.FillDecayStageSkins(aiStage, outTemplates)
 EndFunction
 
 Function EnsureDecayKillLists()
@@ -3982,238 +3844,8 @@ Int Function ResolveDecayStageForKill(Int formId)
 	Return ResolveDecayStageFromElapsedHours(elapsedHours)
 EndFunction
 
-; ModConfig.txt — key=value prompts / toggles. Files-only (no baked mirror).
-; E4/E5: intimacy toast+audio live in necromantic/Intimacy_*_Named.txt / *_Audio.txt.
-; Decay stages: parse into Pending* then Commit — never Clear live mid-load (Sync race).
-Function LoadModConfig()
-	If ModConfigLoadBusy
-		Debug.Trace("PickmansWhisper: LoadModConfig skipped — already in progress")
-		Return
-	EndIf
-	ModConfigLoadBusy = True
-	; Parse into locals, commit to the live fields only after a full successful read —
-	; same "Pending then Commit" principle as decay stages below. Clearing the live
-	; fields up front (old behavior) left a window where a concurrently-dispatched
-	; reader (e.g. DesperateRenameScript.SyncFromKillerScanSnapshot, KillerScan-fired
-	; mid-reload) would read "" instead of the real value. Confirmed live: frequent
-	; reload triggers (loading screens re-run HandleGameResume -> LoadLineBanks ->
-	; LoadModConfig) raced ambient reads often enough to flicker desperateNameSuffix
-	; empty for seconds at a time.
-	String nextRenamePromptFemaleNPC = ""
-	String nextBedGiftWakeToast = ""
-	Float nextBedGiftCooldownDays = -1.0
-	Float nextBedGiftWoundAlpha = -1.0
-	String nextDesperateNameSuffix = ""
-	String nextNamedKillToast = ""
-	String nextNamedKillAudio = ""
-	String nextEatRipeCorpseToast = ""
-	String nextAteRipeCorpseToast = ""
-	Float nextEatRipeCorpseEndBuffAmount = -1.0
-	Float nextEatRipeCorpseEndBuffMaxDelta = -1.0
-	Float nextEatRipeCorpseEndBuffHours = -1.0
-	ClearPendingDecayStages()
-	String fileName = "ModConfig.txt"
-	String path = NoticeConfigPath()
-	; Do NOT touch ModConfigLoadStatus / live fields on a failed read — leave whatever
-	; the last successful load produced in place rather than blanking it out.
-	If !GardenOfEden2.DoesFileExist(fileName, path)
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — MISSING FILE (" + path + fileName + ")")
-		ModConfigLoadBusy = False
-		Return
-	EndIf
-	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
-	If !raw || raw.Length == 0
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — EMPTY/UNREADABLE")
-		ModConfigLoadBusy = False
-		Return
-	EndIf
-	Int i = 0
-	While i < raw.Length
-		; Space-only trim — GetWords/TrimString mangles decayStage semicolon values.
-		String line = ConfigFieldTrim(raw[i])
-		i += 1
-		If line == ""
-			; skip
-		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
-			; comment
-		Else
-			Int eq = -1
-			Int li = 0
-			Int ln = GardenOfEden.StrLength(line)
-			While li < ln && eq < 0
-				If GardenOfEden.SubStr(line, li, 1) == "="
-					eq = li
-				EndIf
-				li += 1
-			EndWhile
-			If eq > 0
-				String key = ConfigFieldTrim(GardenOfEden.SubStr(line, 0, eq))
-				String val = ConfigFieldTrim(GardenOfEden.SubStr(line, eq + 1, -1))
-				If key == "renamePromptFemaleNPC"
-					nextRenamePromptFemaleNPC = val
-				ElseIf key == "bedGiftWakeToast"
-					nextBedGiftWakeToast = val
-				ElseIf key == "desperateNameSuffix"
-					; Keep leading/trailing spaces — " Dumb Bitch" is intentional.
-					nextDesperateNameSuffix = GardenOfEden.SubStr(line, eq + 1, -1)
-				ElseIf key == "bedGiftCooldownDays"
-					If val && GardenOfEden.StrLength(val) > 0
-						Float days = val as Float
-						If days > 0.0
-							nextBedGiftCooldownDays = days
-						EndIf
-					EndIf
-				ElseIf key == "bedGiftWoundAlpha"
-					If val && GardenOfEden.StrLength(val) > 0
-						Float a = val as Float
-						If a >= 0.0 && a <= 1.0
-							nextBedGiftWoundAlpha = a
-						EndIf
-					EndIf
-				ElseIf key == "namedKillToast"
-					nextNamedKillToast = val
-				ElseIf key == "namedKillAudio"
-					nextNamedKillAudio = val
-				ElseIf key == "eatRipeCorpseToast"
-					nextEatRipeCorpseToast = val
-				ElseIf key == "ateRipeCorpseToast"
-					nextAteRipeCorpseToast = val
-				ElseIf key == "ateRipeCorpseEndBuffAmount"
-					If val && GardenOfEden.StrLength(val) > 0
-						Float endAmt = val as Float
-						If endAmt > 0.0
-							nextEatRipeCorpseEndBuffAmount = endAmt
-						EndIf
-					EndIf
-				ElseIf key == "ateRipeCorpseEndBuffMaxDelta"
-					If val && GardenOfEden.StrLength(val) > 0
-						Float endMax = val as Float
-						If endMax > 0.0
-							nextEatRipeCorpseEndBuffMaxDelta = endMax
-						EndIf
-					EndIf
-				ElseIf key == "ateRipeCorpseEndBuffHours"
-					If val && GardenOfEden.StrLength(val) > 0
-						Float endHours = val as Float
-						If endHours > 0.0
-							nextEatRipeCorpseEndBuffHours = endHours
-						EndIf
-					EndIf
-				ElseIf key == "decayStage0"
-					ParseDecayStageValue(0, val)
-				ElseIf key == "decayStage1"
-					ParseDecayStageValue(1, val)
-				ElseIf key == "decayStage2"
-					ParseDecayStageValue(2, val)
-				ElseIf key == "decayStage3"
-					ParseDecayStageValue(3, val)
-				ElseIf key == "decayStage4"
-					ParseDecayStageValue(4, val)
-				EndIf
-			EndIf
-		EndIf
-	EndWhile
-	; Commit all-or-nothing, now that the full file read succeeded — no reader can
-	; observe a half-cleared state.
-	RenamePromptFemaleNPC = nextRenamePromptFemaleNPC
-	BedGiftWakeToast = nextBedGiftWakeToast
-	BedGiftCooldownDays = nextBedGiftCooldownDays
-	BedGiftWoundAlpha = nextBedGiftWoundAlpha
-	DesperateNameSuffix = nextDesperateNameSuffix
-	NamedKillToast = nextNamedKillToast
-	NamedKillAudio = nextNamedKillAudio
-	EatRipeCorpseToast = nextEatRipeCorpseToast
-	AteRipeCorpseToast = nextAteRipeCorpseToast
-	EatRipeCorpseEndBuffAmount = nextEatRipeCorpseEndBuffAmount
-	EatRipeCorpseEndBuffMaxDelta = nextEatRipeCorpseEndBuffMaxDelta
-	EatRipeCorpseEndBuffHours = nextEatRipeCorpseEndBuffHours
-	If BedGiftCooldownDays <= 0.0
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftCooldownDays missing or <=0")
-	EndIf
-	If BedGiftWoundAlpha < 0.0
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftWoundAlpha missing or out of 0..1")
-	EndIf
-	Int filled = 0
-	Int si = 0
-	While si < DECAY_STAGE_COUNT
-		If PendingDecayStageNames[si] != "" && PendingDecayStageSkinsRaw[si] != "" && PendingDecayStageStartHours[si] >= 0.0
-			filled += 1
-		EndIf
-		si += 1
-	EndWhile
-	PendingDecayStagesFilled = filled
-	Bool stagesOk = False
-	If filled == DECAY_STAGE_COUNT
-		If PendingDecayStageHoursOrdered()
-			CommitPendingDecayStages()
-			stagesOk = True
-			; Face banks only when stages actually committed (not mid-flight wipe).
-			PickmansWhisperCorpseDecayScript decay = (Self as Quest) as PickmansWhisperCorpseDecayScript
-			If decay
-				decay.InvalidateDecayFaceArmorBanks()
-				; Eager NoWait preload was tried here and reverted — it added a constantly
-				; re-competing background call (never once completed in testing) that
-				; correlated with much worse despawn delays (5-10s baseline -> 80-130s+).
-				; Face mask reliability is a dropped stretch goal; spawn/despawn reliability
-				; is not. Stay fully lazy — only load when an actual decay apply needs it.
-			EndIf
-		Else
-			Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage startHours must be nondecreasing 0..4 (live stages kept)")
-		EndIf
-	Else
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — decayStage0..4 incomplete (" + filled + "/" + DECAY_STAGE_COUNT + ") — live stages kept")
-	EndIf
-	String status = ""
-	If RenamePromptFemaleNPC
-		status += "rename "
-	EndIf
-	If BedGiftWakeToast
-		status += "bedGift "
-	EndIf
-	If BedGiftCooldownDays > 0.0
-		status += "bedCooldown "
-	EndIf
-	If BedGiftWoundAlpha >= 0.0
-		status += "bedWoundA "
-	EndIf
-	If NamedKillToast
-		status += "namedKill "
-	EndIf
-	If stagesOk
-		status += "decayStages "
-	EndIf
-	If status != ""
-		ModConfigLoadStatus = ConfigFieldTrim(status) + "ok"
-		Debug.Trace("PickmansWhisper: ModConfig ready | " + ModConfigLoadStatus)
-	Else
-		ModConfigLoadStatus = "no known keys"
-		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — " + ModConfigLoadStatus)
-	EndIf
-	ModConfigLoadBusy = False
-EndFunction
-
-; Exposed for BedGiftScript wake toast (ModConfig bedGiftWakeToast).
-String Function GetBedGiftWakeToast()
-	Return BedGiftWakeToast
-EndFunction
-
-; Slice I — ModConfig desperateNameSuffix (may include leading space). Empty = idle.
-String Function GetDesperateNameSuffix()
-	Return DesperateNameSuffix
-EndFunction
-
 PickmansWhisperDesperateRenameScript Function DesperateRename()
 	Return (Self as Quest) as PickmansWhisperDesperateRenameScript
-EndFunction
-
-; Exposed for BedGiftScript cooldown (ModConfig bedGiftCooldownDays). <=0 = missing/invalid.
-Float Function GetBedGiftCooldownDays()
-	Return BedGiftCooldownDays
-EndFunction
-
-; Exposed for CorpseDecay bed wounds (ModConfig bedGiftWoundAlpha). <0 = missing/invalid.
-Float Function GetBedGiftWoundAlpha()
-	Return BedGiftWoundAlpha
 EndFunction
 
 ; E4/E5 — named intimacy toast + audio maps (files-only under config/necromantic/).
@@ -4415,18 +4047,6 @@ EndFunction
 
 PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
 	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
-EndFunction
-
-Float Function GetEatRipeCorpseEndBuffAmount()
-	Return EatRipeCorpseEndBuffAmount
-EndFunction
-
-Float Function GetEatRipeCorpseEndBuffMaxDelta()
-	Return EatRipeCorpseEndBuffMaxDelta
-EndFunction
-
-Float Function GetEatRipeCorpseEndBuffHours()
-	Return EatRipeCorpseEndBuffHours
 EndFunction
 
 ; --- Slice H P0.1 — decay wound lab (façade) ------------------------------------
@@ -6541,6 +6161,7 @@ Function RejectKill(String reason, Bool abToastDebug = True)
 	Debug.Trace("PickmansWhisper: kill ignored — " + reason)
 EndFunction
 
+; DELETE THIS
 ; Sole credit-and-cleanup entry point for a confirmed NPC death — called either directly
 ; from HandleBladeHit (the blade hit landed on an already-dead actor) or from the real
 ; Actor.OnDeath event (the common case: death happens after the hit that tagged them).
@@ -6635,7 +6256,7 @@ Bool Function MaybeSpeakNamedKillVoice(Actor victim)
 	If !overrideName
 		Return False
 	EndIf
-	If !NamedKillToast
+	If !ModConfigAlias || !ModConfigAlias.NamedKillToast
 		Return False
 	EndIf
 	If !IsVoiceEnabled()
@@ -6644,7 +6265,7 @@ Bool Function MaybeSpeakNamedKillVoice(Actor victim)
 	If !IsVoiceWeaponReady()
 		Return True
 	EndIf
-	String line = ApplyNamePlaceholder(NamedKillToast, overrideName)
+	String line = ApplyNamePlaceholder(ModConfigAlias.NamedKillToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return False
 	EndIf
@@ -6658,8 +6279,8 @@ Bool Function MaybeSpeakNamedKillVoice(Actor victim)
 		ShowVoiceToast(line)
 	EndIf
 	If mode != 2
-		If NamedKillAudio
-			PlayWhisperXwmByFile(NamedKillAudio)
+		If ModConfigAlias.NamedKillAudio
+			PlayWhisperXwmByFile(ModConfigAlias.NamedKillAudio)
 		ElseIf mode == 1
 			; Audio-only with no audio key — still deliver toast so the kill is not silent.
 			ShowVoiceToast(line)
@@ -6679,7 +6300,7 @@ Function MaybeToastEatRipeCorpse(Actor akCorpse)
 	If !akCorpse
 		Return
 	EndIf
-	If !EatRipeCorpseToast || GardenOfEden.StrLength(EatRipeCorpseToast) < 1
+	If !ModConfigAlias || !ModConfigAlias.EatRipeCorpseToast || GardenOfEden.StrLength(ModConfigAlias.EatRipeCorpseToast) < 1
 		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | no eatRipeCorpseToast (ModConfig not loaded / key empty)")
 		Return
 	EndIf
@@ -6696,7 +6317,7 @@ Function MaybeToastEatRipeCorpse(Actor akCorpse)
 	If !overrideName
 		overrideName = "her"
 	EndIf
-	String line = ApplyNamePlaceholder(EatRipeCorpseToast, overrideName)
+	String line = ApplyNamePlaceholder(ModConfigAlias.EatRipeCorpseToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | empty line after placeholder")
 		Return

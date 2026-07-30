@@ -410,11 +410,12 @@ Bool Function PrepAimedDecayStage(Int targetStage)
 		Return False
 	EndIf
 	Int formId = aimed.GetFormID()
-	If !m.DecayStagesReady()
-		m.LoadModConfig()
-	EndIf
-	If !m.DecayStagesReady()
-		m.LastVictimStatus = "set decay: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus
+	If !m.ModConfigAlias || !m.ModConfigAlias.DecayStagesReady()
+		String st = ""
+		If m.ModConfigAlias
+			st = m.ModConfigAlias.ModConfigLoadStatus
+		EndIf
+		m.LastVictimStatus = "set decay: ModConfig decayStage0..4 — " + st
 		Debug.Notification("Pickman's Whisper: decay stages not loaded — check ModConfig.txt")
 		Debug.Trace("PickmansWhisper: ERROR PrepAimedDecayStage — " + m.LastVictimStatus)
 		Return False
@@ -440,7 +441,7 @@ Bool Function PrepAimedDecayStage(Int targetStage)
 	Else
 		m.SetDecayKillLastStage(formId, targetStage - 1)
 	EndIf
-	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
+	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.ModConfigAlias.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: PrepAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -466,7 +467,7 @@ Bool Function QueueAimedDecayStage(Int targetStage)
 	PendingDecayAdvanceActor = aimed
 	PendingDecayAdvanceStage = targetStage
 	PendingDecayAdvanceFormId = formId
-	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
+	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.ModConfigAlias.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
 	Debug.Trace("PickmansWhisper: QueueAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -509,7 +510,7 @@ Bool Function QueueAimedDecayAdvance()
 		visual = 0
 	EndIf
 	If visual >= 4
-		m.LastVictimStatus = "advance decay: already " + m.GetDecayStageName(4) + " (stage 4)"
+		m.LastVictimStatus = "advance decay: already " + m.ModConfigAlias.GetDecayStageName(4) + " (stage 4)"
 		Debug.Trace("PickmansWhisper: QueueAimedDecayAdvance — already max stage")
 		Return False
 	EndIf

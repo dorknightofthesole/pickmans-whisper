@@ -55,6 +55,7 @@ from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 ALIAS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 STUB_SCRIPTOBJECT = ROOT / "tools" / "stubs" / "ScriptObject.psc"
@@ -197,7 +198,9 @@ def test_main_wiring() -> None:
         fail("MaybeRewardEatenRipeCorpse must pick the nearest corpse via GetDistance (two ripe corpses in one room must disambiguate)")
     if "FindDecayKillSlot(formId)" not in reward:
         fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be tracked")
-    stage_check_idx = reward.find("ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)")
+    stage_check_idx = reward.find(
+        "ResolveDecayStageForKill(formId) != (ModConfigAlias.DECAY_STAGE_COUNT - 1)"
+    )
     if stage_check_idx < 0:
         fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be at max decay stage")
     if "ToastAteRipeCorpse(nearest)" not in reward or "ApplyEatRipeCorpseBonus(nearest)" not in reward:
@@ -242,7 +245,8 @@ def test_main_wiring() -> None:
     if "BuffTracker()" not in bonus or "ApplyEatRipeCorpseEndBuff()" not in bonus:
         fail("ApplyEatRipeCorpseBonus must delegate to BuffTracker().ApplyEatRipeCorpseEndBuff")
 
-    load_cfg = extract_function(text, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_cfg = extract_function(modcfg, "LoadModConfig")
     if 'key == "ateRipeCorpseToast"' not in load_cfg:
         fail("LoadModConfig must parse ateRipeCorpseToast")
     if "AteRipeCorpseToast = \"\"" not in load_cfg:

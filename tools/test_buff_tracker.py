@@ -35,6 +35,7 @@ from _env import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 BUFF = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBuffTrackerScript.psc"
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 KILLER_SCAN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 ESP_BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
@@ -109,9 +110,9 @@ def test_buff_script() -> None:
 
     apply_fn = extract_function(text, "ApplyEatRipeCorpseEndBuff")
     for needle in (
-        "GetEatRipeCorpseEndBuffAmount()",
-        "GetEatRipeCorpseEndBuffMaxDelta()",
-        "GetEatRipeCorpseEndBuffHours()",
+        "ModConfigAlias.GetEatRipeCorpseEndBuffAmount()",
+        "ModConfigAlias.GetEatRipeCorpseEndBuffMaxDelta()",
+        "ModConfigAlias.GetEatRipeCorpseEndBuffHours()",
     ):
         if needle not in apply_fn:
             fail(f"ApplyEatRipeCorpseEndBuff must call Main().{needle}")
@@ -149,24 +150,23 @@ def test_main_wiring() -> None:
     if "PickmansWhisperBuffTrackerScript" not in facade:
         fail("MainQuestScript.BuffTracker() facade must cast to PickmansWhisperBuffTrackerScript")
 
-    for getter, field in (
-        ("GetEatRipeCorpseEndBuffAmount", "EatRipeCorpseEndBuffAmount"),
-        ("GetEatRipeCorpseEndBuffMaxDelta", "EatRipeCorpseEndBuffMaxDelta"),
-        ("GetEatRipeCorpseEndBuffHours", "EatRipeCorpseEndBuffHours"),
-    ):
-        g = extract_function(text, getter)
-        if f"Return {field}" not in g:
-            fail(f"{getter} must return {field}")
+    if "ModConfigAlias Auto Const" not in text:
+        fail("Main must expose ModConfigAlias for BuffTracker END buff keys")
 
-    load_cfg = extract_function(text, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_cfg = extract_function(modcfg, "LoadModConfig")
     for key in ("ateRipeCorpseEndBuffAmount", "ateRipeCorpseEndBuffMaxDelta", "ateRipeCorpseEndBuffHours"):
         if f'key == "{key}"' not in load_cfg:
             fail(f"LoadModConfig must parse {key}")
-    for field in ("EatRipeCorpseEndBuffAmount = -1.0", "EatRipeCorpseEndBuffMaxDelta = -1.0", "EatRipeCorpseEndBuffHours = -1.0"):
+    for field in (
+        "nextEatRipeCorpseEndBuffAmount = -1.0",
+        "nextEatRipeCorpseEndBuffMaxDelta = -1.0",
+        "nextEatRipeCorpseEndBuffHours = -1.0",
+    ):
         if field not in load_cfg:
             fail(f"LoadModConfig must reset {field} at the top like other ModConfig fields")
 
-    ok("MainQuestScript BuffTracker facade + getters + ModConfig parse/reset")
+    ok("MainQuestScript BuffTracker facade + ModConfigAlias + ModConfig parse/reset")
 
 
 def test_killer_scan_dispatch() -> None:

@@ -18,7 +18,7 @@ Do **not** keep dumping large new features into `PickmansWhisperMainQuestScript.
 
 ## When adding a slice / large subsystem
 
-1. Prefer a new `PickmansWhisper<Feature>Script.psc` (or PlayerAlias for FO4 registration hooks).
+1. Prefer a new modular script — **going forward, prefer a Main `ReferenceAlias` host** (see [papyrus-alias-modular-style.mdc](papyrus-alias-modular-style.mdc) / KillReward). Quest-attached feature scripts remain OK for large shared listeners (BedGift, KillerScan).
 2. Leave Main as a thin router for MCM, alias, and frozen killscan/notice arming.
 3. Do not expand Main “just this once” past a small façade unless the change is a few lines of glue.
 

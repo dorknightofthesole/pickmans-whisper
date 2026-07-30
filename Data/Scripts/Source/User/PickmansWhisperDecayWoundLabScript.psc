@@ -668,12 +668,13 @@ Function DebugApplyDecayStageLab()
 		DiagNotify("Pickman's Whisper\n\nMain script missing.")
 		Return
 	EndIf
-	If !m.DecayStagesReady()
-		m.LoadModConfig()
-	EndIf
-	If !m.DecayStagesReady()
-		SetWoundLabStatus("ERROR: ModConfig decayStage0..4 — " + m.ModConfigLoadStatus)
-		DiagNotify("Pickman's Whisper\n\nDecay stages not loaded from ModConfig.txt.\n" + LastWoundLabStatus + "\nReload line banks / check decayStage0..4.")
+	If !m.ModConfigAlias || !m.ModConfigAlias.DecayStagesReady()
+		String st = ""
+		If m.ModConfigAlias
+			st = m.ModConfigAlias.ModConfigLoadStatus
+		EndIf
+		SetWoundLabStatus("ERROR: ModConfig decayStage0..4 — " + st)
+		DiagNotify("Pickman's Whisper\n\nDecay stages not loaded from ModConfig.txt.\n" + LastWoundLabStatus + "\nCheck decayStage0..4 (loads on ModConfigAlias init).")
 		Return
 	EndIf
 	Actor target = ResolveLabApplyTarget()
@@ -690,11 +691,11 @@ Function DebugApplyDecayStageLab()
 	ElseIf stage > 4
 		stage = 4
 	EndIf
-	Float tintR = m.GetDecayStageTintR(stage)
-	Float tintG = m.GetDecayStageTintG(stage)
-	Float tintB = m.GetDecayStageTintB(stage)
-	Float tintA = m.GetDecayStageTintA(stage)
-	String stageName = m.GetDecayStageName(stage)
+	Float tintR = m.ModConfigAlias.GetDecayStageTintR(stage)
+	Float tintG = m.ModConfigAlias.GetDecayStageTintG(stage)
+	Float tintB = m.ModConfigAlias.GetDecayStageTintB(stage)
+	Float tintA = m.ModConfigAlias.GetDecayStageTintA(stage)
+	String stageName = m.ModConfigAlias.GetDecayStageName(stage)
 	If MCM.IsInstalled()
 		MCM.SetModSettingFloat(MOD_NAME, "fWoundLabTintR:WoundLab", tintR)
 		MCM.SetModSettingFloat(MOD_NAME, "fWoundLabTintG:WoundLab", tintG)

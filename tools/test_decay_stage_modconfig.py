@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 LAB = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperDecayWoundLabScript.psc"
 DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 
@@ -234,7 +235,8 @@ def test_parse_edge_cases() -> None:
 
 def test_papyrus_wiring() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    parse = extract_function(main, "ParseDecayStageValue")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    parse = extract_function(modcfg, "ParseDecayStageValue")
     if "n < 7" not in parse and "n<7" not in parse.replace(" ", ""):
         fail("ParseDecayStageValue must require >= 7 fields (name;r;g;b;a;startHours;skins)")
     if "fields[5]" not in parse or "fields[6]" not in parse:
@@ -243,11 +245,11 @@ def test_papyrus_wiring() -> None:
         fail("ParseDecayStageValue must accept skins=none")
     if "PendingDecayStageStartHours" not in parse:
         fail("ParseDecayStageValue must store PendingDecayStageStartHours (atomic commit)")
-    if "TrimString" in extract_function(main, "SplitByChar"):
+    if "TrimString" in extract_function(modcfg, "SplitByChar"):
         fail("SplitByChar must not TrimString/GetWords (mangles decayStage fields)")
-    if "ConfigFieldTrim" not in extract_function(main, "SplitByChar"):
+    if "ConfigFieldTrim" not in extract_function(modcfg, "SplitByChar"):
         fail("SplitByChar must ConfigFieldTrim (space-only)")
-    load = extract_function(main, "LoadModConfig")
+    load = extract_function(modcfg, "LoadModConfig")
     if "ClearPendingDecayStages" not in load:
         fail("LoadModConfig must ClearPendingDecayStages (not wipe live mid-load)")
     if "ClearDecayStages(" in load:
@@ -260,7 +262,9 @@ def test_papyrus_wiring() -> None:
         fail("LoadModConfig must ConfigFieldTrim key/val (not TrimString on decayStage lines)")
     if "EnsureDecayStagesLoaded" not in main:
         fail("Main must EnsureDecayStagesLoaded for Sync/apply")
-    fill = extract_function(main, "FillDecayStageSkins")
+    if "Function LoadModConfig()" in main:
+        fail("Main must not own LoadModConfig (ModConfigAlias OnAliasInit only)")
+    fill = extract_function(modcfg, "FillDecayStageSkins")
     if 'raw == "none"' not in fill:
         fail("FillDecayStageSkins must treat skins=none as empty body bank")
     if "GetDecayStageStartHours" not in main:

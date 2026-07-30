@@ -21,6 +21,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 CONFIG = ROOT / "Data" / "PickmansWhisper" / "config"
 RECOG_FILE = CONFIG / "RecognitionLines.txt"
 MOD_CONFIG = CONFIG / "ModConfig.txt"
@@ -176,9 +177,10 @@ def test_psc(text: str) -> None:
     if "PendingRenameAtReal" not in cadence or "ShowVoiceToast(PendingRenamePrompt)" not in cadence:
         fail("OnKillerScanCadence must fire PendingRenameAtReal → ShowVoiceToast")
     load_banks = extract_function(text, "LoadLineBanks")
-    if "LoadModConfig()" not in load_banks:
-        fail("LoadLineBanks must call LoadModConfig()")
-    load_mod = extract_function(text, "LoadModConfig")
+    if "LoadModConfig()" in load_banks:
+        fail("LoadLineBanks must not LoadModConfig (ModConfigAlias OnAliasInit owns boot load)")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_mod = extract_function(modcfg, "LoadModConfig")
     if "ModConfig.txt" not in load_mod:
         fail("LoadModConfig must read ModConfig.txt")
     if "renamePromptFemaleNPC" not in load_mod:

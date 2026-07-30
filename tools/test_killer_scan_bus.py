@@ -8,7 +8,7 @@ Locks:
   - Main ArmRuntimeLoops starts KillerScan only (no hunger/bond StartTimer)
   - Version 1.3.0 + Killer Orchestrator banner
   - Recurring StartTimer is KillerScan-only; BedGift may one-shot TIMER_BED_OVERLAYS /
-    TIMER_BED_POSE (re-arming polls that never block the wake stack, no true reschedule loop)
+    TIMER_BED_POSE; KillRewardAlias may one-shot TIMER_KILL_REWARD_CHECK
 
 Usage:
   python tools/test_killer_scan_bus.py
@@ -155,7 +155,8 @@ def test_starttimer_inventory() -> None:
                 starts.append(f"{p.name}:{i}:{line.strip()}")
     killer = [s for s in starts if "PickmansWhisperKillerScanScript.psc" in s]
     bed = [s for s in starts if "PickmansWhisperBedGiftScript.psc" in s]
-    other = [s for s in starts if s not in killer and s not in bed]
+    reward = [s for s in starts if "PickmansWhisperKillRewardScript.psc" in s]
+    other = [s for s in starts if s not in killer and s not in bed and s not in reward]
     if len(killer) != 1 or "TIMER_KILLER_SCAN" not in killer[0]:
         fail(f"expected exactly 1 KillerScan StartTimer(TIMER_KILLER_SCAN), got {killer}")
     bed_overlays = [s for s in bed if "TIMER_BED_OVERLAYS" in s]
@@ -166,9 +167,19 @@ def test_starttimer_inventory() -> None:
         fail(f"expected BedGift StartTimer(TIMER_BED_POSE) re-arming poll, got {bed_pose}")
     if len(bed_overlays) + len(bed_pose) != len(bed):
         fail(f"unexpected BedGift StartTimer beyond TIMER_BED_OVERLAYS/TIMER_BED_POSE, got {bed}")
+    if len(reward) < 1 or any("TIMER_KILL_REWARD_CHECK" not in s for s in reward):
+        fail(
+            f"expected KillReward StartTimer(TIMER_KILL_REWARD_CHECK) arm+re-arm, "
+            f"got {reward}"
+        )
+    if len(reward) > 2:
+        fail(f"unexpected KillReward StartTimer count beyond arm+re-arm, got {reward}")
     if other:
         fail(f"no other feature StartTimer allowed, got {other}")
-    ok("recurring StartTimer=KillerScan; BedGift oneshot TIMER_BED_OVERLAYS + TIMER_BED_POSE only")
+    ok(
+        "recurring StartTimer=KillerScan; BedGift oneshot overlays/pose; "
+        "KillReward arm+re-arm TIMER_KILL_REWARD_CHECK"
+    )
 
 
 def test_main_arming_and_cadence() -> None:

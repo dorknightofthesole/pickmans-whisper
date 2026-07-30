@@ -24,6 +24,7 @@ from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 BED = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBedGiftScript.psc"
 DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 LAB = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperDecayWoundLabScript.psc"
@@ -281,13 +282,14 @@ def test_lab_script(lab: str) -> None:
         if has_scars != scars:
             fail(f"{key} scars flag expected {scars}, got {has_scars}")
     main_txt = MAIN.read_text(encoding="utf-8", errors="replace")
-    load_mod = extract_function(main_txt, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_mod = extract_function(modcfg, "LoadModConfig")
     if "decayStage0" not in load_mod or "ParseDecayStageValue" not in load_mod:
         fail("LoadModConfig must parse decayStage0..4 via ParseDecayStageValue")
-    if "SplitByChar" not in main_txt or "FillDecayStageSkins" not in main_txt:
-        fail("Main must SplitByChar + FillDecayStageSkins for ModConfig stages")
-    if "GetDecayStageTintA" not in main_txt or "DecayStageTintA" not in main_txt:
-        fail("Main must store/expose DecayStageTintA / GetDecayStageTintA")
+    if "SplitByChar" not in modcfg or "FillDecayStageSkins" not in modcfg:
+        fail("ModConfigScript must SplitByChar + FillDecayStageSkins for ModConfig stages")
+    if "GetDecayStageTintA" not in main_txt or "DecayStageTintA" not in modcfg:
+        fail("ModConfigScript must store DecayStageTintA; Main façades GetDecayStageTintA")
     slice_h = SLICE_H.read_text(encoding="utf-8")
     if "ModConfig.txt" not in slice_h or "decayStage0" not in slice_h:
         fail("SLICE_H must document ModConfig decayStage0..4 as source of truth")

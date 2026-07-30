@@ -92,6 +92,11 @@ Function CheckAndHandleBladeReady(Actor PlayerRef, Form akBaseObject)
 		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
 		IsPickmansBladeEquipped = True
 		PlayerRef.AddSpell(PickmansCloakSpell, false)
+		
+		PickmansWhisperMainQuestScript main = GetMain()
+		If main
+			main.StartBond("blade-equipped")
+		EndIf
 	EndIf
 EndFunction
 

@@ -54,6 +54,7 @@ See docs/SLICE_H_CORPSE_DECAY.md · face art docs/Decay_Head_Guide.md (former Sl
 
 ## Later
 
+- [ ] **bedGiftWoundAlpha Main expose** — `tools/test_corpse_decay.py` assertion that Main must load/expose `bedGiftWoundAlpha` / `GetBedGiftWoundAlpha` is commented out. Review after ModConfigAlias move: confirm opacity is read from ModConfigAlias (or CorpseDecay) only, then either restore a correct contract or delete the dead Main-facing assert. Related: `test_bed_hallucination.py`, `test_decay_stage_modconfig.py`.
 - [ ] **Prune unused Caprica stubs** — after the FO4/F4SE/GoE honesty audit, `tools/stubs/` still keeps every type Caprica may need (inheritance, param types, soft deps). Do a **compile-driven** orphan pass later: remove only stubs proven unnecessary (not a text-scan guess). Keep the live `test_stub_natives.py` source check; never reintroduce fake/Skyrim natives to silence Caprica.
 - [ ] **KillerScan → true event bus** — revisit main scan dispatch. Today: sync `VoiceScan.HandleKillerScanVoice`, then `CallFunctionNoWait` knife/overlays (same-quest CustomEvent was unreliable). Goal: scanner publishes once; listeners subscribe without blocking the scan timer. Prove delivery in-game + Papyrus log before ripping out direct calls. See ROADMAP Slice C KillerScan note.
 - [ ] **J** Victim beat-before-kill (temp essential + fight back; unarmed exception)

@@ -1,0 +1,123 @@
+---
+description: Papyrus style — modular aliases, small functions, RefCollections, CK/VMAD binds, no silent errors
+globs: Data/Scripts/Source/User/**/*.psc
+alwaysApply: true
+---
+
+# Papyrus modular alias style (KillReward reference)
+
+Style reference: [`PickmansWhisperKillRewardScript.psc`](Data/Scripts/Source/User/PickmansWhisperKillRewardScript.psc).
+Complements [modular-feature-scripts.mdc](modular-feature-scripts.mdc) and [debug-from-papyrus-logs.mdc](debug-from-papyrus-logs.mdc).
+
+## Architecture (new work)
+
+1. Prefer **`ReferenceAlias` scripts** on Main (or PlayerCombat) for timers, queues, and feature logic — not growing Main.
+2. Keep **functions small**; one job per function / event branch.
+3. Prefer **`RefCollectionAlias`** (AddRef / RemoveRef / Find / GetAt) over `Actor[]` / parallel arrays for actor sets.
+4. Prefer **CK/VMAD Auto Const property binds** over `Game.GetFormFromFile` for mod-owned forms/aliases. Comment binds:
+
+```papyrus
+; CK/VMAD: bound to PickmansWhisperPlayerCombat ALST 0 (PickmansWhisperPlayerAliasScript).
+PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const
+```
+
+5. Main stays a thin router: façades + frozen arming/notice paths only. Sibling access: `GetOwningQuest() as PickmansWhisperMainQuestScript` (or `(Self as Quest) as …` on quest scripts) — never `Self as Sibling`.
+
+## Comments
+
+- Brief header `{…}` on the Scriptname describing ownership and data.
+- Comment **function intent** at non-obvious entry points (handoff contracts, timer purpose).
+- Comment **non-obvious steps inside** complex branches (what to call next / why), e.g.:
+
+```papyrus
+; Callback to main and check if the player was rewarded
+; Else at least confirm the player still has Pickman's Blade Equipped
+If !main.CheckIfKillRewarded(targetActor) || PlayerAlias.IsPickmansBladeEquipped
+	main.RewardKill()
+EndIf
+```
+
+## Blank lines (readability)
+
+Humans need newlines. Without them, Papyrus reads as one solid wall of text.
+
+Use blank lines to separate logical steps — especially **before conditional blocks** (`If` / `ElseIf` / `While`) and after early-return guards — so dense state updates don’t run together. Prefer a blank line between distinct “beats” (guards → state writes → toast/trace → follow-up `If` → arm/refresh calls).
+
+```papyrus
+; ✅ GOOD — breathing room before the next If / action cluster
+If BondStarted
+	Return
+EndIf
+
+BondStarted = True
+Float now = Utility.GetCurrentGameTime()
+BondStartGameTime = now
+
+If LastKnifeActivityGameTime <= 0.0
+	LastKnifeActivityGameTime = now
+EndIf
+
+LastHungerPollGameTime = now
+Debug.Trace("PickmansWhisper: bond started (" + reason + ")")
+Debug.Notification("Pickman's Whisper: bond active")
+
+If !IntroToastShown
+	IntroToastShown = True
+	; ...
+EndIf
+
+ArmRuntimeLoops()
+RefreshHungerPanel(False)
+
+If !RefreshDebugBusy
+	RefreshDebugStatus()
+EndIf
+
+; ❌ BAD — one solid block with no breaks before Ifs
+If BondStarted
+	Return
+EndIf
+BondStarted = True
+Float now = Utility.GetCurrentGameTime()
+BondStartGameTime = now
+If LastKnifeActivityGameTime <= 0.0
+	LastKnifeActivityGameTime = now
+EndIf
+LastHungerPollGameTime = now
+If !IntroToastShown
+	; ...
+EndIf
+ArmRuntimeLoops()
+```
+
+Do not reformat large legacy Main blocks unless the user asks; apply this on **new / touched** code.
+
+## No silent failures
+
+- Do **not** `Return` on error/misconfig/unbound property without a Trace.
+- Error / unexpected-path Trace prefix (exact):
+
+```papyrus
+Debug.Trace("PickmansWhisper Error: Main not initialized")
+```
+
+- Expected idle skips may use `PickmansWhisper:` (non-Error) or stay quiet if every-tick spam; **Error** prefix for “this should not happen / work did not run.”
+
+```papyrus
+; ✅ GOOD
+If !main
+	Debug.Trace("PickmansWhisper Error: Main not initialized")
+	Return
+EndIf
+
+; ❌ BAD — silent bail
+If !main
+	Return
+EndIf
+```
+
+## Wiring checklist
+
+- ESP: ALST (+ ALCS seed for RefCollections) + VMAD property binds in `tools/build_hunger_spell_esp.py`.
+- Caprica + deploy + contract test for the new script / binds.
+- Timer ids: local to the script instance; document unused-id convention in a short comment.

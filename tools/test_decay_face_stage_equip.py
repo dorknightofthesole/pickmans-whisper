@@ -174,10 +174,10 @@ def main() -> None:
         fail("FindFaceArmorLabelIndex must case-fold labels")
     if "InvalidateDecayFaceArmorBanks" not in decay:
         fail("CorpseDecay must InvalidateDecayFaceArmorBanks for ModConfig hot-reload")
-    main = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc").read_text(
-        encoding="utf-8", errors="replace"
-    )
-    load_mod = extract_function(main, "LoadModConfig")
+    modcfg = (
+        ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
+    ).read_text(encoding="utf-8", errors="replace")
+    load_mod = extract_function(modcfg, "LoadModConfig")
     if "InvalidateDecayFaceArmorBanks" not in load_mod:
         fail("LoadModConfig must InvalidateDecayFaceArmorBanks after reload")
 

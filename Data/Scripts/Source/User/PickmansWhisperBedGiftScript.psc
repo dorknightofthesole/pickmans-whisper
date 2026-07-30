@@ -198,7 +198,10 @@ Bool Function BedGiftCooldownReady()
 	If !m
 		Return False
 	EndIf
-	Float cooldownDays = m.GetBedGiftCooldownDays()
+	If !m.ModConfigAlias
+		Return False
+	EndIf
+	Float cooldownDays = m.ModConfigAlias.GetBedGiftCooldownDays()
 	If cooldownDays <= 0.0
 		Return False
 	EndIf
@@ -228,7 +231,10 @@ Function MaybeSpeakBedGiftWakeToast()
 	If !m.IsVoiceWeaponReady()
 		Return
 	EndIf
-	String line = m.GetBedGiftWakeToast()
+	If !m.ModConfigAlias
+		Return
+	EndIf
+	String line = m.ModConfigAlias.GetBedGiftWakeToast()
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return
 	EndIf
@@ -513,7 +519,10 @@ Function MaybeWarmBedGiftBody()
 		Return
 	EndIf
 	If !BedGiftCooldownReady()
-		Float cd = m.GetBedGiftCooldownDays()
+		Float cd = -1.0
+		If m.ModConfigAlias
+			cd = m.ModConfigAlias.GetBedGiftCooldownDays()
+		EndIf
 		If cd <= 0.0
 			SetBedGiftStatus("warm skip: bedGiftCooldownDays missing/invalid — check ModConfig.txt")
 		Else

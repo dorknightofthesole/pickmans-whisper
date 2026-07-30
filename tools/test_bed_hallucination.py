@@ -25,6 +25,7 @@ from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 BED_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBedGiftScript.psc"
 ALIAS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
 SCRIPT_STUB = ROOT / "tools" / "stubs" / "ScriptObject.psc"
@@ -170,11 +171,12 @@ def test_main_facade(main: str) -> None:
     if "% 5" in knife_warm or "ScanTick % 5" in knife_warm:
         fail("HandleKillerScanKnifeAimWarm must warm every tick (not % 5 — busy skips miss warm)")
     load = extract_function(main, "LoadLineBanks")
-    if "LoadModConfig()" not in load:
-        fail("LoadLineBanks must LoadModConfig (bedGiftWakeToast)")
+    if "LoadModConfig()" in load:
+        fail("LoadLineBanks must not LoadModConfig (ModConfigAlias OnAliasInit owns boot load)")
     if "LoadBedGiftLines" in main:
         fail("LoadBedGiftLines retired — wake toast is ModConfig bedGiftWakeToast")
-    load_mod = extract_function(main, "LoadModConfig")
+    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
+    load_mod = extract_function(modcfg, "LoadModConfig")
     if "bedGiftWakeToast" not in load_mod:
         fail("LoadModConfig must parse bedGiftWakeToast")
     if "bedGiftCooldownDays" not in load_mod:
@@ -185,13 +187,14 @@ def test_main_facade(main: str) -> None:
         fail("LoadModConfig must reset BedGiftCooldownDays to sentinel -1.0")
     if "BedGiftWoundAlpha = -1.0" not in load_mod:
         fail("LoadModConfig must reset BedGiftWoundAlpha to sentinel -1.0")
-    if "GetBedGiftWakeToast" not in main:
-        fail("Main must expose GetBedGiftWakeToast for BedGift")
-    if "GetBedGiftCooldownDays" not in main:
-        fail("Main must expose GetBedGiftCooldownDays for BedGift")
-    if "GetBedGiftWoundAlpha" not in main:
-        fail("Main must expose GetBedGiftWoundAlpha for CorpseDecay bed path")
-    ok("Main bed gift façades + ModConfig wake toast + cooldown")
+    if "ModConfigAlias Auto Const" not in main:
+        fail("Main must expose ModConfigAlias for BedGift/CorpseDecay")
+    bed = BED_PSC.read_text(encoding="utf-8", errors="replace")
+    if "ModConfigAlias.GetBedGiftWakeToast" not in bed:
+        fail("BedGift must read wake toast via ModConfigAlias")
+    if "ModConfigAlias.GetBedGiftCooldownDays" not in bed:
+        fail("BedGift must read cooldown via ModConfigAlias")
+    ok("ModConfigAlias bed gift wiring + ModConfig wake toast + cooldown")
 
 
 def test_bed_script(bed: str) -> None:
@@ -392,8 +395,8 @@ def test_bed_script(bed: str) -> None:
     if "MaybeSpeakBedGiftWakeToast" not in tail:
         fail("FinishBedPresentTail must MaybeSpeakBedGiftWakeToast")
     wake = extract_function(bed, "MaybeSpeakBedGiftWakeToast")
-    if "GetBedGiftWakeToast" not in wake:
-        fail("MaybeSpeakBedGiftWakeToast must use ModConfig via GetBedGiftWakeToast")
+    if "ModConfigAlias.GetBedGiftWakeToast" not in wake:
+        fail("MaybeSpeakBedGiftWakeToast must use ModConfig via ModConfigAlias")
     if "BedGiftLines" in bed or "LoadBedGiftLines" in bed:
         fail("BedGiftLines bank retired — use ModConfig bedGiftWakeToast")
     if "0x00004DEC" not in bed:
@@ -473,8 +476,8 @@ def test_config_mcm_deploy() -> None:
     m = re.search(r"Bool Function BedGiftCooldownReady\(\)(.*?)EndFunction", bed, re.S)
     if not m or "IsBedGiftEverySleep" not in m.group(1):
         fail("BedGiftCooldownReady must honor IsBedGiftEverySleep")
-    if "GetBedGiftCooldownDays" not in m.group(1):
-        fail("BedGiftCooldownReady must use GetBedGiftCooldownDays from ModConfig")
+    if "ModConfigAlias.GetBedGiftCooldownDays" not in m.group(1):
+        fail("BedGiftCooldownReady must use ModConfigAlias.GetBedGiftCooldownDays")
     deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
     if "test_bed_hallucination.py" not in deploy:
         fail("build-deploy-local.ps1 must run test_bed_hallucination.py")
