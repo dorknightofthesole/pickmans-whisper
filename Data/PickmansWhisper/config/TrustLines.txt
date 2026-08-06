@@ -1,0 +1,10 @@
+# Bond / trust voice bank (files-only). One toast line per non-comment row.
+# Reloaded via MCM Voice > Reload line banks / LoadLineBanks on game resume.
+You hear me. Good. Stay a while.
+I like the way you hold still in these halls.
+We're getting along already... aren't we?
+Keep the knife close. It likes you.
+No need to rush. I'm not going anywhere.
+The paint chips look like smiles up close.
+You came seeking a gift. You found a friend.
+Quiet steps. Careful hands. Perfect.

@@ -3,9 +3,9 @@
 
 Locks:
   - Main ALST 5 ModConfigAlias UniqueActor=Player
-  - ANAM 6
+  - ANAM 7 (past VoiceAlias ALST 6)
   - VMAD attaches PickmansWhisperModConfigScript on ALST 5
-  - Main.ModConfigAlias Auto Const bound to Main ALST 5
+  - Main.ModConfigAlias Auto Const + VMAD Object bind to ALST 5
   - LoadModConfig body + parse helpers live on ModConfigScript
   - Main keeps thin LoadModConfig / DecayStagesReady façades
   - OnAliasInit calls LoadModConfig
@@ -29,7 +29,8 @@ DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
 
 FID_QUEST = 0x01000800
 ALIAS_MOD_CONFIG_ID = 5
-ANAM_NEXT = ALIAS_MOD_CONFIG_ID + 1
+ALIAS_VOICE_ID = 6
+ANAM_NEXT = ALIAS_VOICE_ID + 1
 
 
 def fail(msg: str) -> None:
@@ -125,12 +126,13 @@ def main() -> None:
     for needle, label in (
         ("ALIAS_MOD_CONFIG_ID = 5", "ModConfig ALST"),
         ('zstr("ModConfigAlias")', "ModConfig ALID"),
-        ('"ModConfigAlias", ALIAS_MOD_CONFIG_ID', "Main ModConfigAlias bind"),
         ('"PickmansWhisperModConfigScript"', "alias script attach"),
     ):
         if needle not in builder:
             fail(f"builder missing {label}: {needle}")
-    ok("builder declares ModConfigAlias ALST 5 + VMAD script")
+    if "mod_config_prop" not in builder:
+        fail("builder must VMAD-bind Main.ModConfigAlias (mod_config_prop)")
+    ok("builder declares ModConfigAlias ALST 5 + VMAD script + Main Object bind")
 
     if not MOD_PSC.is_file():
         fail("PickmansWhisperModConfigScript.psc missing")
@@ -147,8 +149,12 @@ def main() -> None:
         fail("ModConfigScript must expose RenamePromptFemaleNPC as Property")
     if "String Property BondIntroGreeting" not in mod:
         fail("ModConfigScript must expose BondIntroGreeting as Property")
+    if "String Property HungerWithdrawalToast" not in mod:
+        fail("ModConfigScript must expose HungerWithdrawalToast as Property")
     if 'key == "bondIntroGreeting"' not in mod:
         fail("LoadModConfig must parse bondIntroGreeting")
+    if 'key == "hungerWithdrawalToast"' not in mod:
+        fail("LoadModConfig must parse hungerWithdrawalToast")
     if "Int Property DECAY_STAGE_COUNT" not in mod:
         fail("ModConfigScript must expose DECAY_STAGE_COUNT as Property")
     ok("ModConfigScript: ReferenceAlias + OnAliasInit load + Properties")
@@ -158,6 +164,8 @@ def main() -> None:
     )
     if "bondIntroGreeting=Something in the gallery leans closer... glad you came." not in mod_txt:
         fail("ModConfig.txt must ship bondIntroGreeting default")
+    if "hungerWithdrawalToast=The quiet ends. The knife remembers." not in mod_txt:
+        fail("ModConfig.txt must ship hungerWithdrawalToast default")
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     if "Something in the gallery leans closer" in psc:
         fail("Main must not hard-code bond intro (ModConfig BondIntroGreeting is source of truth)")
@@ -186,14 +194,16 @@ def main() -> None:
 
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     if "PickmansWhisperModConfigScript Property ModConfigAlias Auto Const" not in psc:
-        fail("Main must declare ModConfigAlias Auto Const")
+        fail("Main must declare ModConfigAlias Auto Const (ESP Object bind)")
+    if "Function EnsureFeatureAliases" not in psc:
+        fail("Main must keep EnsureFeatureAliases fail-loud check")
     if "Function LoadModConfig()" in psc:
         fail("Main must not own LoadModConfig (Alias OnAliasInit only)")
     if "String Function ConfigFieldTrim" in psc:
         fail("Main must not keep ConfigFieldTrim body (moved to ModConfigAlias)")
     if "ClearPendingDecayStages" in psc and "Function ClearPendingDecayStages" in psc:
         fail("Main must not keep ClearPendingDecayStages body")
-    ok("MainQuestScript declares ModConfigAlias; no LoadModConfig on Main")
+    ok("MainQuestScript declares ModConfigAlias Auto Const")
 
     if not ESP.is_file():
         fail(f"ESP missing: {ESP}")
@@ -245,12 +255,12 @@ def main() -> None:
     if not vmad or b"PickmansWhisperModConfigScript" not in vmad:
         fail("Main VMAD must attach PickmansWhisperModConfigScript")
     binds = find_vmad_object_prop(vmad, "ModConfigAlias")
-    if not any(a == ALIAS_MOD_CONFIG_ID and f == FID_QUEST for a, f in binds):
+    if not binds or binds[0] != (ALIAS_MOD_CONFIG_ID, FID_QUEST):
         fail(
-            f"Main ModConfigAlias must bind Main ALST {ALIAS_MOD_CONFIG_ID}, "
+            f"Main VMAD must Object-bind ModConfigAlias → ALST {ALIAS_MOD_CONFIG_ID}, "
             f"got {binds}"
         )
-    ok("VMAD: ModConfigAlias -> Main ALST 5 + ModConfigScript attached")
+    ok(f"VMAD: ModConfigScript on ALST 5; Main.ModConfigAlias -> {ALIAS_MOD_CONFIG_ID}")
 
     deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
     if "PickmansWhisperModConfigScript.psc" not in deploy:

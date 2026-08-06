@@ -66,15 +66,15 @@ Bool Function EnsureLabWoundBank()
 		Return True
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetWoundLabStatus("ERROR: Main script missing — cannot load " + WOUND_FILE)
+	If !m || !m.VoiceAlias
+		SetWoundLabStatus("ERROR: Main/VoiceAlias missing — cannot load " + WOUND_FILE)
 		Return False
 	EndIf
 	LabWoundTemplates = new String[64]
-	LabWoundTemplateCount = m.LoadStageBankAt(WOUND_FILE, LabWoundTemplates, CONFIG_PATH)
+	LabWoundTemplateCount = m.VoiceAlias.LoadStageBankAt(WOUND_FILE, LabWoundTemplates, CONFIG_PATH)
 	LabWoundBankLoaded = True
 	If LabWoundTemplateCount <= 0
-		SetWoundLabStatus("ERROR: " + WOUND_FILE + " — " + m.GetLastStageLoadStatus())
+		SetWoundLabStatus("ERROR: " + WOUND_FILE + " — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Debug.Notification("Pickman's Whisper: " + WOUND_FILE + " missing or empty")
 		Return False
 	EndIf
@@ -86,15 +86,15 @@ Bool Function EnsureLabSkinBank()
 		Return True
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetWoundLabStatus("ERROR: Main script missing — cannot load " + SKIN_FILE)
+	If !m || !m.VoiceAlias
+		SetWoundLabStatus("ERROR: Main/VoiceAlias missing — cannot load " + SKIN_FILE)
 		Return False
 	EndIf
 	LabSkinTemplates = new String[64]
-	LabSkinTemplateCount = m.LoadStageBankAt(SKIN_FILE, LabSkinTemplates, CONFIG_PATH)
+	LabSkinTemplateCount = m.VoiceAlias.LoadStageBankAt(SKIN_FILE, LabSkinTemplates, CONFIG_PATH)
 	LabSkinBankLoaded = True
 	If LabSkinTemplateCount <= 0
-		SetWoundLabStatus("ERROR: " + SKIN_FILE + " — " + m.GetLastStageLoadStatus())
+		SetWoundLabStatus("ERROR: " + SKIN_FILE + " — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Debug.Notification("Pickman's Whisper: " + SKIN_FILE + " missing or empty")
 		Return False
 	EndIf
@@ -106,15 +106,15 @@ Bool Function EnsureLabFaceBank()
 		Return True
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetWoundLabStatus("ERROR: Main script missing — cannot load " + FACE_FILE)
+	If !m || !m.VoiceAlias
+		SetWoundLabStatus("ERROR: Main/VoiceAlias missing — cannot load " + FACE_FILE)
 		Return False
 	EndIf
 	LabFaceTemplates = new String[64]
-	LabFaceTemplateCount = m.LoadStageBankAt(FACE_FILE, LabFaceTemplates, CONFIG_PATH)
+	LabFaceTemplateCount = m.VoiceAlias.LoadStageBankAt(FACE_FILE, LabFaceTemplates, CONFIG_PATH)
 	LabFaceBankLoaded = True
 	If LabFaceTemplateCount <= 0
-		SetWoundLabStatus("ERROR: " + FACE_FILE + " — " + m.GetLastStageLoadStatus())
+		SetWoundLabStatus("ERROR: " + FACE_FILE + " — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Debug.Notification("Pickman's Whisper: " + FACE_FILE + " missing or empty")
 		Return False
 	EndIf
@@ -471,8 +471,8 @@ Function DebugApplyWoundLabOverlays()
 	Actor target = LabCorpse
 	If !target
 		PickmansWhisperMainQuestScript m = Main()
-		If m
-			target = m.GetLookAimActor()
+		If m && m.VoiceAlias
+			target = m.VoiceAlias.GetLookAimActor()
 		EndIf
 	EndIf
 	If !target || target == Game.GetPlayer()
@@ -496,8 +496,8 @@ Actor Function ResolveLabApplyTarget()
 	Actor target = LabCorpse
 	If !target
 		PickmansWhisperMainQuestScript m = Main()
-		If m
-			target = m.GetLookAimActor()
+		If m && m.VoiceAlias
+			target = m.VoiceAlias.GetLookAimActor()
 		EndIf
 	EndIf
 	If !target || target == Game.GetPlayer()

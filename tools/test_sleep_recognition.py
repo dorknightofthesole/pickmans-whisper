@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
 CONFIG = ROOT / "Data" / "PickmansWhisper" / "config"
 SLEEP_FILE = CONFIG / "SleepRecognitionLines.txt"
 ACTOR_STUB = ROOT / "tools" / "stubs" / "Actor.psc"
@@ -103,10 +103,10 @@ def test_psc(text: str) -> None:
         extract_function(text, name)
     ok("P5 sleep helpers present")
 
-    load_banks = extract_function(text, "LoadLineBanks")
+    load_banks = extract_function(text, "LoadVoiceBanks")
     if "LoadSleepRecognitionLines()" not in load_banks:
-        fail("LoadLineBanks must call LoadSleepRecognitionLines()")
-    ok("LoadLineBanks loads sleep recognition")
+        fail("LoadVoiceBanks must call LoadSleepRecognitionLines()")
+    ok("LoadVoiceBanks loads sleep recognition")
 
     load_sleep = extract_function(text, "LoadSleepRecognitionLines")
     if 'LoadStageBank("SleepRecognitionLines.txt"' not in load_sleep:

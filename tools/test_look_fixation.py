@@ -22,7 +22,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
+MAIN_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 MCM_CONFIG = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 MCM_SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
 
@@ -165,18 +166,18 @@ def test_psc_contracts(text: str) -> None:
         fail("TickLookFixation must not use FIXATION_TOAST_COOLDOWN")
     ok("TickLookFixation aim + P2 voice + isolated from ambient")
 
-    # VoiceScan HandleKillerScanVoice: fixation BEFORE hunger (order lock)
-    voice = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceScanScript.psc").read_text(
+    # VoiceScan HandleWhisperVoice: fixation BEFORE hunger (order lock)
+    voice = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc").read_text(
         encoding="utf-8", errors="replace"
     )
-    if "Function HandleKillerScanVoice" not in voice:
-        fail("VoiceScan must expose HandleKillerScanVoice (direct KillerScan dispatch)")
-    if "TickLookFixation()" not in voice or 'MaybeSpeakNoticeLine("killscan")' not in voice:
-        fail("VoiceScan must TickLookFixation + MaybeSpeakNoticeLine(killscan)")
-    i_ambient = voice.find('MaybeSpeakNoticeLine("killscan")')
+    if "Function HandleWhisperVoice" not in voice:
+        fail("VoiceScan must expose HandleWhisperVoice (direct KillerScan dispatch)")
+    if "TickLookFixation()" not in voice or "MaybeSpeakNoticeLine()" not in voice:
+        fail("VoiceAlias must TickLookFixation + MaybeSpeakNoticeLine()")
+    i_ambient = voice.find("MaybeSpeakNoticeLine()")
     i_fix = voice.find("TickLookFixation()")
     if i_fix > i_ambient:
-        fail("TickLookFixation must run BEFORE ambient MaybeSpeakNoticeLine in VoiceScan")
+        fail("TickLookFixation must run BEFORE ambient MaybeSpeakNoticeLine in VoiceAlias")
     if "ProcessKnifeCreditFromKillerScan" in voice:
         fail("VoiceScan must not own knife credit")
     if "RegisterForCustomEvent" in voice:

@@ -20,7 +20,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
+MAIN_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 CONFIG = ROOT / "Data" / "PickmansWhisper" / "config"
 RECOG_FILE = CONFIG / "RecognitionLines.txt"
@@ -90,10 +91,10 @@ def test_psc(text: str) -> None:
         extract_function(text, name)
     ok("P2 recognition helpers present")
 
-    load_banks = extract_function(text, "LoadLineBanks")
+    load_banks = extract_function(text, "LoadVoiceBanks")
     if "LoadRecognitionLines()" not in load_banks:
-        fail("LoadLineBanks must call LoadRecognitionLines()")
-    ok("LoadLineBanks loads recognition")
+        fail("LoadVoiceBanks must call LoadRecognitionLines()")
+    ok("LoadVoiceBanks loads recognition")
 
     load_recog = extract_function(text, "LoadRecognitionLines")
     if 'LoadStageBank("RecognitionLines.txt"' not in load_recog:
@@ -173,12 +174,13 @@ def test_psc(text: str) -> None:
         fail("MaybePromptNameHer must fire every toast from count >= 3 (not == 3 only)")
     if RENAME_PROMPT_DEFAULT in text:
         fail("PSC must not hard-code renamePromptFemaleNPC text (ModConfig.txt is source of truth)")
-    cadence = extract_function(text, "OnKillerScanCadence")
+    main_text = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
+    cadence = extract_function(main_text, "OnKillerScanCadence")
     if "PendingRenameAtReal" not in cadence or "ShowVoiceToast(PendingRenamePrompt)" not in cadence:
-        fail("OnKillerScanCadence must fire PendingRenameAtReal → ShowVoiceToast")
-    load_banks = extract_function(text, "LoadLineBanks")
-    if "LoadModConfig()" in load_banks:
-        fail("LoadLineBanks must not LoadModConfig (ModConfigAlias OnAliasInit owns boot load)")
+        fail("OnKillerScanCadence must fire PendingRenameAtReal → ShowVoiceToast (VoiceAlias)")
+    load_banks_main = extract_function(main_text, "LoadLineBanks")
+    if "ModConfigAlias.LoadModConfig()" not in load_banks_main:
+        fail("LoadLineBanks must ModConfigAlias.LoadModConfig (resume/reload refresh)")
     modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
     load_mod = extract_function(modcfg, "LoadModConfig")
     if "ModConfig.txt" not in load_mod:

@@ -38,10 +38,6 @@ PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
-PickmansWhisperVoiceScanScript Function VoiceScan()
-	Return (Self as Quest) as PickmansWhisperVoiceScanScript
-EndFunction
-
 PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
 EndFunction
@@ -67,8 +63,10 @@ PickmansWhisperDesperateRenameScript Function DesperateRename()
 EndFunction
 
 Function StartKillerScanLoop()
-	CancelTimer(TIMER_KILLER_SCAN)
-	StartTimer(KILLER_SCAN_SECONDS, TIMER_KILLER_SCAN)
+	Debug.Notification("PW Error: StartKillerScanLoop is being called")
+	Debug.Trace("PW Error: StartKillerScanLoop is being called")
+	; CancelTimer(TIMER_KILLER_SCAN)
+	; StartTimer(KILLER_SCAN_SECONDS, TIMER_KILLER_SCAN)
 EndFunction
 
 Function AnnounceKillerScanArmed()
@@ -92,6 +90,9 @@ Function LogVersionBannerOnce()
 EndFunction
 
 Event OnTimer(Int aiTimerID)
+	Debug.Notification("PW Error: KillerScan OnTimer is being called")
+	Debug.Trace("PW Error: KillerScan OnTimer is being called")
+
 	If aiTimerID != TIMER_KILLER_SCAN
 		Debug.Trace("PickmansWhisper: KillerScan OnTimer ignore id=" + aiTimerID)
 		Return
@@ -179,16 +180,15 @@ EndFunction
 
 ; Voice sync first; knife/overlays/cadence NoWait so LooksMenu Wait cannot starve whispers.
 Function DispatchListeners()
-	PickmansWhisperVoiceScanScript voice = VoiceScan()
-	If voice
-		voice.HandleKillerScanVoice(Self)
+	PickmansWhisperMainQuestScript m = Main()
+	If m && m.VoiceAlias
+		m.VoiceAlias.HandleWhisperVoice(FacedLiving)
 	ElseIf !VoiceMissingToasted
 		VoiceMissingToasted = True
-		Debug.Notification("Pickman's Whisper: VoiceScan script missing — rebuild esp")
-		Debug.Trace("PickmansWhisper: ERROR VoiceScan script missing on Main quest")
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Debug.Trace("PickmansWhisper: ERROR VoiceAlias unbound on Main quest")
 	EndIf
 
-	PickmansWhisperMainQuestScript m = Main()
 	If m
 		m.CallFunctionNoWait("HandleKillerScanKnifeAimWarm", None)
 		m.CallFunctionNoWait("OnKillerScanCadence", None)

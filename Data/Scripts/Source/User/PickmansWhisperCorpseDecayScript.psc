@@ -72,10 +72,6 @@ Function DiagNotify(String msg)
 	Debug.Notification(msg)
 EndFunction
 
-PickmansWhisperKillerScanScript Function KillerScan()
-	Return (Self as Quest) as PickmansWhisperKillerScanScript
-EndFunction
-
 ; CallFunctionNoWait + LooksMenu Utility.Wait re-enters this script — overlapping
 ; SyncOverlays thrashed LastStage / never finished stage 4 Black. One flight at a time.
 Bool OverlaySyncBusy = False
@@ -214,16 +210,16 @@ Function SyncOverlaysFromKillerScanSnapshot()
 	OverlaySyncBusy = True
 	OverlaySyncBusySince = now
 
-	PickmansWhisperKillerScanScript scan = KillerScan()
-	If !scan
-		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — KillerScan missing")
+	If !m.VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — VoiceAlias unbound")
 		OverlaySyncBusy = False
 		Return
 	EndIf
-	Actor[] dead = scan.ScanDead
-	Int deadCount = scan.ScanDeadCount
+	; KillerScan snapshot deprecated — VoiceAlias stubs until corpse bus is rewired.
+	Actor[] dead = m.VoiceAlias.StubScanDead()
+	Int deadCount = m.VoiceAlias.StubScanDeadCount()
 	If !dead || deadCount <= 0
-		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | ScanDead empty")
+		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | ScanDead empty (stub)")
 		OverlaySyncBusy = False
 		Return
 	EndIf
@@ -275,17 +271,17 @@ Bool Function EnsureWoundBank()
 		Return True
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetCorpseDecayStatus("ERROR: Main script missing — cannot load " + WOUND_FILE)
+	If !m || !m.VoiceAlias
+		SetCorpseDecayStatus("ERROR: Main/VoiceAlias missing — cannot load " + WOUND_FILE)
 		Return False
 	EndIf
 	WoundTemplates = new String[64]
-	WoundTemplateCount = m.LoadStageBankAt(WOUND_FILE, WoundTemplates, CONFIG_PATH)
+	WoundTemplateCount = m.VoiceAlias.LoadStageBankAt(WOUND_FILE, WoundTemplates, CONFIG_PATH)
 	WoundBankLoaded = True
 	If WoundTemplateCount <= 0
-		SetCorpseDecayStatus("ERROR: " + WOUND_FILE + " — " + m.GetLastStageLoadStatus())
+		SetCorpseDecayStatus("ERROR: " + WOUND_FILE + " — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Debug.Notification("Pickman's Whisper: " + WOUND_FILE + " missing or empty")
-		Debug.Trace("PickmansWhisper: ERROR DecayWoundOverlays load failed — " + m.GetLastStageLoadStatus())
+		Debug.Trace("PickmansWhisper: ERROR DecayWoundOverlays load failed — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Return False
 	EndIf
 	Return True
@@ -296,17 +292,17 @@ Bool Function EnsureSkinBank()
 		Return True
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetCorpseDecayStatus("ERROR: Main script missing — cannot load " + SKIN_FILE)
+	If !m || !m.VoiceAlias
+		SetCorpseDecayStatus("ERROR: Main/VoiceAlias missing — cannot load " + SKIN_FILE)
 		Return False
 	EndIf
 	SkinTemplates = new String[64]
-	SkinTemplateCount = m.LoadStageBankAt(SKIN_FILE, SkinTemplates, CONFIG_PATH)
+	SkinTemplateCount = m.VoiceAlias.LoadStageBankAt(SKIN_FILE, SkinTemplates, CONFIG_PATH)
 	SkinBankLoaded = True
 	If SkinTemplateCount <= 0
-		SetCorpseDecayStatus("ERROR: " + SKIN_FILE + " — " + m.GetLastStageLoadStatus())
+		SetCorpseDecayStatus("ERROR: " + SKIN_FILE + " — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Debug.Notification("Pickman's Whisper: " + SKIN_FILE + " missing or empty")
-		Debug.Trace("PickmansWhisper: ERROR DecaySkinOverlays load failed — " + m.GetLastStageLoadStatus())
+		Debug.Trace("PickmansWhisper: ERROR DecaySkinOverlays load failed — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Return False
 	EndIf
 	Return True
@@ -317,17 +313,17 @@ Bool Function EnsureFaceBank()
 		Return True
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetCorpseDecayStatus("ERROR: Main script missing — cannot load " + FACE_FILE)
+	If !m || !m.VoiceAlias
+		SetCorpseDecayStatus("ERROR: Main/VoiceAlias missing — cannot load " + FACE_FILE)
 		Return False
 	EndIf
 	FaceTemplates = new String[64]
-	FaceTemplateCount = m.LoadStageBankAt(FACE_FILE, FaceTemplates, CONFIG_PATH)
+	FaceTemplateCount = m.VoiceAlias.LoadStageBankAt(FACE_FILE, FaceTemplates, CONFIG_PATH)
 	FaceBankLoaded = True
 	If FaceTemplateCount <= 0
-		SetCorpseDecayStatus("ERROR: " + FACE_FILE + " — " + m.GetLastStageLoadStatus())
+		SetCorpseDecayStatus("ERROR: " + FACE_FILE + " — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Debug.Notification("Pickman's Whisper: " + FACE_FILE + " missing or empty")
-		Debug.Trace("PickmansWhisper: ERROR DecayFaceOverlays load failed — " + m.GetLastStageLoadStatus())
+		Debug.Trace("PickmansWhisper: ERROR DecayFaceOverlays load failed — " + m.VoiceAlias.GetLastStageLoadStatus())
 		Return False
 	EndIf
 	Return True
@@ -342,15 +338,15 @@ Bool Function EnsureCumBank()
 		Return False
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		Debug.Trace("PickmansWhisper: EnsureCumBank skip — Main missing")
+	If !m || !m.VoiceAlias
+		Debug.Trace("PickmansWhisper: EnsureCumBank skip — Main/VoiceAlias missing")
 		Return False
 	EndIf
 	CumTemplates = new String[64]
-	CumTemplateCount = m.LoadStageBankAt(CUM_FILE, CumTemplates, CONFIG_PATH)
+	CumTemplateCount = m.VoiceAlias.LoadStageBankAt(CUM_FILE, CumTemplates, CONFIG_PATH)
 	CumBankLoaded = True
 	If CumTemplateCount <= 0
-		Debug.Trace("PickmansWhisper: CumOverlayIds empty/missing — cum stump strip disabled | " + m.GetLastStageLoadStatus())
+		Debug.Trace("PickmansWhisper: CumOverlayIds empty/missing — cum stump strip disabled | " + m.VoiceAlias.GetLastStageLoadStatus())
 		Return False
 	EndIf
 	Return True
@@ -572,7 +568,7 @@ Bool Function ReloadDecayFaceStageMap()
 			If seq > 0
 				String stageStr = ConfigTrim(GardenOfEden.SubStr(sline, 0, seq))
 				String label = ConfigLowerAscii(ConfigTrim(GardenOfEden.SubStr(sline, seq + 1, -1)))
-				Int stage = m.ParsePositiveInt(stageStr)
+				Int stage = m.VoiceAlias.ParsePositiveInt(stageStr)
 				If stageStr == "0"
 					stage = 0
 				EndIf
@@ -710,7 +706,7 @@ Bool Function EnsureDecayFaceArmorBanks()
 				Int comma = FindCharIndex(val, ",")
 				If label != "" && comma > 0
 					String armoStr = ConfigTrim(GardenOfEden.SubStr(val, comma + 1, -1))
-					Int armoFid = m.ParsePositiveInt(armoStr)
+					Int armoFid = m.VoiceAlias.ParsePositiveInt(armoStr)
 					If armoFid > 0
 						nextLabels[nextCount] = label
 						nextArmoFids[nextCount] = armoFid
@@ -1859,11 +1855,11 @@ EndFunction
 
 Function DebugForceCorpseDecayOverlays()
 	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		DiagNotify("Pickman's Whisper\n\nMain script missing.")
+	If !m || !m.VoiceAlias
+		DiagNotify("Pickman's Whisper\n\nMain/VoiceAlias missing.")
 		Return
 	EndIf
-	Actor aimed = m.GetLookAimActor()
+	Actor aimed = m.VoiceAlias.GetLookAimActor()
 	If !aimed || aimed == Game.GetPlayer()
 		DiagNotify("Pickman's Whisper\n\nAim / face a corpse (or look then open MCM), then retry.")
 		Return

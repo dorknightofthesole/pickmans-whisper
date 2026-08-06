@@ -8,10 +8,6 @@ PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
 
-PickmansWhisperKillerScanScript Function KillerScan()
-	Return (Self as Quest) as PickmansWhisperKillerScanScript
-EndFunction
-
 Function SetStatus(String reason)
 	LastDesperateRenameStatus = reason
 	Debug.Trace("PickmansWhisper: desperate rename | " + reason)
@@ -23,7 +19,7 @@ String Function MaybeSuffixDisplayName(Actor ak, String baseName)
 		Return ""
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m || m.GetNoticeStage() != 4
+	If !m || !m.VoiceAlias || m.VoiceAlias.GetNoticeStage() != 4
 		Return baseName
 	EndIf
 	If !m.ModConfigAlias
@@ -87,41 +83,13 @@ String Function ResolveBaseLabel(Actor ak, String suffix)
 	Return StripSuffix(base.GetName(), suffix)
 EndFunction
 
-; Dedicated, stricter than the shared ambient notice filter: that filter allows
-; synths through ("look human") and doesn't gate on hostility — fine for whispers,
-; wrong for renaming.
-; Codsworth (male robot companion) slipped through it once; this does not repeat
-; that: explicit non-companion + non-hostile + strict human check (no synth
-; carve-out) + adult female, on top of the usual essential/child safety nets.
+; Hard gate + rename feature: living only.
 Bool Function IsRenameEligible(Actor ak)
 	PickmansWhisperMainQuestScript m = Main()
-	If !m || !ak
+	If !m || !ak || ak.IsDead()
 		Return False
 	EndIf
-	Actor player = Game.GetPlayer()
-	If ak == player || ak.IsDead() || ak.IsDisabled()
-		Return False
-	EndIf
-	If ak.IsPlayerTeammate()
-		Return False
-	EndIf
-	; Ambient whispers intentionally ignore hostility (settlers who aggro after being
-	; seen friendly still need kill credit); renaming has no such reason to allow it.
-	If player && ak.IsHostileToActor(player)
-		Return False
-	EndIf
-	If m.IsStoryEssential(ak)
-		Return False
-	EndIf
-	If m.IsChildNpc(ak) && !m.IsChildTargetAllowed()
-		Return False
-	EndIf
-	; Strict human check — hard-excludes synths too, requires a positive
-	; ActorTypeNPC/ActorTypeHuman keyword match rather than just "not excluded."
-	If !m.IsHumanNpc(ak)
-		Return False
-	EndIf
-	Return m.IsAdultFemale(ak)
+	Return m.IsValidTarget(ak)
 EndFunction
 
 Function ApplySuffixToActor(Actor ak, String suffix)
@@ -172,9 +140,8 @@ Function SyncFromKillerScanSnapshot()
 		SetStatus("ERROR: Main missing")
 		Return
 	EndIf
-	PickmansWhisperKillerScanScript ks = KillerScan()
-	If !ks
-		SetStatus("ERROR: KillerScan missing")
+	If !m.VoiceAlias
+		SetStatus("ERROR: VoiceAlias unbound")
 		Return
 	EndIf
 	If !m.ModConfigAlias
@@ -191,11 +158,12 @@ Function SyncFromKillerScanSnapshot()
 		Return
 	EndIf
 	SuffixMissingToasted = False
-	Bool desperate = (m.GetNoticeStage() == 4)
-	Actor[] alive = ks.ScanAlive
-	Int n = ks.ScanAliveCount
+	Bool desperate = (m.VoiceAlias.GetNoticeStage() == 4)
+	; KillerScan snapshot deprecated — VoiceAlias stubs until rename bus is rewired.
+	Actor[] alive = m.VoiceAlias.StubScanAlive()
+	Int n = m.VoiceAlias.StubScanAliveCount()
 	If !alive || n <= 0
-		SetStatus("idle: no ScanAlive")
+		SetStatus("idle: no ScanAlive (stub)")
 		Return
 	EndIf
 	Int i = 0

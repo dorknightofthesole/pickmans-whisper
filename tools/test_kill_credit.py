@@ -59,7 +59,7 @@ Locks:
   - ProcessKnifeCreditFromKillerScan still feeds TrackLivingNear (still
     needed for WasFriendlySeen / IsValidTarget) and calls ReconcileBladeTagged
   - TrackLivingNear no longer touches any kill-watch list — ambient sighting
-    only, still honors IsNonGameplayCorpse / IsChildTargetAllowed — AND
+    only, still honors IsNonGameplayCorpse + IsValidTarget (hard gate) — AND
     proactively arms hit detection (WasHitArmed/MarkHitArmed dedup, not
     IsBladeEquipped-gated) so Actor.OnHit can fire for a fresh target's
     first strike without re-registering the same actor every tick
@@ -138,11 +138,11 @@ def main() -> None:
 
     # --- RejectKill helper ---
     reject = extract_function(text, "RejectKill")
-    if "LastKillIgnoreReason = reason" not in reject:
-        fail("RejectKill must set LastKillIgnoreReason")
+    if "LastKillIgnoreReason" in reject:
+        fail("RejectKill must not set LastKillIgnoreReason (deleted Autovar)")
     if "ToastDebug(" not in reject or "Debug.Trace(" not in reject:
         fail("RejectKill must toast (conditionally) and always trace")
-    ok("RejectKill: shared reason/toast/trace helper")
+    ok("RejectKill: shared toast/trace helper (no Autovar)")
 
     # --- HandleNPCDeath ---
     death = extract_function(text, "HandleNPCDeath")
@@ -159,13 +159,15 @@ def main() -> None:
         fail("HandleNPCDeath must reject a non-player killer")
     if "IsBladeEquipped()" not in death:
         fail("HandleNPCDeath must require IsBladeEquipped() live")
-    if "IsValidTarget(victim, False)" not in death:
-        fail("HandleNPCDeath must gate on IsValidTarget")
+    if "IsValidTarget(victim)" not in death:
+        fail("HandleNPCDeath must gate on IsValidTarget(victim)")
+    if "WasFriendlySeen(victim)" not in death:
+        fail("HandleNPCDeath must compose knife feature WasFriendlySeen after hard gate")
     if "ProcessKnifeKill(victim)" not in death:
         fail("HandleNPCDeath must call ProcessKnifeKill on a valid credited kill")
     reject_calls = death.count("RejectKill(")
-    if reject_calls < 4:
-        fail(f"HandleNPCDeath's rejection gates must route through RejectKill (found {reject_calls} calls, expected at least 4)")
+    if reject_calls < 5:
+        fail(f"HandleNPCDeath's rejection gates must route through RejectKill (found {reject_calls} calls, expected at least 5)")
     if 'ToastDebug("PW debug: kill ignored' in death or 'Debug.Trace("PickmansWhisper: kill ignored' in death:
         fail("HandleNPCDeath must not inline the reason/toast/trace pattern — that's what RejectKill collapses")
     ok("HandleNPCDeath: upfront cleanup, simplified live gate via RejectKill, no ambient-list terms")
@@ -201,8 +203,10 @@ def main() -> None:
 
     # --- TrackLivingNear no longer touches kill-watch bookkeeping ---
     track = extract_function(text, "TrackLivingNear")
-    if "IsNonGameplayCorpse" not in track or "IsChildTargetAllowed" not in track:
-        fail("TrackLivingNear must still honor IsNonGameplayCorpse / IsChildTargetAllowed")
+    if "IsNonGameplayCorpse" not in track:
+        fail("TrackLivingNear must still honor IsNonGameplayCorpse")
+    if "IsValidTarget(ak)" not in track:
+        fail("TrackLivingNear must call IsValidTarget (hard gate; includes child override)")
     if "NoteFriendlySeen" not in track:
         fail("TrackLivingNear must still stamp NoteFriendlySeen")
     if "KillWatchList" in track or "KILL_WATCH_MAX" in track:

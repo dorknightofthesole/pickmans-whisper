@@ -1,0 +1,9 @@
+# Hunger-band voice bank (files-only). One toast line per non-comment row.
+# Reloaded via MCM Voice > Reload line banks / LoadLineBanks on game resume.
+A restless edge... the blade wants use.
+Hunger grows while the knife sleeps.
+You feel it — that neat, bright need.
+Feed me. Just once. You'll see.
+The itching behind your eyes is for someone soft and still.
+Unused steel turns mean. You know how to fix that.
+They won't understand. We will.

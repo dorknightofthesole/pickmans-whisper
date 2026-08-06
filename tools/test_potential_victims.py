@@ -26,6 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+VOICE_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
 VICTIMS_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVictimsScript.psc"
 MCM_CONFIG = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 MCM_SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
@@ -143,33 +144,20 @@ def test_main_naming(text: str) -> None:
         fail("ApplyVictimName must HoldVictimRef (optional alias)")
     if "IsUsableWhisperName" not in apply:
         fail("ApplyVictimName must reject unusable names")
-    # Naming is the only entry point into the Potential Victims table, and Corpse Decay
-    # tracking keys off that table, so an unfiltered name could smuggle a non-human/male
-    # target into decay tracking. Deliberately the LIGHTER IsValidNamingTarget gate, not
-    # IsValidTarget — naming must work on a corpse (MCM: "aim a corpse, then open MCM")
-    # and doesn't need kill-crediting's essential/teammate/alive protections. Must run
-    # BEFORE UpsertVictim, not after.
-    if "IsValidTarget(ak, True)" in apply or "IsValidTarget(ak, False)" in apply:
-        fail("ApplyVictimName must not use IsValidTarget (requires alive or drags in essential/teammate checks) — use IsValidNamingTarget")
-    gate_idx = apply.find("IsValidNamingTarget(ak)")
+    # Naming uses the shared hard gate (corpses OK — IsValidTarget does not check IsDead).
+    # Must run BEFORE UpsertVictim so non-eligible NPCs never enter decay tracking.
+    if "IsValidNamingTarget" in apply:
+        fail("ApplyVictimName must not use deleted IsValidNamingTarget — use IsValidTarget")
+    gate_idx = apply.find("IsValidTarget(ak)")
     if gate_idx < 0:
-        fail("ApplyVictimName must gate on IsValidNamingTarget(ak)")
+        fail("ApplyVictimName must gate on IsValidTarget(ak)")
     if gate_idx > apply.find("UpsertVictim"):
-        fail("ApplyVictimName must check IsValidNamingTarget BEFORE UpsertVictim, not after")
+        fail("ApplyVictimName must check IsValidTarget BEFORE UpsertVictim, not after")
     ok("ApplyVictimName GoE2.SetDisplayName + store")
-    ok("ApplyVictimName gates on IsValidNamingTarget before UpsertVictim (human/female/non-hostile, alive-or-dead)")
+    ok("ApplyVictimName gates on IsValidTarget before UpsertVictim (hard gate; corpses allowed)")
 
-    naming_gate = extract_function(text, "IsValidNamingTarget")
-    if "ak.IsDead()" in naming_gate:
-        fail("IsValidNamingTarget must not require/reject on alive-vs-dead — naming works on corpses")
-    if "IsStoryEssential" in naming_gate or "IsPlayerTeammate" in naming_gate:
-        fail("IsValidNamingTarget must not check essential/teammate — naming is non-destructive, unlike kill crediting")
-    for needle in ("IsHumanNpc(ak)", "IsAdultFemale(ak)", "WasFriendlySeen(ak)"):
-        if needle not in naming_gate:
-            fail(f"IsValidNamingTarget must check {needle}")
-    ok("IsValidNamingTarget: human + female + non-hostile only, no alive/essential/teammate restriction")
-
-    get_name = extract_function(text, "GetActorDisplayName")
+    voice = VOICE_PSC.read_text(encoding="utf-8", errors="replace")
+    get_name = extract_function(voice, "GetActorDisplayName")
     if "GetVictimOverrideName" not in get_name:
         fail("GetActorDisplayName must check GetVictimOverrideName first")
     if "GetDisplayName()" not in get_name:

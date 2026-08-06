@@ -7,8 +7,8 @@ Locks:
   - Voice sync first; knife/overlays/cadence NoWait
   - Main ArmRuntimeLoops starts KillerScan only (no hunger/bond StartTimer)
   - Version 1.3.0 + Killer Orchestrator banner
-  - Recurring StartTimer is KillerScan-only; BedGift may one-shot TIMER_BED_OVERLAYS /
-    TIMER_BED_POSE; KillRewardAlias may one-shot TIMER_KILL_REWARD_CHECK
+  - KillerScan StartTimer may be parked (0); other features inventory: BedGift
+    TIMER_BED_OVERLAYS / TIMER_BED_POSE
 
 Usage:
   python tools/test_killer_scan_bus.py
@@ -23,7 +23,7 @@ ROOT = Path(__file__).resolve().parents[1]
 USER = ROOT / "Data" / "Scripts" / "Source" / "User"
 MAIN = USER / "PickmansWhisperMainQuestScript.psc"
 KILLER = USER / "PickmansWhisperKillerScanScript.psc"
-VOICE = USER / "PickmansWhisperVoiceScanScript.psc"
+VOICE = USER / "PickmansWhisperVoiceAliasScript.psc"
 DECAY = USER / "PickmansWhisperCorpseDecayScript.psc"
 VICTIMS = USER / "PickmansWhisperVictimsScript.psc"
 BED = USER / "PickmansWhisperBedGiftScript.psc"
@@ -92,11 +92,11 @@ def test_killer_scan_producer() -> None:
     if "Utility.Wait" in build or "SyncDecayForKnifeCorpse" in build:
         fail("BuildTargetSnapshot must not Wait or SyncDecay")
     dispatch = extract_function(text, "DispatchListeners")
-    i_voice = dispatch.find("HandleKillerScanVoice")
+    i_voice = dispatch.find("HandleWhisperVoice")
     i_knife = dispatch.find('CallFunctionNoWait("HandleKillerScanKnifeAimWarm"')
     i_cadence = dispatch.find('CallFunctionNoWait("OnKillerScanCadence"')
     if i_voice < 0:
-        fail("DispatchListeners must call VoiceScan.HandleKillerScanVoice")
+        fail("DispatchListeners must call VoiceAlias.HandleWhisperVoice")
     if i_knife < 0:
         fail("DispatchListeners must CallFunctionNoWait HandleKillerScanKnifeAimWarm")
     if i_cadence < 0:
@@ -117,7 +117,7 @@ def test_killer_scan_producer() -> None:
     if 'CallFunctionNoWait("SyncFromKillerScanSnapshot"' not in dispatch:
         fail("DispatchListeners must CallFunctionNoWait DesperateRename SyncFromKillerScanSnapshot")
     if not (i_voice < i_knife):
-        fail("voice HandleKillerScanVoice must run BEFORE knife NoWait")
+        fail("voice HandleWhisperVoice must run BEFORE knife NoWait")
     on_timer = extract_function(text, "OnTimer")
     i_arm = on_timer.find("StartKillerScanLoop()")
     i_run = on_timer.find("RunKillerScanTick()")
@@ -156,9 +156,20 @@ def test_starttimer_inventory() -> None:
     killer = [s for s in starts if "PickmansWhisperKillerScanScript.psc" in s]
     bed = [s for s in starts if "PickmansWhisperBedGiftScript.psc" in s]
     reward = [s for s in starts if "PickmansWhisperKillRewardScript.psc" in s]
-    other = [s for s in starts if s not in killer and s not in bed and s not in reward]
-    if len(killer) != 1 or "TIMER_KILLER_SCAN" not in killer[0]:
-        fail(f"expected exactly 1 KillerScan StartTimer(TIMER_KILLER_SCAN), got {killer}")
+    target_scan = [s for s in starts if "PickmansWhisperTargetScanScript.psc" in s]
+    other = [
+        s
+        for s in starts
+        if s not in killer
+        and s not in bed
+        and s not in reward
+        and s not in target_scan
+    ]
+    # TargetScan / retired KillReward may still have StartTimer in source; ignore in "other".
+    # KillerScan loop may be parked (StartTimer commented) while KillScanLoop source
+    # remains for a possible port — do not require an active StartTimer.
+    if killer and any("TIMER_KILLER_SCAN" not in s for s in killer):
+        fail(f"KillerScan StartTimer must only use TIMER_KILLER_SCAN, got {killer}")
     bed_overlays = [s for s in bed if "TIMER_BED_OVERLAYS" in s]
     bed_pose = [s for s in bed if "TIMER_BED_POSE" in s]
     if len(bed_overlays) != 1:
@@ -167,18 +178,11 @@ def test_starttimer_inventory() -> None:
         fail(f"expected BedGift StartTimer(TIMER_BED_POSE) re-arming poll, got {bed_pose}")
     if len(bed_overlays) + len(bed_pose) != len(bed):
         fail(f"unexpected BedGift StartTimer beyond TIMER_BED_OVERLAYS/TIMER_BED_POSE, got {bed}")
-    if len(reward) < 1 or any("TIMER_KILL_REWARD_CHECK" not in s for s in reward):
-        fail(
-            f"expected KillReward StartTimer(TIMER_KILL_REWARD_CHECK) arm+re-arm, "
-            f"got {reward}"
-        )
-    if len(reward) > 2:
-        fail(f"unexpected KillReward StartTimer count beyond arm+re-arm, got {reward}")
     if other:
         fail(f"no other feature StartTimer allowed, got {other}")
     ok(
-        "recurring StartTimer=KillerScan; BedGift oneshot overlays/pose; "
-        "KillReward arm+re-arm TIMER_KILL_REWARD_CHECK"
+        f"StartTimer inventory: KillerScan parked-or-TIMER_KILLER_SCAN ({len(killer)}); "
+        "BedGift overlays/pose"
     )
 
 
@@ -194,7 +198,7 @@ def test_main_arming_and_cadence() -> None:
     if "OnKillerScanCadence" not in main:
         fail("Main must OnKillerScanCadence")
     cadence = extract_function(main, "OnKillerScanCadence")
-    for needle in ("RunBondPoll", "RunHungerTick", "MaybeSpeakTrustLine", 'MaybeSpeakNoticeLine("timer")'):
+    for needle in ("RunBondPoll", "RunHungerTick", "MaybeSpeakTrustLine", "MaybeSpeakNoticeLine()"):
         if needle not in cadence:
             fail(f"OnKillerScanCadence must call {needle}")
     boot = extract_function(main, "ScheduleBootArm")
@@ -216,13 +220,18 @@ def test_main_arming_and_cadence() -> None:
 
 def test_listeners() -> None:
     voice = VOICE.read_text(encoding="utf-8", errors="replace")
-    if "FindActors" in voice:
-        fail("VoiceScan must not FindActors")
-    handle = extract_function(voice, "HandleKillerScanVoice")
+    handle = extract_function(voice, "HandleWhisperVoice")
+    if "FindActors" in handle:
+        fail("HandleWhisperVoice must not FindActors (KillerScan owns TargetSnapshot)")
     if "TickLookFixation()" not in handle:
-        fail("HandleKillerScanVoice must TickLookFixation")
-    if 'MaybeSpeakNoticeLine("killscan")' not in handle:
-        fail("HandleKillerScanVoice must MaybeSpeakNoticeLine(killscan)")
+        fail("HandleWhisperVoice must TickLookFixation")
+    if "MaybeSpeakNoticeLine()" not in handle:
+        fail("HandleWhisperVoice must MaybeSpeakNoticeLine()")
+    if "voice-prebond" in handle or "VoiceTick" in handle:
+        fail("HandleWhisperVoice must not keep prebond / VoiceTick throttle")
+    tick = extract_function(voice, "TickLookFixation")
+    if "FindActors" in tick:
+        fail("TickLookFixation must not FindActors")
     decay = DECAY.read_text(encoding="utf-8", errors="replace")
     if "FindActors" in extract_function(decay, "SyncOverlaysFromKillerScanSnapshot"):
         fail("SyncOverlaysFromKillerScanSnapshot must not FindActors")

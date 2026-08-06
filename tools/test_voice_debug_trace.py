@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
-VOICE = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceScanScript.psc"
+VOICE = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
 MCM = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 SETTINGS = ROOT / "Data" / "MCM" / "Settings" / "PickmansWhisper.ini"
 DEPLOY = ROOT / "tools" / "build-deploy-local.ps1"
@@ -49,26 +49,24 @@ def extract_function(text: str, name: str) -> str:
 
 
 def test_voice_dispatch_heartbeat() -> None:
-    main = MAIN.read_text(encoding="utf-8", errors="replace")
     voice = VOICE.read_text(encoding="utf-8", errors="replace")
-    note = extract_function(main, "NoteVoiceDispatch")
+    note = extract_function(voice, "NoteVoiceDispatch")
     if "sVoiceDispatch:Debug" not in note:
         fail("NoteVoiceDispatch must write sVoiceDispatch:Debug")
     if "Debug.Trace" not in note:
         fail("NoteVoiceDispatch must Trace")
-    handle = extract_function(voice, "HandleKillerScanVoice")
+    handle = extract_function(voice, "HandleWhisperVoice")
     if "NoteVoiceDispatch" not in handle:
-        fail("HandleKillerScanVoice must NoteVoiceDispatch every tick")
-    if 'Debug.Trace("PickmansWhisper: VoiceScan skip | !akSender")' not in handle:
-        fail("HandleKillerScanVoice must Trace !akSender (was silent Return)")
-    ok("VoiceScan dispatch heartbeat")
+        fail("HandleWhisperVoice must NoteVoiceDispatch every tick")
+    if "ERROR HandleWhisperVoice — Main script missing" not in handle:
+        fail("HandleWhisperVoice must Trace when Main() is missing (was silent Return)")
+    ok("VoiceAlias dispatch heartbeat")
 
 
 def test_notice_skip_traces() -> None:
-    main = MAIN.read_text(encoding="utf-8", errors="replace")
-    speak = extract_function(main, "MaybeSpeakNoticeLine")
+    voice = VOICE.read_text(encoding="utf-8", errors="replace")
+    speak = extract_function(voice, "MaybeSpeakNoticeLine")
     for needle in (
-        "skip: not bonded",
         "skip: voice off",
         "skip: no Pickman's Blade",
         "skip: hunger hour cooldown",
@@ -77,10 +75,10 @@ def test_notice_skip_traces() -> None:
     ):
         if needle not in speak:
             fail(f"MaybeSpeakNoticeLine must include {needle!r}")
-    toast = extract_function(main, "ToastNoticeLine")
+    toast = extract_function(voice, "ToastNoticeLine")
     if "ToastNoticeLine skip" not in toast or "Debug.Trace" not in toast:
         fail("ToastNoticeLine blade/empty skips must Trace")
-    show = extract_function(main, "ShowVoiceToast")
+    show = extract_function(voice, "ShowVoiceToast")
     if "ShowVoiceToast skip" not in show or "Debug.Trace" not in show:
         fail("ShowVoiceToast blade/empty skips must Trace")
     ok("Notice silent exits Trace")
@@ -88,16 +86,25 @@ def test_notice_skip_traces() -> None:
 
 def test_mcm_dump() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    dump = extract_function(main, "DebugVoicePathDump")
+    voice = VOICE.read_text(encoding="utf-8", errors="replace")
+    if "Function DebugVoicePathDump" not in main or "VoiceAlias.DebugVoicePathDump" not in extract_function(
+        main, "DebugVoicePathDump"
+    ):
+        fail("Main must façade DebugVoicePathDump → VoiceAlias")
+    dump = extract_function(voice, "DebugVoicePathDump")
     for needle in (
-        "LastVoiceDispatchStatus",
+        "sVoiceDispatch:Debug",
         "LastNoticeStatus",
-        "KillScanTickCount",
         "IsVoiceWeaponReady",
         "Papyrus.0.log",
     ):
         if needle not in dump:
             fail(f"DebugVoicePathDump must surface {needle}")
+    note = extract_function(voice, "NoteVoiceDispatch")
+    if "LastVoiceDispatchStatus" in note or "LastVoiceDispatchStatus" in voice:
+        fail("LastVoiceDispatchStatus retired — dispatch lives in MCM sVoiceDispatch only")
+    if "VoiceTick" in voice:
+        fail("VoiceTick retired with prebond throttle")
     mcm = MCM.read_text(encoding="utf-8", errors="replace")
     if "DebugVoicePathDump" not in mcm:
         fail("MCM config must wire DebugVoicePathDump button")

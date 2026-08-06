@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+VOICE_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
 SOUND_STUB = ROOT / "tools" / "stubs" / "Sound.psc"
 MCM = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
@@ -82,7 +83,8 @@ def test_psc(text: str) -> None:
         fail("DebugPlayTestWhisper must check loose EndIt.xwm via DoesFileExist")
     if "instanceId=" not in fn and "instanceId" not in fn:
         fail("DebugPlayTestWhisper must report Sound.Play instance id")
-    notice = extract_function(text, "MaybeSpeakNoticeLine")
+    voice = VOICE_PSC.read_text(encoding="utf-8", errors="replace")
+    notice = extract_function(voice, "MaybeSpeakNoticeLine")
     if "DebugPlayTestWhisper" in notice or "FID_WHISPER_ENDIT" in notice:
         fail("MaybeSpeakNoticeLine must stay free of D0-POC audio ownership")
     ok("DebugPlayTestWhisper wired + DiagNotify diagnostics; notice path untouched")
@@ -129,7 +131,7 @@ def test_builder() -> None:
         "WhisperSndrIds.txt",
         # Past Slice I decay-face reserve (0x850..0x86F) + proximity cloak (0x870–0x873)
         # + blade/reward AVIFs (0x874–0x876); those contracts own the value.
-        "NEXT_OID = 0x00000877",
+        "NEXT_OID = 0x00000878",
     ):
         if needle not in src:
             fail(f"build_hunger_spell_esp.py missing {needle!r}")

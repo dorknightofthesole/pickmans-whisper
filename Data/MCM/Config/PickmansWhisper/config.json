@@ -656,14 +656,6 @@
 					}
 				},
 				{
-					"id": "sLastKill:Debug",
-					"text": "Last kill result",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
 					"id": "sWatch:Debug",
 					"text": "Kill watch / alias",
 					"type": "textinput",

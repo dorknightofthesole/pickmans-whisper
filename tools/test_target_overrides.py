@@ -18,7 +18,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+# TargetOverrides + knife filters stay on Main; notice reject gate is on VoiceAlias.
+MAIN_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+VOICE_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
+PSC = MAIN_PSC
 CFG = ROOT / "Data" / "PickmansWhisper" / "config" / "TargetOverrides.txt"
 EXAMPLE = ROOT / "Data" / "PickmansWhisper" / "config" / "TargetOverrides.example.txt"
 
@@ -120,10 +123,11 @@ def test_psc(text: str) -> None:
             fail(f"missing {name}")
     ok("allow helpers present")
 
-    notice = extract_function(text, "ExplainNoticeReject")
-    if "IsChildTargetAllowed" not in notice:
-        fail("ExplainNoticeReject must gate child reject with IsChildTargetAllowed")
-    ok("ExplainNoticeReject child gate")
+    voice = VOICE_PSC.read_text(encoding="utf-8", errors="replace")
+    notice = extract_function(voice, "ExplainNoticeReject")
+    if "IsValidTarget" not in notice:
+        fail("ExplainNoticeReject must call IsValidTarget (hard gate owns child override)")
+    ok("ExplainNoticeReject uses IsValidTarget (VoiceAlias)")
 
     nonhuman = extract_function(text, "ExplainNonHumanForNotice")
     if "IsRobotTargetAllowed" not in nonhuman:
@@ -146,9 +150,9 @@ def test_psc(text: str) -> None:
     ok("IsHumanNpc robot gate")
 
     track = extract_function(text, "TrackLivingNear")
-    if "IsChildTargetAllowed" not in track:
-        fail("TrackLivingNear must honor IsChildTargetAllowed")
-    ok("TrackLivingNear child gate")
+    if "IsValidTarget(ak)" not in track:
+        fail("TrackLivingNear must call IsValidTarget (hard gate includes child override)")
+    ok("TrackLivingNear uses IsValidTarget")
 
 
 def main() -> None:

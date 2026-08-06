@@ -63,21 +63,16 @@ def main() -> None:
         fail("DesperateRename must not call FindActors")
     if "SetDisplayName" not in rename or "GardenOfEden2" not in rename:
         fail("DesperateRename must GardenOfEden2.SetDisplayName")
-    # Dedicated eligibility (stricter than the ambient notice filter, which allows
-    # synths through and doesn't require teammate/hostility exclusion on its own).
+    # Hard gate + living; identity checklist lives on Main.IsValidTarget only.
     elig = extract_function(rename, "IsRenameEligible")
-    if "IsPlayerTeammate" not in elig:
-        fail("IsRenameEligible must exclude companions (IsPlayerTeammate) — Codsworth slipped through the old shared filter")
-    if "IsHostileToActor" not in elig:
-        fail("IsRenameEligible must exclude actively hostile targets")
-    if "IsStoryEssential" not in elig:
-        fail("IsRenameEligible must exclude essential NPCs")
-    if "IsChildNpc" not in elig:
-        fail("IsRenameEligible must exclude children (unless override)")
-    if "IsHumanNpc" not in elig:
-        fail("IsRenameEligible must use IsHumanNpc (strict — hard-excludes synths, no ambient-filter carve-out)")
-    if "IsAdultFemale" not in elig:
-        fail("IsRenameEligible must require IsAdultFemale")
+    if "IsValidTarget" not in elig:
+        fail("IsRenameEligible must call Main.IsValidTarget (hard gate)")
+    if "IsDead" not in elig:
+        fail("IsRenameEligible must require living (feature: !IsDead)")
+    if "IsHostileToActor" in elig:
+        fail("IsRenameEligible must not re-check IsHostileToActor — hard gate + living only")
+    if "IsStoryEssential" in elig or "IsChildNpc" in elig or "IsHumanNpc" in elig:
+        fail("IsRenameEligible must not duplicate hard-checklist (owned by IsValidTarget)")
     if "ExplainNoticeReject" in rename:
         fail("DesperateRename must not fall back to the shared ambient notice filter")
     if "ModConfigAlias.GetDesperateNameSuffix" not in rename:
@@ -86,12 +81,15 @@ def main() -> None:
     if "GetNoticeStage() != 4" not in maybe and "GetNoticeStage() == 4" not in maybe:
         fail("MaybeSuffixDisplayName must only suffix at stage 4")
 
-    gad = extract_function(main_txt, "GetActorDisplayName")
+    voice_txt = (USER / "PickmansWhisperVoiceAliasScript.psc").read_text(
+        encoding="utf-8", errors="replace"
+    )
+    gad = extract_function(voice_txt, "GetActorDisplayName")
     if "MaybeSuffixDisplayName" not in gad:
         fail("GetActorDisplayName must MaybeSuffixDisplayName (toast matches HUD)")
     if "Function DesperateRename()" not in main_txt:
         fail("Main must DesperateRename() façade")
-    if "ModConfigAlias Auto Const" not in main_txt:
+    if "ModConfigAlias Auto" not in main_txt:
         fail("Main must expose ModConfigAlias")
     # Leading space preserved — must not ConfigFieldTrim the suffix value.
     modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
@@ -132,8 +130,10 @@ def main() -> None:
         fail("ROADMAP must have shifted old Slice I (slow hunger) off letter I")
     if "Slow hunger stages" not in road or "| **K** | Slow hunger" not in road:
         fail("ROADMAP must keep slow hunger as Slice K")
-    if "| **J** | Victim" not in road:
-        fail("ROADMAP must keep victim beat-before-kill as Slice J")
+    if "| **Q** | Victim" not in road:
+        fail("ROADMAP must keep victim beat-before-kill as Slice Q")
+    if "| **J** | Retire KillerScan" not in road:
+        fail("ROADMAP must list Slice J as retire KillerScan + Alias refactor")
 
     ok("Slice I desperate rename script + ModConfig + KillerScan + toast name")
     print("All desperate-rename (Slice I) contracts passed.")

@@ -14,13 +14,14 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **G** | Bed corpse hallucination (sleep spawn + look-away despawn)                                     | **G1 shipped** — verify in-game ([BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md))                                                         |
 | **H** | Corpse decay (body + face) → eat urge → reward                                                 | **P1 done**; next **P2** MCM stage change — [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md) · face art [Decay_Head_Guide.md](Decay_Head_Guide.md) |
 | **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix)                                      | **I1–I2 verified in-game** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md)                                                              |
-| **J** | Victim “beat before kill” — temp essential + fight back (unarmed exception)                    | Planned                                                                                                                                              |
+| **J** | Retire KillerScan + thin Main via Alias scripts (e.g. MCM Alias)                               | Planned — later                                                                                                                                      |
 | **K** | Slow hunger stages (days) + peak-hunger wait rewards                                           | Planned                                                                                                                                              |
 | **L** | Corpse preserve sync with Necromantic                                                          | Planned                                                                                                                                              |
 | **M** | Perk gates; optional butcher cell / Cannibal hooks                                             | Planned                                                                                                                                              |
 | **N** | Witness support: flee/scream or attack; rumors of the "killer"                                 | Planned                                                                                                                                              |
 | **O** | Infamy / serial-killer whispers                                                                | Planned                                                                                                                                              |
 | **P** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned                                                                                                                                              |
+| **Q** | Victim “beat before kill” — temp essential + fight back (unarmed exception)                    | Planned (was Slice J; code/comments may still say J)                                                                                                 |
 
 
 
@@ -143,17 +144,15 @@ At notice stage **desperate** (hunger band 4), the knife voice rewrites how near
 
 Honor direction: never rename **essential** story NPCs. Editable suffix in `ModConfig.txt` only (no hard-coded line bank mirror).
 
-## Slice J — victim beat-before-kill (temp essential)
+## Slice J — retire KillerScan + Alias refactor (later)
 
-Let the player **pretend to beat** a qualified woman before finishing her with the knife — she won’t die during the scuffle and ideally **fights back**. Soft with Victims (C5) and knife-kill rules (B).
+Architecture cleanup after the event-driven cloak / OnHit / OnDeath / KillReward path is solid. Do **not** start until that path is confirmed in-game. Supersedes the old “KillerScan → true event bus” Later item — the goal here is removal, not a prettier bus.  Eddie: It is a prettier bus though. This feature began with this query: "fallout 4 I want to build a cloak of fear aura mod" on July 28th. This is a substantial refactor of the project.
 
-- [ ] **J1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear via J5 / MCM off / blade kill path.
-- [ ] **J2 — Auto on unarmed attack** — If the player attacks a **qualified** NPC **without a weapon armed** (fists / no drawn weapon), auto-enter the same temp-essential + fight-back state. **Exception:** Pickman's Blade need **not** be drawn for this path (blade still required later to sate / praise).
-- [ ] **J3 — Fight back** — Aggro / combat so she resists instead of crumpling; exit cleanly when essential is cleared so a later blade kill can work.
-- [ ] **J4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
-- [ ] **J5 — Clear essential on rearm** — When the player **rearms any weapon** (draws / equips a weapon again after the unarmed beat), mark her **unessential** (restore prior state) so she can be finished with the blade.
+- [ ] **J1 — Deprecate and remove KillerScan** — Retire `PickmansWhisperKillerScanScript` and the poll-driven TargetSnapshot / cadence fan-out once notice, fixation, decay sync, bed gift, and related listeners are driven by events (or thin dedicated hosts). Update contracts (`test_killer_scan_bus.py`, arming docs) so they no longer require the scanner. Protect proven load/arm behavior until the replacement is verified — then delete, don’t leave a zombie poller.
+- [ ] **J2 — Thin MainQuestScript via Alias scripts** — Move more feature/MCM surface out of `PickmansWhisperMainQuestScript` onto quest Alias scripts (same pattern as ModConfigAlias, KillRewardAlias, PlayerAlias). Example: MCM CallFunction / panel refresh into its own Alias. Main stays a thin router; Caprica cast-through-Quest rule still applies. Follow [modular-feature-scripts](.cursor/rules/modular-feature-scripts.mdc).
+- [ ] J3 **— Deprecate Bond —** Remove all MCM and code references to bond.
 
-Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
+
 
 ## Slice K — slow hunger + peak wait rewards
 
@@ -161,7 +160,7 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 
 - **Pace:** climb from calm → desperate over at least ~3 game days; prefer ~1 week+ to reach 100% (tunable MCM / config). Stage bands stay the five C3 whisper stages; only the rise rate / thresholds stretch.
 - **Peak reward (TBD — draft):** waiting until high hunger (e.g. starving/desperate) before a valid blade kill grants a temporary bonus — candidate: **attribute bonuses that last until hunger drops back to stage 2 (restless)** (or similar clear exit). Exact bonuses / magnitude undecided; design before implement.
-- Do **not** break C3 stage file mapping or the verified KillerScan arming path while tuning rise rate.
+- Do **not** break C3 stage file mapping while tuning rise rate; prefer finishing **Slice J** (KillScanner gone) before relying on scan-tied hunger ticks.
 - Soft-stack with Necromantic craving feel; no ESP master dependency.
 
 
@@ -217,6 +216,18 @@ Large stretch: custom (or heavily edited) **private cells** and quests that turn
 
 Honor direction: no AAF/sex content here; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
 
+## Slice Q — victim beat-before-kill (temp essential)
+
+Formerly roadmap **Slice J** (scripts/tests may still say J / J1–J5). Let the player **pretend to beat** a qualified woman before finishing her with the knife — she won’t die during the scuffle and ideally **fights back**. Soft with Victims (C5) and knife-kill rules (B).
+
+- [ ] **Q1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear via Q5 / MCM off / blade kill path.
+- [ ] **Q2 — Auto on unarmed attack** — If the player attacks a **qualified** NPC **without a weapon armed** (fists / no drawn weapon), auto-enter the same temp-essential + fight-back state. **Exception:** Pickman's Blade need **not** be drawn for this path (blade still required later to sate / praise).
+- [ ] **Q3 — Fight back** — Aggro / combat so she resists instead of crumpling; exit cleanly when essential is cleared so a later blade kill can work.
+- [ ] **Q4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
+- [ ] **Q5 — Clear essential on rearm** — When the player **rearms any weapon** (draws / equips a weapon again after the unarmed beat), mark her **unessential** (restore prior state) so she can be finished with the blade.
+
+Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
+
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
@@ -227,7 +238,9 @@ Honor direction: no AAF/sex content here; never break essential/protected story 
 - Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
 - Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; decay vs L preserve race; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn.
 - Desperate rename (I): GoE2 display names vs Potential Victims overrides; strip cleanly when hunger drops; never touch essentials.
-- Victim beat (J): FO4 `SetEssential` is often **ActorBase**-scoped (shared templates); must restore prior essential/protected state on J5 rearm; unarmed hit detection without false positives; don’t block later blade kill / satiation; never sticky-essential story NPCs.
+- Retire KillerScan (J): don’t yank the poller until event-driven notice/decay/bed paths are proven; Main façades and contracts still assume KillerScan cadence today.
+- Main Alias refactor (J): Caprica forbids `Self as SiblingScript` — cast through Quest; ESP VMAD must list every new Alias script.
+- Victim beat (Q): FO4 `SetEssential` is often **ActorBase**-scoped (shared templates); must restore prior essential/protected state on Q5 rearm; unarmed hit detection without false positives; don’t block later blade kill / satiation; never sticky-essential story NPCs.
 - Hunger pacing (K): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (N): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 - Private cells / quests (P): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs M overlap; Pickman house ownership without breaking Gallery bond trigger.

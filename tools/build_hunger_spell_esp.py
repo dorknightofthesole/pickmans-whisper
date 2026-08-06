@@ -69,8 +69,9 @@ FID_PROXIMITY_CLOAK_SPEL = 0x01000873  # Ability granted via AddSpell
 FID_AV_HIT_WITH_BLADE = 0x01000874  # PW_HitWihPickmansBlade
 FID_AV_CREDIT_BLADE_KILL = 0x01000875  # PW_Credit_For_PickmansBlade_Kill
 FID_AV_KILL_REWARD_CHECK_TIME = 0x01000876  # PW_KillRewardCheckTime
+FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877  # PW_TargetTrackerExpiration
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
-NEXT_OID = 0x00000877  # == (FID_AV_KILL_REWARD_CHECK_TIME & 0xFFFFFF) + 1
+NEXT_OID = 0x00000878  # == (FID_AV_TARGET_TRACKER_EXPIRATION & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
@@ -90,21 +91,34 @@ VANILLA_CLOAK_ABILITY_SPEL_SOURCE = 0x000DB3AD  # crGlowingOneCloak
 VANILLA_CLOAK_MGEF_SOURCE = 0x000DB3AE  # RadiationCloak (arch=35, no VMAD)
 VANILLA_CLOAK_HIT_SPEL_SOURCE = 0x000DF451  # RadiationHazardToken
 VANILLA_CLOAK_HIT_MGEF_SOURCE = 0x0009252A  # RadiationHazardEffect (cast/deliv/timing)
-# Vanilla RadiationCloak Area (DATA+44). Ability SPEL EFIT Area stays 40 from crGlowingOneCloak.
-PROXIMITY_CLOAK_AREA = 15
-PROXIMITY_ABILITY_EFIT_AREA = 40
+# Cloak MGEF Area (DATA+44) + Ability SPEL EFIT Area — game units.
+PROXIMITY_CLOAK_AREA = 500
+PROXIMITY_ABILITY_EFIT_AREA = 500
 # FO4 MGEF DATA flags (xEdit wbDefinitionsFO4 — NOT FO3 bit positions).
+MGEF_FLAG_HOSTILE = 0x00000001
+MGEF_FLAG_DETRIMENTAL = 0x00000004
+MGEF_FLAG_DYNAMIC_RESTART = 0x00000020  # CK "Dynamic Restart"; on vanilla RadiationHazardEffect
 MGEF_FLAG_NO_HIT_EVENT = 0x00000010
 MGEF_FLAG_NO_DURATION = 0x00000200
+MGEF_FLAG_NO_AREA = 0x00000800
 MGEF_FLAG_PAINLESS = 0x04000000
 MGEF_FLAG_NO_HIT_EFFECT = 0x08000000
-# Trial flags on both proximity MGEFs (may roll back).
-PROXIMITY_MGEF_TRIAL_FLAGS = (
+# Hit MGEF: Detrimental | Dynamic Restart | No Area | Painless | No Hit Effect (Hostile off).
+PROXIMITY_HIT_MGEF_FLAGS = (
+    MGEF_FLAG_DETRIMENTAL
+    | MGEF_FLAG_DYNAMIC_RESTART
+    | MGEF_FLAG_NO_AREA
+    | MGEF_FLAG_PAINLESS
+    | MGEF_FLAG_NO_HIT_EFFECT
+)
+# CK "Delay Time" — FO4/Skyrim MGEF DATA+0x94 (Script AI Data Delay Time).
+PROXIMITY_HIT_MGEF_DELAY = 0.01
+# DATA offsets (Skyrim/FO4 shared layout; struct size 152).
+MGEF_DATA_OFF_DELAY_TIME = 0x94
+# Cloak MGEF keeps prior quiet trial flags (not the hit payload).
+PROXIMITY_CLOAK_MGEF_FLAGS = (
     MGEF_FLAG_NO_HIT_EVENT | MGEF_FLAG_PAINLESS | MGEF_FLAG_NO_HIT_EFFECT
 )
-# Hit payload also keeps No Duration so cloak radius owns lifespan.
-PROXIMITY_HIT_MGEF_FLAGS = PROXIMITY_MGEF_TRIAL_FLAGS | MGEF_FLAG_NO_DURATION
-PROXIMITY_CLOAK_MGEF_FLAGS = PROXIMITY_MGEF_TRIAL_FLAGS
 
 # Golden Standard one-shot SNDR fields (matches verified EndIt hand FO4Edit)
 SNDR_CNAM_STANDARD = 0x1EEF540A  # BGSStandardSoundDef
@@ -238,8 +252,12 @@ def build_vmad_scripts(
         data += struct.pack("<BHH", 3, 0, 0)  # fragVer, unk, fragCount
         data += struct.pack("<H", len(alias_scripts))
         for alias_id, quest_fid, alias_script, alias_props in alias_scripts:
-            data += struct.pack("<hh", alias_id, 0)
-            data += u32(quest_fid & 0xFFFFFFFF)
+            # ofmt=2 Object union: int16 unk=0, int16 aliasId, formid quest
+            # (same layout as build_vmad_object_alias_property). Packing (aliasId, 0)
+            # swapped fields so ALST 2/5/6 scripts bound to the wrong target — Papyrus:
+            # "Unable to bind …KillRewardScript to Active effect 0 on PickmansWhisperMain".
+            # ALST 0 (PlayerCombat) worked only because both layouts are (0, 0).
+            data += struct.pack("<hhI", 0, alias_id, quest_fid & 0xFFFFFFFF)
             data += struct.pack("<HHH", 6, 2, 1)
             data += wstring(alias_script)
             data += struct.pack("<BH", 2, len(alias_props))
@@ -284,20 +302,12 @@ def build_variable_avif_payload(edid: str, full: str) -> bytes:
         ]
     )
 
-# Alias IDs on PickmansWhisperMain for script-managed Actor hold (AddRef / RemoveRef).
-# RefCollectionAlias is NOT created by FNAM alone. Vanilla pattern (myActor→myObjects):
-#   ALST seed … ALED, then ALCS <collectionId>, ALMI, then ALST collection …
-# ALCS must sit AFTER the seed's ALED (not inside the alias body). Without that,
-# Papyrus fails: "alias TrackedNPCs … is not the right type".
-ALIAS_TRACKED_NPCS_SEED_ID = 0
-ALIAS_TRACKED_NPCS_ID = 1
-# Kill-reward timer host (Unique Actor = Player) — PickmansWhisperKillRewardScript.
-ALIAS_KILL_REWARD_ID = 2
-# Pending kill-reward settle queue (RefCollectionAlias for KillRewardScript).
-ALIAS_PENDING_REWARD_SEED_ID = 3
-ALIAS_PENDING_REWARD_ID = 4
+# Alias IDs on PickmansWhisperMain.
+# ALST 0–1 were TrackedNPCs (retired). ALST 2–4 were KillRewardAlias / PendingReward (retired).
 # ModConfig.txt host (Unique Actor = Player) — PickmansWhisperModConfigScript.
 ALIAS_MOD_CONFIG_ID = 5
+# KillerScan voice host (Unique Actor = Player) — PickmansWhisperVoiceAliasScript.
+ALIAS_VOICE_ID = 6
 
 
 def build_vmad_alias_only(
@@ -319,8 +329,8 @@ def build_vmad_alias_only(
     data = struct.pack("<HHH", 6, 2, 0)  # no quest scripts
     data += struct.pack("<BHH", 3, 0, 0)  # fragVer, unk, fragCount
     data += struct.pack("<H", 1)  # aliasCount
-    data += struct.pack("<hh", 0, 0)  # aliasId, reserved
-    data += u32(quest_fid & 0xFFFFFFFF)
+    # ofmt=2 Object: unk=0, aliasId=0, quest formid (same as build_vmad_scripts aliases)
+    data += struct.pack("<hhI", 0, 0, quest_fid & 0xFFFFFFFF)
     data += struct.pack("<HHH", 6, 2, 1)
     data += wstring(alias_script)
     data += struct.pack("<BH", status & 0xFF, len(props))
@@ -342,38 +352,12 @@ def build_player_alias_fields() -> bytes:
     )
 
 
-def build_tracked_npcs_alias_fields() -> bytes:
-    """Empty RefCollectionAlias for script AddRef/RemoveRef (no find-matching fill).
-
-    Mirrors AO_Dogmeat_FindContainer myActor→myObjects: optional seed ReferenceAlias,
-    then post-ALED ALCS+ALMI pointing at TrackedNPCs (FNAM 0x20).
-    """
+def build_mod_config_alias_fields() -> bytes:
+    """UniqueActor=Player ReferenceAlias hosting PickmansWhisperModConfigScript."""
     return b"".join(
         [
-            # Optional empty ReferenceAlias — exists so ALCS can mark the collection.
-            field(b"ALST", u32(ALIAS_TRACKED_NPCS_SEED_ID)),
-            field(b"ALID", zstr("TrackedNPCsSeed")),
-            field(b"FNAM", u32(0x00000001)),  # Optional
-            field(b"VTCK", u32(0)),
-            field(b"ALED", b""),
-            # Trailer fields AFTER seed ALED (vanilla order); not inside either alias.
-            field(b"ALCS", u32(ALIAS_TRACKED_NPCS_ID)),
-            field(b"ALMI", bytes([0x00])),
-            field(b"ALST", u32(ALIAS_TRACKED_NPCS_ID)),
-            field(b"ALID", zstr("TrackedNPCs")),
-            field(b"FNAM", u32(0x00000020)),
-            field(b"VTCK", u32(0)),
-            field(b"ALED", b""),
-        ]
-    )
-
-
-def build_kill_reward_alias_fields() -> bytes:
-    """UniqueActor=Player ReferenceAlias hosting PickmansWhisperKillRewardScript."""
-    return b"".join(
-        [
-            field(b"ALST", u32(ALIAS_KILL_REWARD_ID)),
-            field(b"ALID", zstr("KillRewardAlias")),
+            field(b"ALST", u32(ALIAS_MOD_CONFIG_ID)),
+            field(b"ALID", zstr("ModConfigAlias")),
             field(b"FNAM", u32(0)),
             field(b"ALUA", u32(0x00000007)),  # Player
             field(b"VTCK", u32(0)),
@@ -382,32 +366,12 @@ def build_kill_reward_alias_fields() -> bytes:
     )
 
 
-def build_pending_reward_targets_alias_fields() -> bytes:
-    """Empty RefCollectionAlias for KillRewardScript AddRef/RemoveRef queue."""
+def build_voice_alias_fields() -> bytes:
+    """UniqueActor=Player ReferenceAlias hosting PickmansWhisperVoiceAliasScript."""
     return b"".join(
         [
-            field(b"ALST", u32(ALIAS_PENDING_REWARD_SEED_ID)),
-            field(b"ALID", zstr("PendingRewardTargetsSeed")),
-            field(b"FNAM", u32(0x00000001)),  # Optional
-            field(b"VTCK", u32(0)),
-            field(b"ALED", b""),
-            field(b"ALCS", u32(ALIAS_PENDING_REWARD_ID)),
-            field(b"ALMI", bytes([0x00])),
-            field(b"ALST", u32(ALIAS_PENDING_REWARD_ID)),
-            field(b"ALID", zstr("PendingRewardTargets")),
-            field(b"FNAM", u32(0x00000020)),
-            field(b"VTCK", u32(0)),
-            field(b"ALED", b""),
-        ]
-    )
-
-
-def build_mod_config_alias_fields() -> bytes:
-    """UniqueActor=Player ReferenceAlias hosting PickmansWhisperModConfigScript."""
-    return b"".join(
-        [
-            field(b"ALST", u32(ALIAS_MOD_CONFIG_ID)),
-            field(b"ALID", zstr("ModConfigAlias")),
+            field(b"ALST", u32(ALIAS_VOICE_ID)),
+            field(b"ALID", zstr("VoiceAlias")),
             field(b"FNAM", u32(0)),
             field(b"ALUA", u32(0x00000007)),  # Player
             field(b"VTCK", u32(0)),
@@ -425,13 +389,10 @@ def build_main_quest_payload() -> bytes:
         "PickmansWhisperVictimsScript",
         "PickmansWhisperDesperateRenameScript",
         "PickmansWhisperKillerScanScript",
-        "PickmansWhisperVoiceScanScript",
         "PickmansWhisperBuffTrackerScript",
         "PickmansWhisperBeatBeforeKillScript",
+        "PickmansWhisperTargetScanScript",
     ]
-    tracked_prop = build_vmad_object_alias_property(
-        "TrackedNPCs", ALIAS_TRACKED_NPCS_ID, FID_QUEST
-    )
     # CK-style: Main.PlayerAlias → PickmansWhisperPlayerCombat ALST 0 (script host).
     player_alias_prop = build_vmad_object_alias_property(
         "PlayerAlias", 0, FID_PLAYER_QUEST
@@ -442,21 +403,17 @@ def build_main_quest_payload() -> bytes:
     credit_av_prop = build_vmad_object_form_property(
         "PW_Credit_For_PickmansBlade_Kill", FID_AV_CREDIT_BLADE_KILL
     )
-    kill_reward_prop = build_vmad_object_alias_property(
-        "KillRewardAlias", ALIAS_KILL_REWARD_ID, FID_QUEST
-    )
     mod_config_prop = build_vmad_object_alias_property(
         "ModConfigAlias", ALIAS_MOD_CONFIG_ID, FID_QUEST
     )
-    pending_reward_prop = build_vmad_object_alias_property(
-        "PendingRewardTargets", ALIAS_PENDING_REWARD_ID, FID_QUEST
+    voice_alias_prop = build_vmad_object_alias_property(
+        "VoiceAlias", ALIAS_VOICE_ID, FID_QUEST
     )
-    kill_reward_check_time_prop = build_vmad_object_form_property(
-        "PW_KillRewardCheckTime", FID_AV_KILL_REWARD_CHECK_TIME
+    target_scan_main_prop = build_vmad_object_form_property(
+        "MainQuest", FID_QUEST
     )
-    # KillReward.PlayerAlias → same PlayerCombat ALST 0 bind as Main.PlayerAlias.
-    kill_reward_player_alias_prop = build_vmad_object_alias_property(
-        "PlayerAlias", 0, FID_PLAYER_QUEST
+    target_tracker_expiration_prop = build_vmad_object_form_property(
+        "PW_TargetTrackerExpiration", FID_AV_TARGET_TRACKER_EXPIRATION
     )
     body = b""
     body += field(b"EDID", zstr("PickmansWhisperMain"))
@@ -466,29 +423,28 @@ def build_main_quest_payload() -> bytes:
             main_scripts,
             script_properties={
                 "PickmansWhisperMainQuestScript": [
-                    tracked_prop,
                     player_alias_prop,
                     hit_av_prop,
                     credit_av_prop,
-                    kill_reward_prop,
+                    target_tracker_expiration_prop,
                     mod_config_prop,
+                    voice_alias_prop,
+                ],
+                "PickmansWhisperTargetScanScript": [
+                    target_scan_main_prop,
                 ],
             },
             alias_scripts=[
                 (
-                    ALIAS_KILL_REWARD_ID,
-                    FID_QUEST,
-                    "PickmansWhisperKillRewardScript",
-                    [
-                        pending_reward_prop,
-                        kill_reward_check_time_prop,
-                        kill_reward_player_alias_prop,
-                    ],
-                ),
-                (
                     ALIAS_MOD_CONFIG_ID,
                     FID_QUEST,
                     "PickmansWhisperModConfigScript",
+                    [],
+                ),
+                (
+                    ALIAS_VOICE_ID,
+                    FID_QUEST,
+                    "PickmansWhisperVoiceAliasScript",
                     [],
                 ),
             ],
@@ -498,11 +454,9 @@ def build_main_quest_payload() -> bytes:
     body += field(b"DNAM", bytes.fromhex("11005C730000000000000000"))
     body += field(b"NEXT", b"")
     # ANAM = next available alias id (highest ALST + 1).
-    body += field(b"ANAM", u32(ALIAS_MOD_CONFIG_ID + 1))
-    body += build_tracked_npcs_alias_fields()
-    body += build_kill_reward_alias_fields()
-    body += build_pending_reward_targets_alias_fields()
+    body += field(b"ANAM", u32(ALIAS_VOICE_ID + 1))
     body += build_mod_config_alias_fields()
+    body += build_voice_alias_fields()
     return body
 
 
@@ -652,7 +606,7 @@ def build_proximity_hit_mgef_payload() -> bytes:
             continue
         elif st == b"DATA" and len(sd) >= 88:
             data = bytearray(sd)
-            # Clear radiation Hostile/etc.; No Duration + trial quiet flags.
+            # Detrimental|DynamicRestart|NoArea|Painless|NoHitEffect (Hostile off).
             struct.pack_into("<I", data, 0, PROXIMITY_HIT_MGEF_FLAGS)
             struct.pack_into("<I", data, 8, 0)  # Assoc unused for Script archetype
             struct.pack_into("<i", data, 16, 0)  # Resist AV (was Radiation)
@@ -664,6 +618,10 @@ def build_proximity_hit_mgef_payload() -> bytes:
             struct.pack_into("<I", data, 76, 0)  # Explosion
             struct.pack_into("<I", data, 80, 0)  # Constant Effect
             struct.pack_into("<I", data, 84, 3)  # Target Actor
+            if len(data) >= MGEF_DATA_OFF_DELAY_TIME + 4:
+                struct.pack_into(
+                    "<f", data, MGEF_DATA_OFF_DELAY_TIME, PROXIMITY_HIT_MGEF_DELAY
+                )
             out.append(field(b"DATA", bytes(data)))
         else:
             out.append(field(st, sd))
@@ -741,12 +699,8 @@ def build_proximity_cloak_mgef_payload() -> bytes:
             # Assoc. Item 1 — Cloak archetype projects this SPEL onto actors in Area.
             # Must be PickmansWhisperProximityHit (NONE = cloak never broadcasts the hit).
             struct.pack_into("<I", data, 8, FID_PROXIMITY_HIT_SPEL)
-            # Keep Area=15 from RadiationCloak (do not invent a different radius).
-            if struct.unpack_from("<I", data, 44)[0] != PROXIMITY_CLOAK_AREA:
-                raise SystemExit(
-                    f"vanilla cloak 0x{VANILLA_CLOAK_MGEF_SOURCE:08X} Area expected "
-                    f"{PROXIMITY_CLOAK_AREA}, got {struct.unpack_from('<I', data, 44)[0]}"
-                )
+            # Cloak radius (game units) — authored via PROXIMITY_CLOAK_AREA, not vanilla 15.
+            struct.pack_into("<I", data, 44, PROXIMITY_CLOAK_AREA)
             if struct.unpack_from("<I", data, 64)[0] != 35:
                 raise SystemExit(
                     f"vanilla cloak source 0x{VANILLA_CLOAK_MGEF_SOURCE:08X} "
@@ -774,14 +728,15 @@ def build_proximity_cloak_spel_payload() -> bytes:
         elif st == b"EFID":
             out.append(field(b"EFID", u32(FID_PROXIMITY_CLOAK_MGEF)))
         elif st == b"EFIT" and len(sd) >= 12:
-            mag, area, dur = struct.unpack_from("<fII", sd, 0)
-            if area != PROXIMITY_ABILITY_EFIT_AREA or dur != 0:
+            mag, _area, dur = struct.unpack_from("<fII", sd, 0)
+            if dur != 0:
                 raise SystemExit(
                     f"vanilla ability SPEL 0x{VANILLA_CLOAK_ABILITY_SPEL_SOURCE:08X} "
-                    f"EFIT expected area={PROXIMITY_ABILITY_EFIT_AREA} dur=0, "
-                    f"got area={area} dur={dur}"
+                    f"EFIT duration must be 0, got {dur}"
                 )
-            out.append(field(b"EFIT", sd))  # keep mag=10 / area=40 / dur=0
+            efit = bytearray(sd)
+            struct.pack_into("<I", efit, 4, PROXIMITY_ABILITY_EFIT_AREA)
+            out.append(field(b"EFIT", bytes(efit)))
         elif st == b"SPIT" and len(sd) >= 24:
             if struct.unpack_from("<I", sd, 8)[0] != 4:
                 raise SystemExit("crGlowingOneCloak SPIT Type must be Ability (4)")
@@ -1131,6 +1086,13 @@ def main() -> None:
             "PW_KillRewardCheckTime", "Kill Reward Check Time"
         ),
     )
+    avif_tracker_expiration = record(
+        b"AVIF",
+        FID_AV_TARGET_TRACKER_EXPIRATION,
+        build_variable_avif_payload(
+            "PW_TargetTrackerExpiration", "Target Tracker Expiration"
+        ),
+    )
     sndr_recs = collect_sndr_records()
     sndr_blob = b"".join(sndr_recs)
     arma_recs, armo_recs = collect_decay_face_armor_records()
@@ -1138,13 +1100,16 @@ def main() -> None:
     armo_blob = b"".join(armo_recs)
 
     # 2x QUST + SPEL + GLOB + 2x MGEF + MESG + 2 proximity MGEF + 2 proximity SPEL
-    # + 3 AVIF + N SNDR + N ARMA + N ARMO
-    num_records = 14 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
+    # + 4 AVIF + N SNDR + N ARMA + N ARMO
+    num_records = 15 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
         + group(b"GLOB", glob_rec)
-        + group(b"AVIF", avif_hit + avif_credit + avif_reward_check)
+        + group(
+            b"AVIF",
+            avif_hit + avif_credit + avif_reward_check + avif_tracker_expiration,
+        )
         + group(b"MGEF", mgef_agi + mgef_cha + proximity_hit_mgef + proximity_cloak_mgef)
         + group(b"SPEL", spel_rec + proximity_hit_spel + proximity_cloak_spel)
         + group(b"MESG", msg_rec)
@@ -1168,12 +1133,13 @@ def main() -> None:
     print(
         f"  AVIF 0x{FID_AV_HIT_WITH_BLADE:08X} PW_HitWihPickmansBlade / "
         f"0x{FID_AV_CREDIT_BLADE_KILL:08X} PW_Credit_For_PickmansBlade_Kill / "
-        f"0x{FID_AV_KILL_REWARD_CHECK_TIME:08X} PW_KillRewardCheckTime"
+        f"0x{FID_AV_KILL_REWARD_CHECK_TIME:08X} PW_KillRewardCheckTime / "
+        f"0x{FID_AV_TARGET_TRACKER_EXPIRATION:08X} PW_TargetTrackerExpiration"
     )
     print(f"  ARMA/ARMO decay face variants={len(arma_recs)} (biped 54)")
     print(
-        f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain + RefCollectionAlias TrackedNPCs "
-        f"(ALST {ALIAS_TRACKED_NPCS_ID}, seed ALST {ALIAS_TRACKED_NPCS_SEED_ID}+ALCS)"
+        f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain + VoiceAlias ALST {ALIAS_VOICE_ID} "
+        f"(TrackedNPCs alias retired)"
     )
     print(f"  QUST 0x{FID_PLAYER_QUEST:08X} PickmansWhisperPlayerCombat + PlayerAlias")
     print(f"  SNDR count={len(sndr_recs)} (Desperate + Intimacy Start/End maps)")

@@ -133,15 +133,15 @@ Actor Function ResolveVictimsAimActor()
 	Return None
 EndFunction
 
-; KillerScan CallFunctionNoWait — fills aim cache without waiting on Main.
+; Former KillerScan snapshot consumer — VoiceAlias stubs until aim bus is rewired.
 Function NoteFromKillerScanSnapshot()
-	PickmansWhisperKillerScanScript scan = (Self as Quest) as PickmansWhisperKillerScanScript
-	If !scan
-		Debug.Trace("PickmansWhisper: ERROR Victims NoteFromKillerScanSnapshot — KillerScan missing")
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR Victims NoteFromKillerScanSnapshot — VoiceAlias unbound")
 		Return
 	EndIf
-	Actor cam = scan.CameraActor
-	Actor facedDead = scan.FacedDead
+	Actor cam = m.VoiceAlias.StubCameraActor()
+	Actor facedDead = m.VoiceAlias.StubFacedDead()
 	If cam
 		NoteVictimsAimActor(cam)
 	EndIf
@@ -290,7 +290,10 @@ Function MCMNameAimedVictim()
 		name = MCM.GetModSettingString(MOD_NAME, "sVictimName:Victims")
 	EndIf
 	If m.ApplyVictimName(aimed, name)
-		String shown = m.TrimString(name)
+		String shown = name
+		If m.VoiceAlias
+			shown = m.VoiceAlias.TrimString(name)
+		EndIf
 		DiagNotify("Pickman's Whisper — Apply name\n\nShe is " + shown + " now.")
 	Else
 		DiagNotify("Pickman's Whisper — Apply name\n\nFailed:\n" + m.LastVictimStatus)
@@ -349,7 +352,7 @@ Actor Function ResolveValidDecayTarget(PickmansWhisperMainQuestScript m, String 
 		Return None
 	EndIf
 	If !aimed.IsDead()
-		m.LastVictimStatus = asStatusLabel + ": " + m.GetActorDisplayName(aimed) + " is alive"
+		m.LastVictimStatus = asStatusLabel + ": " + m.VoiceAlias.GetActorDisplayName(aimed) + " is alive"
 		Debug.Trace("PickmansWhisper: " + asFnName + " skip — target alive")
 		Return None
 	EndIf
@@ -485,7 +488,7 @@ Bool Function QueueAimedDecayAdvance()
 		Return False
 	EndIf
 	If !aimed.IsDead()
-		m.LastVictimStatus = "advance decay: " + m.GetActorDisplayName(aimed) + " is alive"
+		m.LastVictimStatus = "advance decay: " + m.VoiceAlias.GetActorDisplayName(aimed) + " is alive"
 		Return False
 	EndIf
 	Int formId = aimed.GetFormID()

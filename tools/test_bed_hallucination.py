@@ -171,8 +171,8 @@ def test_main_facade(main: str) -> None:
     if "% 5" in knife_warm or "ScanTick % 5" in knife_warm:
         fail("HandleKillerScanKnifeAimWarm must warm every tick (not % 5 — busy skips miss warm)")
     load = extract_function(main, "LoadLineBanks")
-    if "LoadModConfig()" in load:
-        fail("LoadLineBanks must not LoadModConfig (ModConfigAlias OnAliasInit owns boot load)")
+    if "ModConfigAlias.LoadModConfig()" not in load:
+        fail("LoadLineBanks must ModConfigAlias.LoadModConfig (resume/reload refresh)")
     if "LoadBedGiftLines" in main:
         fail("LoadBedGiftLines retired — wake toast is ModConfig bedGiftWakeToast")
     modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
@@ -187,7 +187,7 @@ def test_main_facade(main: str) -> None:
         fail("LoadModConfig must reset BedGiftCooldownDays to sentinel -1.0")
     if "BedGiftWoundAlpha = -1.0" not in load_mod:
         fail("LoadModConfig must reset BedGiftWoundAlpha to sentinel -1.0")
-    if "ModConfigAlias Auto Const" not in main:
+    if "ModConfigAlias Auto" not in main:
         fail("Main must expose ModConfigAlias for BedGift/CorpseDecay")
     bed = BED_PSC.read_text(encoding="utf-8", errors="replace")
     if "ModConfigAlias.GetBedGiftWakeToast" not in bed:

@@ -52,13 +52,14 @@ $PscWoundLab = "PickmansWhisperDecayWoundLabScript.psc"
 $PscVictims = "PickmansWhisperVictimsScript.psc"
 $PscDesperateRename = "PickmansWhisperDesperateRenameScript.psc"
 $PscKillerScan = "PickmansWhisperKillerScanScript.psc"
-$PscVoiceScan = "PickmansWhisperVoiceScanScript.psc"
+$PscVoiceScan = "PickmansWhisperVoiceAliasScript.psc"
 $PscAlias = "PickmansWhisperPlayerAliasScript.psc"
 $PscBuffTracker = "PickmansWhisperBuffTrackerScript.psc"
 $PscBeatBeforeKill = "PickmansWhisperBeatBeforeKillScript.psc"
 $PscProximityEffect = "PickmansWhisperProximityEffect.psc"
 $PscKillReward = "PickmansWhisperKillRewardScript.psc"
 $PscModConfig = "PickmansWhisperModConfigScript.psc"
+$PscTargetScan = "PickmansWhisperTargetScanScript.psc"
 
 Write-Host "==> Pickman's Whisper local build + deploy"
 Write-Host "    ROOT=$Root"
@@ -79,6 +80,12 @@ Write-Host "==> Stub native honesty contract test"
 & python (Join-Path $Root "tools\test_stub_natives.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_stub_natives.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Target eligibility hard-gate contract test"
+& python (Join-Path $Root "tools\test_target_eligible.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_target_eligible.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "==> Blade detect contract test"
@@ -279,6 +286,24 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_modconfig_alias.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Trust/Hunger/Praise files-only contract test"
+& python (Join-Path $Root "tools\test_trust_hunger_praise_files.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_trust_hunger_praise_files.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> VoiceAlias contract test"
+& python (Join-Path $Root "tools\test_voice_alias.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_voice_alias.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> TargetScan MainQuest bind contract test"
+& python (Join-Path $Root "tools\test_target_scan.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_target_scan.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> Blade hit / kill-credit ActorValue (AVIF) contract test"
 & python (Join-Path $Root "tools\test_blade_hit_av.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
@@ -309,10 +334,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias + $PscBuffTracker + $PscBeatBeforeKill + $PscProximityEffect + $PscKillReward + $PscModConfig"
+Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias + $PscBuffTracker + $PscBeatBeforeKill + $PscProximityEffect + $PscKillReward + $PscModConfig + $PscTargetScan"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias, $PscBuffTracker, $PscBeatBeforeKill, $PscProximityEffect, $PscKillReward, $PscModConfig)) {
+  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias, $PscBuffTracker, $PscBeatBeforeKill, $PscProximityEffect, $PscKillReward, $PscModConfig, $PscTargetScan)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -331,13 +356,14 @@ $PexWoundLab = Join-Path $PexOut "PickmansWhisperDecayWoundLabScript.pex"
 $PexVictims = Join-Path $PexOut "PickmansWhisperVictimsScript.pex"
 $PexDesperateRename = Join-Path $PexOut "PickmansWhisperDesperateRenameScript.pex"
 $PexKillerScan = Join-Path $PexOut "PickmansWhisperKillerScanScript.pex"
-$PexVoiceScan = Join-Path $PexOut "PickmansWhisperVoiceScanScript.pex"
+$PexVoiceScan = Join-Path $PexOut "PickmansWhisperVoiceAliasScript.pex"
 $PexAlias = Join-Path $PexOut "PickmansWhisperPlayerAliasScript.pex"
 $PexBuffTracker = Join-Path $PexOut "PickmansWhisperBuffTrackerScript.pex"
 $PexBeatBeforeKill = Join-Path $PexOut "PickmansWhisperBeatBeforeKillScript.pex"
 $PexProximityEffect = Join-Path $PexOut "PickmansWhisperProximityEffect.pex"
 $PexKillReward = Join-Path $PexOut "PickmansWhisperKillRewardScript.pex"
 $PexModConfig = Join-Path $PexOut "PickmansWhisperModConfigScript.pex"
+$PexTargetScan = Join-Path $PexOut "PickmansWhisperTargetScanScript.pex"
 if (-not (Test-Path $Pex)) { throw "compile produced no main .pex" }
 if (-not (Test-Path $PexBed)) { throw "compile produced no BedGift .pex" }
 if (-not (Test-Path $PexDecay)) { throw "compile produced no CorpseDecay .pex" }
@@ -352,6 +378,7 @@ if (-not (Test-Path $PexBeatBeforeKill)) { throw "compile produced no BeatBefore
 if (-not (Test-Path $PexProximityEffect)) { throw "compile produced no ProximityEffect .pex" }
 if (-not (Test-Path $PexKillReward)) { throw "compile produced no KillReward .pex" }
 if (-not (Test-Path $PexModConfig)) { throw "compile produced no ModConfig .pex" }
+if (-not (Test-Path $PexTargetScan)) { throw "compile produced no TargetScan .pex" }
 
 Write-Host "==> Deploying to $Deploy"
 @(
@@ -383,6 +410,7 @@ Copy-Item -Force $PexBeatBeforeKill (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexProximityEffect (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexKillReward (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexModConfig (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexTargetScan (Join-Path $Deploy "Scripts\")
 Copy-Item -Force (Join-Path $Src $Psc) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscBed) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscDecay) (Join-Path $Deploy "Scripts\Source\User\")
@@ -397,6 +425,7 @@ Copy-Item -Force (Join-Path $Src $PscBeatBeforeKill) (Join-Path $Deploy "Scripts
 Copy-Item -Force (Join-Path $Src $PscProximityEffect) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscKillReward) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscModConfig) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscTargetScan) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\config.json") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join-Path $Deploy "MCM\Settings\")

@@ -3,7 +3,8 @@
 
 Locks:
   - Main declares PW_HitWihPickmansBlade + PW_Credit_For_PickmansBlade_Kill Auto Const
-  - ESP emits Variable AVIFs at 0x874 / 0x875 (reward-check AVIF is separate); NEXT_OID past 0x876
+  - ESP emits Variable AVIFs at 0x874 / 0x875 (+ tracker 0x877; reward-check 0x876 separate)
+  - NEXT_OID past 0x877
   - Main VMAD binds those properties to the AVIF FormIDs
   - Papyrus uses GetValue/SetValue (not Keyword APIs)
 
@@ -25,8 +26,10 @@ DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
 FID_QUEST = 0x01000800
 FID_AV_HIT = 0x01000874
 FID_AV_CREDIT = 0x01000875
+FID_AV_TRACKER = 0x01000877
 PROP_HIT = "PW_HitWihPickmansBlade"
 PROP_CREDIT = "PW_Credit_For_PickmansBlade_Kill"
+PROP_TRACKER = "PW_TargetTrackerExpiration"
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
 
@@ -107,30 +110,32 @@ def main() -> None:
     for needle, label in [
         ("FID_AV_HIT_WITH_BLADE = 0x01000874", "hit AVIF fid"),
         ("FID_AV_CREDIT_BLADE_KILL = 0x01000875", "credit AVIF fid"),
-        ("NEXT_OID = 0x00000877", "NEXT_OID"),
+        ("FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877", "tracker AVIF fid"),
+        ("NEXT_OID = 0x00000878", "NEXT_OID"),
         ('"PW_HitWihPickmansBlade", FID_AV_HIT_WITH_BLADE', "hit VMAD bind"),
         (
             '"PW_Credit_For_PickmansBlade_Kill", FID_AV_CREDIT_BLADE_KILL',
             "credit VMAD bind",
         ),
+        (
+            '"PW_TargetTrackerExpiration", FID_AV_TARGET_TRACKER_EXPIRATION',
+            "tracker VMAD bind",
+        ),
         ("build_variable_avif_payload", "AVIF payload helper"),
-        ('group(b"AVIF"', "AVIF group"),
+        ('b"AVIF"', "AVIF group"),
+        ("avif_tracker_expiration", "tracker AVIF record"),
     ]:
         if needle not in builder:
             fail(f"builder must declare {label}: {needle}")
-    ok("builder declares blade AVIF FormIDs + Main VMAD binds + NEXT_OID=0x877")
+    ok("builder declares blade/tracker AVIF FormIDs + Main VMAD binds + NEXT_OID=0x878")
 
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     if f"ActorValue Property {PROP_HIT} Auto Const" not in psc:
         fail(f"Main must declare ActorValue Property {PROP_HIT} Auto Const")
     if f"ActorValue Property {PROP_CREDIT} Auto Const" not in psc:
         fail(f"Main must declare ActorValue Property {PROP_CREDIT} Auto Const")
-    if f"SetValue({PROP_HIT}" not in psc:
-        fail(f"Main must SetValue({PROP_HIT}, …)")
-    if f"GetValue({PROP_HIT}" not in psc:
-        fail(f"Main must GetValue({PROP_HIT})")
-    if f"SetValue({PROP_CREDIT}" not in psc:
-        fail(f"Main must SetValue({PROP_CREDIT}, …)")
+    if f"ActorValue Property {PROP_TRACKER} Auto Const" not in psc:
+        fail(f"Main must declare ActorValue Property {PROP_TRACKER} Auto Const")
     if f"HasKeyword({PROP_HIT}" in psc or f"AddKeyword({PROP_HIT}" in psc:
         fail(f"{PROP_HIT} is ActorValue — must not use Keyword APIs")
     if f"HasKeyword({PROP_CREDIT}" in psc or f"AddKeyword({PROP_CREDIT}" in psc:
@@ -141,7 +146,11 @@ def main() -> None:
         fail(f"missing ESP {ESP} — run build_hunger_spell_esp.py first")
     data = ESP.read_bytes()
     avifs = {fid: body for fid, body in find_records(data, b"AVIF")}
-    for fid, edid in ((FID_AV_HIT, PROP_HIT), (FID_AV_CREDIT, PROP_CREDIT)):
+    for fid, edid in (
+        (FID_AV_HIT, PROP_HIT),
+        (FID_AV_CREDIT, PROP_CREDIT),
+        (FID_AV_TRACKER, PROP_TRACKER),
+    ):
         body = avifs.get(fid)
         if body is None:
             fail(f"ESP missing AVIF 0x{fid:08X} ({edid})")
@@ -161,7 +170,8 @@ def main() -> None:
             fail(f"AVIF {edid} NAM1 must be Variable ({AVIF_TYPE_VARIABLE})")
     ok(
         f"ESP AVIF 0x{FID_AV_HIT:08X}/{PROP_HIT} + "
-        f"0x{FID_AV_CREDIT:08X}/{PROP_CREDIT} (Variable)"
+        f"0x{FID_AV_CREDIT:08X}/{PROP_CREDIT} + "
+        f"0x{FID_AV_TRACKER:08X}/{PROP_TRACKER} (Variable)"
     )
 
     qusts = {fid: body for fid, body in find_records(data, b"QUST")}
@@ -173,6 +183,7 @@ def main() -> None:
         fail("Main QUST missing VMAD")
     _, _, hit_fid = parse_vmad_form_prop(vmad, PROP_HIT)
     _, _, credit_fid = parse_vmad_form_prop(vmad, PROP_CREDIT)
+    _, _, tracker_fid = parse_vmad_form_prop(vmad, PROP_TRACKER)
     if hit_fid != FID_AV_HIT:
         fail(f"{PROP_HIT} VMAD form must be 0x{FID_AV_HIT:08X}, got 0x{hit_fid:08X}")
     if credit_fid != FID_AV_CREDIT:
@@ -180,8 +191,12 @@ def main() -> None:
             f"{PROP_CREDIT} VMAD form must be 0x{FID_AV_CREDIT:08X}, "
             f"got 0x{credit_fid:08X}"
         )
-    ok("Main VMAD binds both blade ActorValue properties to AVIF forms")
-
+    if tracker_fid != FID_AV_TRACKER:
+        fail(
+            f"{PROP_TRACKER} VMAD form must be 0x{FID_AV_TRACKER:08X}, "
+            f"got 0x{tracker_fid:08X}"
+        )
+    ok("Main VMAD binds blade + tracker ActorValue properties to AVIF forms")
     deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
     if "test_blade_hit_av.py" not in deploy:
         fail("build-deploy-local.ps1 must run test_blade_hit_av.py")

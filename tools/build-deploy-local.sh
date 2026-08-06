@@ -60,7 +60,7 @@ PSC_DECAY="PickmansWhisperCorpseDecayScript.psc"
 PSC_WOUND_LAB="PickmansWhisperDecayWoundLabScript.psc"
 PSC_VICTIMS="PickmansWhisperVictimsScript.psc"
 PSC_WORLD_SCAN="PickmansWhisperKillerScanScript.psc"
-PSC_VOICE_SCAN="PickmansWhisperVoiceScanScript.psc"
+PSC_VOICE_SCAN="PickmansWhisperVoiceAliasScript.psc"
 PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 PSC_BUFF_TRACKER="PickmansWhisperBuffTrackerScript.psc"
 PSC_BEAT_BEFORE_KILL="PickmansWhisperBeatBeforeKillScript.psc"
@@ -235,7 +235,7 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" ]]; then
   echo "ERROR: compile produced no KillerScan .pex" >&2
   exit 1
 fi
-if [[ ! -f "$PEX_OUT/PickmansWhisperVoiceScanScript.pex" ]]; then
+if [[ ! -f "$PEX_OUT/PickmansWhisperVoiceAliasScript.pex" ]]; then
   echo "ERROR: compile produced no VoiceScan .pex" >&2
   exit 1
 fi
@@ -279,7 +279,7 @@ cp -f "$PEX_OUT/PickmansWhisperCorpseDecayScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" "$DEPLOY/Scripts/"
-cp -f "$PEX_OUT/PickmansWhisperVoiceScanScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperVoiceAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBeatBeforeKillScript.pex" "$DEPLOY/Scripts/"
@@ -291,7 +291,7 @@ cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperDecayWoundLabScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVictimsScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperKillerScanScript.psc" "$DEPLOY/Scripts/Source/User/"
-cp -f "$SRC/PickmansWhisperVoiceScanScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperVoiceAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBuffTrackerScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBeatBeforeKillScript.psc" "$DEPLOY/Scripts/Source/User/"

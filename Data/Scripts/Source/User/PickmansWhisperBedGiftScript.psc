@@ -225,10 +225,10 @@ Function MaybeSpeakBedGiftWakeToast()
 	If !m
 		Return
 	EndIf
-	If !m.IsVoiceEnabled()
+	If !m.VoiceAlias || !m.VoiceAlias.IsVoiceEnabled()
 		Return
 	EndIf
-	If !m.IsVoiceWeaponReady()
+	If !m.VoiceAlias.IsVoiceWeaponReady()
 		Return
 	EndIf
 	If !m.ModConfigAlias
@@ -238,7 +238,7 @@ Function MaybeSpeakBedGiftWakeToast()
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return
 	EndIf
-	m.ShowVoiceToast(line)
+	m.VoiceAlias.ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: bed gift wake toast | " + line)
 EndFunction
 

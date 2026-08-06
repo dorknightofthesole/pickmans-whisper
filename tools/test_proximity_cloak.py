@@ -2,16 +2,18 @@
 """Proximity cloak — exact Glowing One chain contracts.
 
 Ability SPEL (crGlowingOneCloak clone) → Cloak MGEF (RadiationCloak clone, arch=35,
-NO VMAD, Assoc=hit SPEL, Area=15) → Hit SPEL (RadiationHazardToken clone) → Hit MGEF
+NO VMAD, Assoc=hit SPEL, Area=500) → Hit SPEL (RadiationHazardToken clone) → Hit MGEF
 (Script + PickmansWhisperProximityEffect VMAD; no radiation).
 
 Locks:
-  - FormIDs 0x870–0x873 (NEXT_OID sits past blade/reward AVIFs at 0x877)
+  - FormIDs 0x870–0x873 (NEXT_OID sits past blade/reward/tracker AVIFs at 0x878)
   - Vanilla sources: Ability 0xDB3AD, Cloak 0xDB3AE, Token 0xDF451, Hazard 0x9252A
   - Cloak Assoc Item == Hit SPEL; Cloak has no VMAD; Hit has proximity script
-  - Hit SPEL EFIT Duration=0; Hit MGEF No Duration (FO4 0x200)
-  - Both MGEFs: No Hit Event | Painless | No Hit Effect (trial; may roll back)
-  - Cloak Area=15; Ability EFIT Area=40
+  - Hit SPEL EFIT Duration=0
+  - Hit MGEF flags: Detrimental|DynamicRestart|NoArea|Painless|NoHitEffect (Hostile off)
+  - Hit MGEF Delay Time = 0.01 (DATA+0x94)
+  - Cloak MGEF: No Hit Event | Painless | No Hit Effect (quiet trial)
+  - Cloak Area=500; Ability EFIT Area=500
   - Alias GetFormFromFile uses LOCAL id 0x00000873
   - Deploy compiles PickmansWhisperProximityEffect.psc (not CloakHost)
 
@@ -38,13 +40,25 @@ FID_PROXIMITY_HIT_MGEF = 0x01000870
 FID_PROXIMITY_HIT_SPEL = 0x01000871
 FID_PROXIMITY_CLOAK_MGEF = 0x01000872
 FID_PROXIMITY_CLOAK_SPEL = 0x01000873
-PROXIMITY_CLOAK_AREA = 15
-PROXIMITY_ABILITY_EFIT_AREA = 40
+PROXIMITY_CLOAK_AREA = 500
+PROXIMITY_ABILITY_EFIT_AREA = 500
+MGEF_FLAG_HOSTILE = 0x00000001
+MGEF_FLAG_DETRIMENTAL = 0x00000004
+MGEF_FLAG_DYNAMIC_RESTART = 0x00000020
 MGEF_FLAG_NO_HIT_EVENT = 0x00000010
-MGEF_FLAG_NO_DURATION = 0x00000200
+MGEF_FLAG_NO_AREA = 0x00000800
 MGEF_FLAG_PAINLESS = 0x04000000
 MGEF_FLAG_NO_HIT_EFFECT = 0x08000000
-PROXIMITY_MGEF_TRIAL_FLAGS = (
+PROXIMITY_HIT_MGEF_FLAGS = (
+    MGEF_FLAG_DETRIMENTAL
+    | MGEF_FLAG_DYNAMIC_RESTART
+    | MGEF_FLAG_NO_AREA
+    | MGEF_FLAG_PAINLESS
+    | MGEF_FLAG_NO_HIT_EFFECT
+)
+PROXIMITY_HIT_MGEF_DELAY = 0.01
+MGEF_DATA_OFF_DELAY_TIME = 0x94
+PROXIMITY_CLOAK_MGEF_FLAGS = (
     MGEF_FLAG_NO_HIT_EVENT | MGEF_FLAG_PAINLESS | MGEF_FLAG_NO_HIT_EFFECT
 )
 
@@ -127,13 +141,13 @@ def main() -> None:
         ("FID_PROXIMITY_HIT_SPEL = 0x01000871", "HIT_SPEL"),
         ("FID_PROXIMITY_CLOAK_MGEF = 0x01000872", "CLOAK_MGEF"),
         ("FID_PROXIMITY_CLOAK_SPEL = 0x01000873", "CLOAK_SPEL"),
-        ("NEXT_OID = 0x00000877", "NEXT_OID"),
+        ("NEXT_OID = 0x00000878", "NEXT_OID"),
         ("VANILLA_CLOAK_ABILITY_SPEL_SOURCE = 0x000DB3AD", "ability source"),
         ("VANILLA_CLOAK_MGEF_SOURCE = 0x000DB3AE", "cloak source"),
         ("VANILLA_CLOAK_HIT_SPEL_SOURCE = 0x000DF451", "hit spel source"),
         ("VANILLA_CLOAK_HIT_MGEF_SOURCE = 0x0009252A", "hit mgef source"),
-        ("PROXIMITY_CLOAK_AREA = 15", "cloak area"),
-        ("PROXIMITY_ABILITY_EFIT_AREA = 40", "ability efit area"),
+        ("PROXIMITY_CLOAK_AREA = 500", "cloak area"),
+        ("PROXIMITY_ABILITY_EFIT_AREA = 500", "ability efit area"),
     ]:
         if needle not in builder_text:
             fail(f"build_hunger_spell_esp.py must declare {label}: {needle}")
@@ -328,17 +342,24 @@ def main() -> None:
     if struct.unpack_from("<I", hdata, 80)[0] != 0 or struct.unpack_from("<I", hdata, 84)[0] != 3:
         fail("hit MGEF must be Constant Effect (0) / Target Actor (3)")
     hit_flags = struct.unpack_from("<I", hdata, 0)[0]
-    want_hit = PROXIMITY_MGEF_TRIAL_FLAGS | MGEF_FLAG_NO_DURATION
-    if hit_flags & want_hit != want_hit:
+    if hit_flags != PROXIMITY_HIT_MGEF_FLAGS:
         fail(
-            f"hit MGEF flags must include NoHitEvent|NoDuration|Painless|NoHitEffect "
-            f"(0x{want_hit:08X}), got 0x{hit_flags:08X}"
+            f"hit MGEF flags must be exactly Detrimental|DynamicRestart|"
+            f"NoArea|Painless|NoHitEffect (0x{PROXIMITY_HIT_MGEF_FLAGS:08X}), "
+            f"got 0x{hit_flags:08X}"
         )
-    if hit_flags & 0x00000001:
+    if hit_flags & MGEF_FLAG_HOSTILE:
         fail(f"hit MGEF must not be Hostile, got flags=0x{hit_flags:08X}")
+    if len(hdata) < MGEF_DATA_OFF_DELAY_TIME + 4:
+        fail(f"hit MGEF DATA too short for Delay Time ({len(hdata)})")
+    delay = struct.unpack_from("<f", hdata, MGEF_DATA_OFF_DELAY_TIME)[0]
+    if abs(delay - PROXIMITY_HIT_MGEF_DELAY) > 1e-6:
+        fail(
+            f"hit MGEF Delay Time must be {PROXIMITY_HIT_MGEF_DELAY}, got {delay}"
+        )
     ok(
         f"Hit MGEF 0x{FID_PROXIMITY_HIT_MGEF:08X}: Script + Constant/TargetActor + "
-        f"flags=0x{hit_flags:08X} + VMAD Main->0x800"
+        f"flags=0x{hit_flags:08X} delay={delay} + VMAD Main->0x800"
     )
 
     cloak_mgef = by_id.get(("MGEF", FID_PROXIMITY_CLOAK_MGEF))
@@ -366,10 +387,10 @@ def main() -> None:
     if cast_t != 0 or deliv != 0:
         fail(f"cloak MGEF must be Constant Effect / Self (cast={cast_t} deliv={deliv})")
     cloak_flags = struct.unpack_from("<I", cdata, 0)[0]
-    if cloak_flags & PROXIMITY_MGEF_TRIAL_FLAGS != PROXIMITY_MGEF_TRIAL_FLAGS:
+    if cloak_flags & PROXIMITY_CLOAK_MGEF_FLAGS != PROXIMITY_CLOAK_MGEF_FLAGS:
         fail(
             f"cloak MGEF flags must include NoHitEvent|Painless|NoHitEffect "
-            f"(0x{PROXIMITY_MGEF_TRIAL_FLAGS:08X}), got 0x{cloak_flags:08X}"
+            f"(0x{PROXIMITY_CLOAK_MGEF_FLAGS:08X}), got 0x{cloak_flags:08X}"
         )
     ok(
         f"Cloak MGEF 0x{FID_PROXIMITY_CLOAK_MGEF:08X}: arch=35 Assoc=HitSPEL "
@@ -434,7 +455,10 @@ def main() -> None:
         fail(f"cloak Ability EFIT Duration must be 0, got {dur}")
     if abs(mag - 10.0) > 0.01:
         fail(f"cloak Ability EFIT Magnitude must be 10.0 (crGlowingOneCloak), got {mag}")
-    ok(f"Cloak Ability SPEL 0x{FID_PROXIMITY_CLOAK_SPEL:08X}: Ability/Self mag=10 area=40 -> Cloak MGEF")
+    ok(
+        f"Cloak Ability SPEL 0x{FID_PROXIMITY_CLOAK_SPEL:08X}: Ability/Self "
+        f"mag=10 area={PROXIMITY_ABILITY_EFIT_AREA} -> Cloak MGEF"
+    )
 
     for deploy_path in (DEPLOY_PS1, DEPLOY_SH):
         deploy_text = deploy_path.read_text(encoding="utf-8", errors="replace")

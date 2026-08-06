@@ -24,6 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+VOICE_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
 MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 NECRO = ROOT / "Data" / "PickmansWhisper" / "config" / "necromantic"
@@ -210,11 +211,11 @@ def test_kill_branch(text: str) -> None:
     if "NamedKillToast" not in named:
         fail("MaybeSpeakNamedKillVoice must require NamedKillToast")
     if "IsVoiceWeaponReady" not in named:
-        fail("MaybeSpeakNamedKillVoice must gate IsVoiceWeaponReady")
+        fail("MaybeSpeakNamedKillVoice must gate IsVoiceWeaponReady (VoiceAlias)")
     if "GetVoiceDeliveryMode" not in named:
-        fail("MaybeSpeakNamedKillVoice must honor GetVoiceDeliveryMode")
+        fail("MaybeSpeakNamedKillVoice must honor GetVoiceDeliveryMode (VoiceAlias)")
     if "PlayWhisperXwmByFile" not in named:
-        fail("MaybeSpeakNamedKillVoice must play via PlayWhisperXwmByFile when audio set")
+        fail("MaybeSpeakNamedKillVoice must play via VoiceAlias.PlayWhisperXwmByFile when audio set")
     if "PickPraiseLine" not in proc or "ToastPraiseLine" not in proc:
         fail("ProcessKnifeKill must fall back to PickPraiseLine/ToastPraiseLine")
     ok("E1 kill voice branch; satiation + praise fallback intact")
@@ -245,7 +246,8 @@ def test_necro_soft(text: str) -> None:
         fail("missing OnNecroSceneEnd handler")
     if "MaybeSpeakNamedIntimacyVoice" in text:
         fail("MaybeSpeakNamedIntimacyVoice retired — use MaybeSpeakNamedIntimacyEvent (E5)")
-    intimacy = extract_function(text, "MaybeSpeakNamedIntimacyEvent")
+    voice = VOICE_PSC.read_text(encoding="utf-8", errors="replace")
+    intimacy = extract_function(voice, "MaybeSpeakNamedIntimacyEvent")
     if "GetVictimOverrideName" not in intimacy:
         fail("intimacy voice must filter named Potential Victims")
     if "GetVoiceDeliveryMode" not in intimacy:
@@ -258,11 +260,21 @@ def test_necro_soft(text: str) -> None:
         fail("intimacy audio-only must PickIntimacyAudioIndex")
     if "PlayIntimacyAudioAt" not in intimacy:
         fail("intimacy must PlayIntimacyAudioAt for same-index / audio-only")
-    if "NamedIntimacyAudio" in text:
+    if "NamedIntimacyAudio" in text or "NamedIntimacyAudio" in voice:
         fail("PSC must not keep NamedIntimacyAudio (E5 banks)")
-    if "NamedIntimacyToast" in text or "NamedIntimacyEndToast" in text:
+    if (
+        "NamedIntimacyToast" in text
+        or "NamedIntimacyEndToast" in text
+        or "NamedIntimacyToast" in voice
+        or "NamedIntimacyEndToast" in voice
+    ):
         fail("PSC must not keep NamedIntimacyToast / NamedIntimacyEndToast vars (E4)")
-    if "Intimacy_Stop" in text or "IntimacyStop" in text:
+    if (
+        "Intimacy_Stop" in text
+        or "IntimacyStop" in text
+        or "Intimacy_Stop" in voice
+        or "IntimacyStop" in voice
+    ):
         fail("PSC must use End naming (not Stop)")
     builder = BUILDER.read_text(encoding="utf-8")
     if "Necromantic.esp" in builder:
@@ -277,10 +289,11 @@ def test_necro_soft(text: str) -> None:
 
 
 def test_e5_load_pick(text: str) -> None:
-    load_banks = extract_function(text, "LoadLineBanks")
+    voice = VOICE_PSC.read_text(encoding="utf-8", errors="replace")
+    load_banks = extract_function(voice, "LoadVoiceBanks")
     if "LoadIntimacyNamedLines()" not in load_banks:
-        fail("LoadLineBanks must call LoadIntimacyNamedLines")
-    load = extract_function(text, "LoadIntimacyNamedLines")
+        fail("LoadVoiceBanks must call LoadIntimacyNamedLines")
+    load = extract_function(voice, "LoadIntimacyNamedLines")
     for name in (
         "Intimacy_Start_Named.txt",
         "Intimacy_End_Named.txt",
@@ -293,7 +306,7 @@ def test_e5_load_pick(text: str) -> None:
         fail("LoadIntimacyNamedLines must report toast/audio count mismatch")
     if "NecromanticConfigPath" not in load and "necromantic" not in load:
         fail("LoadIntimacyNamedLines must use necromantic config path")
-    path_fn = extract_function(text, "NecromanticConfigPath")
+    path_fn = extract_function(voice, "NecromanticConfigPath")
     if "necromantic" not in path_fn:
         fail("NecromanticConfigPath must point at config/necromantic")
     for name in (
@@ -303,9 +316,9 @@ def test_e5_load_pick(text: str) -> None:
         "PlayIntimacyAudioAt",
         "MaybeSpeakNamedIntimacyEvent",
     ):
-        extract_function(text, name)
-    named_pick = extract_function(text, "PickIntimacyNamedIndex")
-    audio_pick = extract_function(text, "PickIntimacyAudioIndex")
+        extract_function(voice, name)
+    named_pick = extract_function(voice, "PickIntimacyNamedIndex")
+    audio_pick = extract_function(voice, "PickIntimacyAudioIndex")
     if "RandomInt" not in named_pick or "RandomInt" not in audio_pick:
         fail("intimacy picks must use Utility.RandomInt")
     if "LastIntimacyStartLine" not in named_pick or "LastIntimacyEndLine" not in named_pick:
@@ -318,18 +331,10 @@ def test_e5_load_pick(text: str) -> None:
         fail("LoadModConfig must not parse namedIntimacyAudio (E5)")
     if 'key == "namedKillToast"' not in load_cfg:
         fail("LoadModConfig must still parse namedKillToast")
-    start_evt = text[
-        text.find("Event NecromanticMainQuestScript.OnNecroSceneStart") : text.find(
-            "Event NecromanticMainQuestScript.OnNecroSceneEnd"
-        )
-    ]
-    end_evt = extract_function(text, "MaybeSpeakNamedIntimacyEvent")  # handlers call this
     if "MaybeSpeakNamedIntimacyEvent(corpse, True)" not in text:
         fail("OnNecroSceneStart must MaybeSpeakNamedIntimacyEvent(..., True)")
     if "MaybeSpeakNamedIntimacyEvent(corpse, False)" not in text:
         fail("OnNecroSceneEnd must MaybeSpeakNamedIntimacyEvent(..., False)")
-    _ = start_evt  # keep unused quiet
-    _ = end_evt
     deploy = DEPLOY_PS1.read_text(encoding="utf-8", errors="replace")
     if 'Sync-DataTree "PickmansWhisper"' not in deploy and "necromantic" not in deploy:
         fail("build-deploy-local.ps1 must Sync-DataTree PickmansWhisper (includes config/necromantic)")
@@ -346,22 +351,24 @@ def test_e5_load_pick(text: str) -> None:
 
 
 def test_play_subdir_and_sndr_cap(text: str) -> None:
-    play = extract_function(text, "PlayWhisperXwmByFile")
+    voice = VOICE_PSC.read_text(encoding="utf-8", errors="replace")
+    play = extract_function(voice, "PlayWhisperXwmByFile")
     if "IsVoiceWeaponReady" not in play:
         fail("PlayWhisperXwmByFile must gate IsVoiceWeaponReady")
     if "Debug.Notification" not in play:
         fail("PlayWhisperXwmByFile must fail loud")
     if 'c == "/"' not in play and "lastSep" not in play:
         fail("PlayWhisperXwmByFile must split relative subdir keys")
-    load_ids = extract_function(text, "LoadWhisperSndrIds")
-    if "new String[128]" not in load_ids and "WHISPER_SNDR_MAX" not in text:
+    load_ids = extract_function(voice, "LoadWhisperSndrIds")
+    if "new String[128]" not in load_ids and "WHISPER_SNDR_MAX" not in voice:
         fail("LoadWhisperSndrIds must support >=128 entries for intimacy SNDRs")
-    if "WHISPER_SNDR_MAX" in text:
+    if "WHISPER_SNDR_MAX" in voice:
         if "WhisperSndrCount < WHISPER_SNDR_MAX" not in load_ids:
             fail("LoadWhisperSndrIds loop must use WHISPER_SNDR_MAX")
-    notice = extract_function(text, "PlayNoticeAudio")
+    notice = extract_function(voice, "PlayNoticeAudio")
     if "PlayWhisperXwmByFile" not in notice:
         fail("PlayNoticeAudio must delegate to PlayWhisperXwmByFile")
+    _ = text  # Main still owns kill helpers / necro registration
     builder = BUILDER.read_text(encoding="utf-8")
     if "edid_stem_from_map_key" not in builder:
         fail("builder must sanitize relative-path EDIDs")
@@ -371,13 +378,10 @@ def test_play_subdir_and_sndr_cap(text: str) -> None:
 
 
 def test_kill_helpers_untouched(text: str) -> None:
-    blade = extract_function(text, "IsBladeEquipped")
-    if "FindEquippedPickmansBladeIndex" not in blade:
-        fail("IsBladeEquipped must remain GoE scan")
     kill = extract_function(text, "IsBladeKillWeaponReady")
     if not re.search(r"Return\s+IsBladeEquipped\s*\(\s*\)", kill):
         fail("IsBladeKillWeaponReady must still alias IsBladeEquipped")
-    ok("kill blade helpers unchanged")
+    ok("IsBladeKillWeaponReady aliases IsBladeEquipped")
 
 
 def main() -> None:

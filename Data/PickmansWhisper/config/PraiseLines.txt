@@ -1,0 +1,10 @@
+# Knife-kill praise voice bank (files-only). One toast line per non-comment row.
+# Reloaded via MCM Voice > Reload line banks / LoadLineBanks on game resume.
+Yes... that was beautiful. Rest a moment.
+Perfect. Clean. The blade is smiling.
+You felt that, didn't you? So did I.
+Again when you're ready. I'll wait.
+Good. They hardly knew how to thank you.
+Quiet work. Elegant. Keep going.
+I knew you'd understand us.
+Hunger sleeps. For a little while.

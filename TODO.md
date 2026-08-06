@@ -52,18 +52,24 @@ See docs/SLICE_H_CORPSE_DECAY.md · face art docs/Decay_Head_Guide.md (former Sl
 - [ ] **P5** Eat reward + clear from Potential Victims
 - [ ] **P6** Face decal art finish (stages 1–4; stage 0 verified)
 
+## Slice J — retire KillerScan + Alias refactor (later)
+
+See docs/ROADMAP.md Slice J. Do not start until event-driven kill/notice path is confirmed in-game.
+
+- [ ] **J1** Deprecate and remove the old KillerScan poller
+- [ ] **J2** Refactor MainQuestScript — move more code into Alias scripts (e.g. MCM into its own Alias)
+
 ## Later
 
 - [ ] **bedGiftWoundAlpha Main expose** — `tools/test_corpse_decay.py` assertion that Main must load/expose `bedGiftWoundAlpha` / `GetBedGiftWoundAlpha` is commented out. Review after ModConfigAlias move: confirm opacity is read from ModConfigAlias (or CorpseDecay) only, then either restore a correct contract or delete the dead Main-facing assert. Related: `test_bed_hallucination.py`, `test_decay_stage_modconfig.py`.
 - [ ] **Prune unused Caprica stubs** — after the FO4/F4SE/GoE honesty audit, `tools/stubs/` still keeps every type Caprica may need (inheritance, param types, soft deps). Do a **compile-driven** orphan pass later: remove only stubs proven unnecessary (not a text-scan guess). Keep the live `test_stub_natives.py` source check; never reintroduce fake/Skyrim natives to silence Caprica.
-- [ ] **KillerScan → true event bus** — revisit main scan dispatch. Today: sync `VoiceScan.HandleKillerScanVoice`, then `CallFunctionNoWait` knife/overlays (same-quest CustomEvent was unreliable). Goal: scanner publishes once; listeners subscribe without blocking the scan timer. Prove delivery in-game + Papyrus log before ripping out direct calls. See ROADMAP Slice C KillerScan note.
-- [ ] **J** Victim beat-before-kill (temp essential + fight back; unarmed exception)
 - [ ] **K** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
 - [ ] **L** Corpse hold / preserve sync with Necromantic
 - [ ] **M** Lady Killer / Black Widow soft gates; Cannibal stretch
 - [ ] **N** Witnesses / killer rumors
 - [ ] **O** Infamy whispers
 - [ ] **P** Private cells + quests (Combat Zone, Culte des Ghouls, butcher shop, Pickman house)
+- [ ] **Q** Victim beat-before-kill (temp essential + fight back; unarmed exception) — was Slice J
 
 ## LoversLab release / visibility
 

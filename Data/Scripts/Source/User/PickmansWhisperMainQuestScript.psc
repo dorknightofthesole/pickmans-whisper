@@ -3,7 +3,7 @@ Scriptname PickmansWhisperMainQuestScript extends Quest
 ; Pickman's Whisper — Slice A+B: gallery/blade bond, toast voice, knife hunger, kill satiation.
 ; Soft companion to Necromantic (no AAF, no compile coupling). Soft deps: F4SE, MCM.
 
-Actor PlayerRef
+Actor Property PlayerRef Auto ; Property so VoiceAlias can read (voice banks moved)
 Form PickmansBlade ; LVLI CustomItem template 0x22595F — not the drawn WEAP
 Weapon CombatKnifeBase ; WEAP Knife 0x913CA — what GetEquippedWeapon returns for Pickman's
 ObjectMod OmodBleed ; mod_Legendary_Weapon_Bleed 0x1E7C20
@@ -42,17 +42,17 @@ Form Property RuntimeBladeForm Auto
 Bool DebugKillToastsCached = False
 Bool DebugKillToastsCacheValid = False
 
-; Human / safety filters (Fallout4.esm keywords)
-Keyword KW_ActorTypeNPC
-Keyword KW_ActorTypeHuman
-Keyword KW_ActorTypeChild ; 0x1157E8 — IsChild() alone misses many settlement kids
-Keyword KW_ActorTypeGhoul
-Keyword KW_ActorTypeSuperMutant
-Keyword KW_ActorTypeSynth
-Keyword KW_ActorTypeRobot
-Keyword KW_ActorTypeAnimal
-Keyword KW_ActorTypeCreature
-Keyword KW_ActorTypeTurret
+; Human / safety filters (Fallout4.esm keywords) — Property so VoiceAlias checklist can read
+Keyword Property KW_ActorTypeNPC Auto
+Keyword Property KW_ActorTypeHuman Auto
+Keyword Property KW_ActorTypeChild Auto ; 0x1157E8 — IsChild() alone misses many settlement kids
+Keyword Property KW_ActorTypeGhoul Auto
+Keyword Property KW_ActorTypeSuperMutant Auto
+Keyword Property KW_ActorTypeSynth Auto
+Keyword Property KW_ActorTypeRobot Auto
+Keyword Property KW_ActorTypeAnimal Auto
+Keyword Property KW_ActorTypeCreature Auto
+Keyword Property KW_ActorTypeTurret Auto
 
 ; Blade-tagged victims — a confirmed player+blade hit registers OnDeath and adds here;
 ; cleared (with UnregisterForRemoteEvent) the moment their death is processed, or by the
@@ -60,7 +60,7 @@ Keyword KW_ActorTypeTurret
 ; the kill-credit path needs — eligibility is decided live at OnDeath (IsBladeEquipped +
 ; killer==player + IsValidTarget), not by whether ambient scanning happened to notice them.
 Actor[] BladeTagged
-Int BladeTaggedCount = 0
+Int Property BladeTaggedCount = 0 Auto
 Int BLADE_TAGGED_MAX = 24
 ; Hit-watching dedup — TrackLivingNear runs every nearby actor every KillerScan tick;
 ; without this, RegisterForHitEvent got called on the same actor over and over for as
@@ -73,9 +73,8 @@ Int HitArmedCount = 0
 Int HIT_ARMED_MAX = 32
 Float LastKnifeKillRealTime = 0.0
 Float KNIFE_KILL_COOLDOWN = 1.5
-Float KILL_WATCH_RADIUS = 800.0
+Float Property KILL_WATCH_RADIUS = 800.0 Auto
 Float KILL_CORPSE_RADIUS = 400.0 ; Necromantic-ish close corpse window
-String Property LastKillIgnoreReason = "" Auto
 Int LastDeathToastId = 0
 Int LastHandledKillId = 0
 Cell LastBladeToastCell
@@ -90,18 +89,10 @@ Int BACKGROUND_DEAD_MAX = 48
 Int LastGoeAliveCount = 0
 Int LastGoeDeadCount = 0
 Int LastDetectCount = 0
-String DEBUG_BUILD = "C2-stable" ; detection = C2-pipe filters; Settler uses nameless whisper only
-; Notice poll dialogs — OFF by default now that pick path works. Enable on Debug page if needed.
-Bool NoticePollDebugDefault = False
-Int NoticePollCount = 0
-String LastNoticeDiag = ""
-String LastNoticeBreakAt = "" ; short "where it broke" for dialog header
-String LastNoticePollSource = ""
-String LastNearbySummary = "" ; MCM Debug "Nearby NPC scan" — updated by every PickNoticeTarget
-Float LastNoticeDiagRealTime = 0.0
-Float NOTICE_DIAG_MIN_GAP = 5.0 ; real seconds between poll MessageBoxes
+String Property DEBUG_BUILD = "C2-stable" Auto ; detection = C2-pipe filters; Settler uses nameless whisper only
+; Notice poll diag state moved to VoiceAlias with notice banks.
 Bool RefreshDebugBusy = False
-Int KillScanTickCount = 0
+Int Property KillScanTickCount = 0 Auto
 Bool KillScanArmAnnounced = False
 ; Drawn latch — refreshed by GoE scan + OnItemEquipped
 Bool BladeCurrentlyDrawn = False
@@ -141,8 +132,8 @@ Int TIMER_RENAME_PROMPT = 14
 Int TIMER_DECAY_SYNC = 15
 Int TIMER_DECAY_ADVANCE = 17
 Float RENAME_PROMPT_DELAY = 2.5
-String PendingRenamePrompt = ""
-Float PendingRenameAtReal = 0.0
+String Property PendingRenamePrompt = "" Auto
+Float Property PendingRenameAtReal = 0.0 Auto
 Float NextBondRealTime = 0.0
 Float NextHungerRealTime = 0.0
 Float NextTrustRealTime = 0.0
@@ -172,12 +163,10 @@ Int FID_HUNGER_MGEF_CHA = 0x00000804
 Int FID_PLAYER_COMBAT_QUEST = 0x00000805 ; alias OnPlayerLoadGame lives here
 Int FID_SEVER_MSG = 0x00000806 ; PW_SeverLimbMenu — Slice F butcher menu
 ; D0-POC / D0.5 whisper SNDRs — EndIt is BASE+0; clones follow Desperate_Audio.txt order.
-Int FID_WHISPER_ENDIT = 0x00000807
-Int FID_WHISPER_BASE = 0x00000807
 Message SeverLimbMenu
 
-String MOD_NAME = "PickmansWhisper"
-Int LINE_FILE_MAX = 64
+String Property MOD_NAME = "PickmansWhisper" Auto
+Int Property LINE_FILE_MAX = 64 Auto
 
 String[] TrustLines
 Int TrustLineCount = 0
@@ -185,98 +174,6 @@ String[] HungerLines
 Int HungerLineCount = 0
 String[] PraiseLines
 Int PraiseLineCount = 0
-; C3 — hunger-staged notice banks. Content lives ONLY in the editable config .txt
-; files (no hardcoded builtin copies). Stage by hunger %: 0 calm / 1 restless /
-; 2 hungry / 3 starving / 4 desperate. If a file fails to load, that stage stays
-; silent and the failure is surfaced (load-time error toast + MCM Debug rows).
-String[] NoticeCalmLines
-Int NoticeCalmCount = 0
-String[] NoticeRestlessLines
-Int NoticeRestlessCount = 0
-String[] NoticeHungryLines
-Int NoticeHungryCount = 0
-String[] NoticeStarvingLines
-Int NoticeStarvingCount = 0
-String[] NoticeDesperateLines
-Int NoticeDesperateCount = 0
-String LastNoticeLine = "" ; C3 no-immediate-repeat guard (raw template, pre-name)
-Int LastNoticePickIndex = -1 ; bank index from last PickNoticeLine / audio-only roll
-Int LastNoticePickStage = -1
-; D1 — per-stage audio maps (*_Audio.txt). Filenames only (.xwm); FormIDs via WhisperSndrIds.txt.
-String[] AudioCalmLines
-Int AudioCalmCount = 0
-String[] AudioRestlessLines
-Int AudioRestlessCount = 0
-String[] AudioHungryLines
-Int AudioHungryCount = 0
-String[] AudioStarvingLines
-Int AudioStarvingCount = 0
-String[] AudioDesperateLines
-Int AudioDesperateCount = 0
-String AudioCalmStatus = ""
-String AudioRestlessStatus = ""
-String AudioHungryStatus = ""
-String AudioStarvingStatus = ""
-String AudioDesperateStatus = ""
-String LastAudioFile = "" ; no-immediate-repeat for audio-only rolls
-String[] WhisperSndrFiles
-Int[] WhisperSndrFids
-Int WhisperSndrCount = 0
-String WhisperSndrIdsStatus = ""
-; Per-stage load status for MCM Debug rows (e.g. "8 lines", "MISSING FILE",
-; "READ FAILED (GoE2?)", "EMPTY"). LastStageLoadStatus is set by LoadStageBank.
-String NoticeCalmStatus = ""
-String NoticeRestlessStatus = ""
-String NoticeHungryStatus = ""
-String NoticeStarvingStatus = ""
-String NoticeDesperateStatus = ""
-String LastStageLoadStatus = ""
-; Step-by-step load trace (path/exists/raw/parsed/RESULT), shown in one MessageBox
-; via ReportNoticeLoadStatus — mirrors Necromantic PosLoadDiag / InsLoadDiag.
-String NoticeLoadDiag = ""
-String LastStageLoadDiag = ""
-Float LastTrustToastRealTime = 0.0
-Float LastHungerToastRealTime = 0.0
-Float LastNoticeToastRealTime = 0.0
-Float LastNoticeToastGameTime = 0.0 ; hunger whisper cadence (game days)
-Float TRUST_TOAST_COOLDOWN = 8.0
-Float HUNGER_TOAST_COOLDOWN = 6.0
-Float PRAISE_TOAST_COOLDOWN = 2.0
-Float NOTICE_TOAST_COOLDOWN = 6.0 ; legacy real-s gap (kept for probes); ambient uses NOTICE_MIN_GAME_HOURS
-Float NOTICE_MIN_GAME_HOURS = 1.0 ; max ~1 ambient hunger whisper per game hour
-Float NOTICE_NPC_COOLDOWN = 12.0 ; per-NPC cool after a hunger toast (does NOT block fixation)
-Float LastPraiseToastRealTime = 0.0
-Float LastGameResumeRealTime = 0.0 ; debounce HandleGameResume when alias + remote both fire
-Int[] NoticeCoolIds
-Float[] NoticeCoolTimes
-Int NoticeCoolCount = 0
-Int NOTICE_COOL_MAX = 16
-; C4 approach is parked — do not reintroduce FindActors/timers on the notice hot
-; path until ambient killscan whispers are verified working again in-game.
-String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't fire
-String Property LastVoiceDispatchStatus = "" Auto ; MCM Debug — KillerScan→VoiceScan heartbeat
-
-; C5 look-fixation (additive). Aim-edge counts; does not alter ambient whispers.
-; Aim via GoE camera/activate — NOT Game.GetCurrentCrosshairRef (not a FO4 native).
-; Voice: 1st silent / 2nd hunger-stage line / 3rd+ RecognitionLines.txt
-Int FIXATION_MAX = 32
-Int[] FixationIds
-Int[] FixationCounts
-Int[] RecognitionToastCounts ; parallel — how many RecognitionLines toasts for this FormID
-Int FixationSlotCount = 0
-Int LastLookFixationId = 0 ; FormID under aim last tick; 0 = none
-String Property LastFixationStatus = "" Auto ; MCM Debug — last look-fixation edge
-String[] RecognitionLines
-Int RecognitionLineCount = 0
-String LastRecognitionLine = "" ; no-immediate-repeat (raw template)
-String RecognitionLoadStatus = ""
-; C5 P5 — sleep recognition bank (3rd+ look while GetSleepState >= 3).
-String[] SleepRecognitionLines
-Int SleepRecognitionLineCount = 0
-String LastSleepRecognitionLine = "" ; no-immediate-repeat (raw template)
-String SleepRecognitionLoadStatus = ""
-; After this many recognition toasts on one NPC (still unnamed), nudge toward MCM Victims.
-Int RECOGNITION_NAME_PROMPT_AT = 3
 ; ModConfig.txt fields + decayStage0..4 live on ModConfigAlias (PickmansWhisperModConfigScript).
 ; Slice H P4 — Cannibal nag cooldown across all ripe corpses (not ModConfig).
 Float LastEatRipeCorpseToastGameTime = 0.0
@@ -296,24 +193,6 @@ Int FID_NECROMANTIC_MAIN = 0x00000800
 NecromanticMainQuestScript NecroQuestRef
 Bool NecroEventsRegistered = False
 Bool NecroSceneActive = False
-String[] IntimacyStartNamedLines
-Int IntimacyStartNamedCount = 0
-String LastIntimacyStartLine = "" ; no-immediate-repeat (raw template)
-String IntimacyStartNamedStatus = ""
-Int LastIntimacyStartPickIndex = -1
-String[] IntimacyEndNamedLines
-Int IntimacyEndNamedCount = 0
-String LastIntimacyEndLine = "" ; no-immediate-repeat (raw template)
-String IntimacyEndNamedStatus = ""
-Int LastIntimacyEndPickIndex = -1
-String[] IntimacyStartAudioLines
-Int IntimacyStartAudioCount = 0
-String IntimacyStartAudioStatus = ""
-String[] IntimacyEndAudioLines
-Int IntimacyEndAudioCount = 0
-String IntimacyEndAudioStatus = ""
-String LastIntimacyAudioFile = "" ; no-immediate-repeat for audio-only intimacy rolls
-Int WHISPER_SNDR_MAX = 128 ; Desperate + Necromantic intimacy maps
 
 ; Slice G — logic on PickmansWhisperBedGiftScript (same quest). Façade syncs status here.
 String Property LastBedGiftStatus = "" Auto ; MCM / Trace — mirrored from BedGiftScript
@@ -345,19 +224,46 @@ Bool AllowChildFemalesOverride = False
 Bool AllowRobotsOverride = False
 String Property LastTargetOverridesStatus = "" Auto ; MCM / trace — last load result
 
-; Valid target (living only?) NPCs
-RefCollectionAlias Property TrackedNPCs Auto Const
+; Valid target (living only?) NPCs — unmapped; retiring TrackedNPCs RefCollectionAlias.
+; RefCollectionAlias Property TrackedNPCs Auto Const
 ; CK/VMAD: bound to PickmansWhisperPlayerCombat ALST 0 (PickmansWhisperPlayerAliasScript).
 PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const
 
 ActorValue Property PW_HitWihPickmansBlade Auto Const
 ActorValue Property PW_Credit_For_PickmansBlade_Kill Auto Const
+ActorValue Property PW_TargetTrackerExpiration Auto Const
 
-; CK/VMAD: bound to PickmansWhisperMain ALST KillRewardAlias (UniqueActor=Player).
-PickmansWhisperKillRewardScript Property KillRewardAlias Auto Const
-
-; CK/VMAD: bound to PickmansWhisperMain ALST ModConfigAlias (UniqueActor=Player).
+; CK/VMAD: bound to PickmansWhisperMain ALST ModConfigAlias / VoiceAlias.
+; KillRewardAlias retired — unmapped from ESP.
+; Alias script VMAD ofmt=2 object must be (unk=0, aliasId, quest) — see build_hunger_spell_esp.
+; PickmansWhisperKillRewardScript Property KillRewardAlias Auto Const
 PickmansWhisperModConfigScript Property ModConfigAlias Auto Const
+PickmansWhisperVoiceAliasScript Property VoiceAlias Auto Const
+
+; Fail-loud check after load (properties are Auto Const — filled by ESP, not assigned here).
+Function EnsureFeatureAliases()
+	If !ModConfigAlias
+		Debug.Trace("PickmansWhisper: ERROR ModConfigAlias unbound — rebuild esp / new save if ALST changed")
+	EndIf
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR VoiceAlias unbound — rebuild esp / new save if ALST changed")
+	EndIf
+EndFunction
+
+; Debounce HandleGameResume (alias + remote). Kept on Main — not voice-owned.
+Float LastGameResumeRealTime = 0.0
+; Toast cooldowns for trust/hunger/praise (notice cools live on VoiceAlias).
+; Whisper SNDR FormIDs (also on VoiceAlias for PlayWhisperXwmByFile).
+Int FID_WHISPER_ENDIT = 0x00000807
+Int FID_WHISPER_BASE = 0x00000807
+
+Int MAX_TRACKABLE_TARGETS = 10 Const
+
+Int TARGET_TRACKER_EXPIRATION_SECONDS = 30 Const
+
+Int TIMER_TRACKER_EXPIRE = 23   ; pick an id free on Main (avoid 1–7, 13–15, 17)
+Float TRACKER_EXPIRE_POLL_SECONDS = 30.0
+Bool TrackerExpireRunning = False
 
 
 Event OnInit()
@@ -371,11 +277,10 @@ Event OnInit()
 		RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
 	EndIf
 
+	EnsureFeatureAliases()
 	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
 	ScheduleBootArm()
-
-	ClearCollection(TrackedNPCs)
 EndEvent
 
 Function ClearCollection(RefCollectionAlias akCollection)
@@ -408,11 +313,12 @@ Event OnQuestInit()
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
+	EnsureFeatureAliases()
 	; Arm KillerScan on init/load — no MessageBox here (MCM Debug buttons only).
 	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
 	ScheduleBootArm()
-	EnsureCombatKillHooks()
+	; EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
 	RegisterKillerScanScripts()
@@ -445,6 +351,7 @@ Function HandleGameResume(String reason)
 	EndIf
 	If LastGameResumeRealTime > 0.0 && (now - LastGameResumeRealTime) < 2.0
 		; Duplicate alias+remote load within 2s — still re-arm + boot timer.
+		EnsureFeatureAliases()
 		EnsurePlayerCombatQuest()
 		ArmRuntimeLoops()
 		ScheduleBootArm()
@@ -468,12 +375,13 @@ Function HandleGameResume(String reason)
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
 	RegisterForExternalEvent("OnMCMMenuOpen|PickmansWhisper", "OnMCMMenuOpen")
 	RegisterForExternalEvent("OnMCMSettingChange|PickmansWhisper", "OnMCMSettingChange")
+	EnsureFeatureAliases()
 	; Arm FIRST — MCM Debug must never be required to start the notice/killscan loops.
 	; No MessageBox on load (ReportNoticeLoadStatus is MCM "Test notice file load" only).
 	EnsurePlayerCombatQuest()
 	ArmRuntimeLoops()
 	ScheduleBootArm()
-	EnsureCombatKillHooks()
+	; EnsureCombatKillHooks()
 	LoadLineBanks()
 	RegisterNecromanticSceneEvents()
 	RegisterKillerScanScripts()
@@ -482,9 +390,14 @@ Function HandleGameResume(String reason)
 	RefreshBladeOwnershipFromEquip()
 	ReconcileHungerSpecialPenaltyFlags()
 	SyncHungerAddictionSpell()
-	LastNoticeToastRealTime = 0.0
-	LastNoticeDiagRealTime = 0.0
-	NoticeCoolCount = 0
+	If VoiceAlias
+		VoiceAlias.LastNoticeToastRealTime = 0.0
+		VoiceAlias.LastNoticeDiagRealTime = 0.0
+		VoiceAlias.LastTrustToastRealTime = 0.0
+		VoiceAlias.LastHungerToastRealTime = 0.0
+		VoiceAlias.LastPraiseToastRealTime = 0.0
+		VoiceAlias.NoticeCoolCount = 0
+	EndIf
 	NecroSceneActive = False
 	RefreshDebugStatus()
 	RefreshHungerPanel(False)
@@ -494,6 +407,7 @@ Function HandleGameResume(String reason)
 	If victims
 		victims.EnsureMcmOpenRegistered()
 	EndIf
+
 	Debug.Trace("PickmansWhisper: game resume (" + reason + ") " + DEBUG_BUILD)
 	ToastDebug("Pickman's Whisper load [" + DEBUG_BUILD + "]")
 	ToastBladeDetectStatus("load")
@@ -516,27 +430,25 @@ EndFunction
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-Function RegisterTarget(Actor akTarget, Actor akCaster)
+Function RegisterTarget(Actor akTarget)
 	If !akTarget
 		Debug.Trace("PickmansWhisper: RegisterTarget skip — akTarget None")
-		Return
-	EndIf
-	If !TrackedNPCs
-		; Usually ESP alias typed as ReferenceAlias (missing ALCS seed) — bind fails at load.
-		Debug.Trace("PickmansWhisper: RegisterTarget skip — TrackedNPCs None (alias bind failed)")
-		Debug.Notification("PW: TrackedNPCs unbound")
 		Return
 	EndIf
 	If !PlayerAlias
 		Debug.Trace("PickmansWhisper Error: RegisterTarget — PlayerAlias unbound")
 		Return
 	EndIf
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
 
 	Bool IsTargetDead = akTarget.IsDead()
 
-	If !IsValidTarget(akTarget, False)
-		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest. Debug reason " + LastKillIgnoreReason)
-		Debug.Trace("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest. Debug reason " + LastKillIgnoreReason)
+	; Hard gate + knife feature: must have been seen non-hostile while alive.
+	If !IsValidTarget(akTarget) || !WasFriendlySeen(akTarget)
+		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest.")
+		Debug.Trace("PickmansWhisper: RegisterTarget reject | " + akTarget.GetDisplayName() + " id=" + akTarget.GetFormID())
 		Return
 	ElseIf !IsTargetDead
 		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is fresh meat.")
@@ -544,54 +456,38 @@ Function RegisterTarget(Actor akTarget, Actor akCaster)
 
 	Bool isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
 
-	If !IsTargetDead && TrackedNPCs.Find(akTarget) < 0 && isPickmansBladeEquipped
+	If !IsTargetDead && isPickmansBladeEquipped
 		; Register for the events on this specific NPC
 		RegisterForRemoteEvent(akTarget, "OnDeath")
-		RegisterForHitEvent(akTarget, akCaster)
-		TrackedNPCs.AddRef(akTarget)
+		RegisterForHitEvent(akTarget, PlayerRef)
+		
 		Debug.Notification("PW RegisterTarget: Registering death event for " + akTarget.GetDisplayName())
-		; TODO call whisper logic
+		; TODO call whisper Logic
+		;     Initial encounter with living target
+		;     [x] Slice C integration
+		;     Slice I 
+		If VoiceAlias
+			VoiceAlias.HandleWhisperVoice(akTarget)
+		Else
+			Debug.Notification("PW Error: VoiceAlias is not initialized")
+			Debug.Trace("PickmansWhisper: ERROR RegisterTarget live — VoiceAlias unbound")
+		EndIf
+
 	ElseIf IsTargetDead && isPickmansBladeEquipped
 		Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " is dead. She belongs to the knife now.")
-		If akTarget.GetValue(PW_HitWihPickmansBlade) == 1.0 && akTarget.GetValue(PW_Credit_For_PickmansBlade_Kill) != 1.0
-			Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " likely killed with the blade")
-			; Missed-OnDeath backup — do not stamp credit here (that skipped ProcessKnifeKill).
-			If KillRewardAlias
-				KillRewardAlias.RegisterKillRewardCheck(akTarget, 20)
-			Else
-				Debug.Trace("PickmansWhisper Error: RegisterTarget dead — KillRewardAlias unbound")
-			EndIf
-		EndIf
 		; TODO handle dead use cases
-	ElseIf isPickmansBladeEquipped
-		Debug.Notification("PW RegisterTarget: Already tracking " + akTarget.GetDisplayName())
-		; Not dead and currently tracked, ready for the kill
-		return
+		;     Slice H
+		;     Slice F
+
 	ElseIf !isPickmansBladeEquipped
 		; Not dead and currently tracked,
 		Debug.Notification("PW RegisterTarget: She needs a good beating " + akTarget.GetDisplayName())
 		; TODO handle beating use case
+		;     Slice Q — victim beat-before-kill
 		return
-	Else 
-		; Not dead and currently tracked
-		Debug.Trace("PW RegisterTarget: We should not get here for " + akTarget.GetDisplayName() + ". Might be a logic ERROR.")
-		Debug.Notification("PW RegisterTarget: We should not get here for " + akTarget.GetDisplayName())
-		return	
 	EndIf
 
 	Debug.Trace("PW RegisterTarget: Registered events for " + akTarget.GetDisplayName())
-EndFunction
-
-function UnRegisterTarget(Actor akTarget, Actor akCaster)
-	; Check if NPC is out of range and only then do we deregister
-	If !akTarget
-		Return
-	EndIf
-	UnregisterForRemoteEvent(akTarget, "OnDeath")
-	UnregisterForHitEvent(akTarget, akCaster)
-	If TrackedNPCs
-		TrackedNPCs.RemoveRef(akTarget)
-	EndIf
 EndFunction
 
 Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource, Projectile akProjectile, Bool abPowerAttack, Bool abSneakAttack, Bool abBashAttack, Bool abHitBlocked, String asMaterialName)
@@ -605,11 +501,8 @@ Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource
 		isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
 	EndIf
 	If isPickmansBladeEquipped
-		targetActor.SetValue(PW_HitWihPickmansBlade, 1.0)
+		; TODO add encouragement to finish them
 	EndIf
-
-	Debug.Notification("PW OnHit " + targetActor.GetDisplayName())
-	; HandleBladeHit(akTarget, akAggressor, akSource)
 EndEvent
 
 Event Actor.OnDeath(Actor akSender, Actor akKiller)
@@ -623,50 +516,18 @@ Function RewardKill(Actor akSender)
 		Debug.Trace("PickmansWhisper Error: RewardKill — null sender")
 		Return
 	EndIf
-	Bool KillRewardedAlready = CheckIfKillRewarded(akSender)
 
 	UnregisterForRemoteEvent(akSender, "OnDeath")
-	; Match RegisterForHitEvent(target, caster) without needing the original caster ref.
 	UnregisterForAllHitEvents(akSender)
 
-	If TrackedNPCs
-		TrackedNPCs.RemoveRef(akSender)
-	EndIf
-
-	If KillRewardedAlready
-		Return
-	EndIf
-	If !PW_HitWihPickmansBlade || akSender.GetValue(PW_HitWihPickmansBlade) != 1.0
-		Debug.Trace("PickmansWhisper: RewardKill skip — no PW_HitWihPickmansBlade formId=" + akSender.GetFormID())
-		Return
-	EndIf
 	If !PlayerAlias || !PlayerAlias.IsPickmansBladeEquipped
 		Debug.Trace("PickmansWhisper: RewardKill skip — blade not equipped formId=" + akSender.GetFormID())
 		Return
 	EndIf
 	ProcessKnifeKill(akSender)
-	If PW_Credit_For_PickmansBlade_Kill
-		akSender.SetValue(PW_Credit_For_PickmansBlade_Kill, 1.0)
-	EndIf
 EndFunction
 
-; KillRewardAlias backup path — True when credit AV already stamped. Verify using TrackedNPCs actor instance
-Bool Function CheckIfKillRewarded(Actor akTarget)
-	If !akTarget || !TrackedNPCs || !PW_Credit_For_PickmansBlade_Kill
-		Return False
-	EndIf
-	Int targetRefIdx = TrackedNPCs.Find(akTarget)
-	If targetRefIdx < 0
-		Return False
-	EndIf
-	Actor targetRef = TrackedNPCs.GetAt(targetRefIdx) as Actor
-	If !targetRef
-		Return False
-	EndIf
-	Return targetRef.GetValue(PW_Credit_For_PickmansBlade_Kill) == 1.0
-EndFunction
-
-; TODO Refactor this mess 
+; TODO Refactor this mess; Took initial stab at cleanup 
 Function StartBond(String reason)
 	If BondStarted
 		Return
@@ -717,6 +578,77 @@ Function StartBond(String reason)
 	EndIf
 EndFunction
 
+Function WhisperAliveVictim(Actor akTarget)
+	If VoiceAlias
+		VoiceAlias.HandleWhisperVoice(akTarget)
+	Else
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Debug.Trace("PickmansWhisper: ERROR VoiceAlias unbound on Main quest")
+	EndIf
+EndFunction
+
+; --- MCM CallFunction entry points only (MCM targets MainQuestScript by name) ---
+; Everything else: call VoiceAlias.<fn> directly at the use site.
+
+Function DebugTestNoticeLine()
+	If !VoiceAlias
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Debug.Trace("PickmansWhisper: ERROR DebugTestNoticeLine — VoiceAlias unbound")
+		Return
+	EndIf
+	VoiceAlias.DebugTestNoticeLine()
+EndFunction
+
+Function DebugTestNoticeFiles()
+	If !VoiceAlias
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Debug.Trace("PickmansWhisper: ERROR DebugTestNoticeFiles — VoiceAlias unbound")
+		Return
+	EndIf
+	VoiceAlias.DebugTestNoticeFiles()
+EndFunction
+
+Function DebugVoicePathDump()
+	If !VoiceAlias
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Debug.Trace("PickmansWhisper: ERROR DebugVoicePathDump — VoiceAlias unbound")
+		Return
+	EndIf
+	VoiceAlias.DebugVoicePathDump()
+EndFunction
+
+
+;----------------------- Utility -----------------------
+
+; Returns the distance from an actor to the player in meters
+Float Function GetDistanceToPlayerInMeters(Actor akTarget)
+    If !akTarget
+        Return -1.0 ; Invalid target check
+    EndIf
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+    
+    ; Calculate distance and convert to meters (70 units ≈ 1 meter)
+    Return (akTarget.GetDistance(PlayerRef) / 70.0)
+EndFunction
+
+;----------------------- Clean Up -----------------------
+
+; Unregister the target NPC if they are more than N meters away from the Player
+function UnRegisterTarget(Actor akTarget)
+	If !akTarget
+		Return
+	EndIf
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+
+	UnregisterForRemoteEvent(akTarget, "OnDeath")
+	UnregisterForHitEvent(akTarget, PlayerRef)
+
+	Debug.Notification("PicknmansWhisper Debug: No longer tracking " + akTarget.GetDisplayName())
+EndFunction
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -934,16 +866,16 @@ EndFunction
 
 ; Verify KillerScan + VoiceScan attached (dispatch is direct from KillerScan, not CustomEvent).
 Function RegisterKillerScanScripts()
+	EnsureFeatureAliases()
 	PickmansWhisperKillerScanScript scan = KillerScan()
 	If !scan
 		Debug.Notification("Pickman's Whisper: KillerScan script missing — rebuild PickmansWhisper.esp")
 		Debug.Trace("PickmansWhisper: ERROR KillerScan script missing on Main quest")
 		Return
 	EndIf
-	PickmansWhisperVoiceScanScript voice = VoiceScan()
-	If !voice
-		Debug.Notification("Pickman's Whisper: VoiceScan script missing — rebuild PickmansWhisper.esp")
-		Debug.Trace("PickmansWhisper: ERROR VoiceScan script missing on Main quest")
+	If !VoiceAlias
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild PickmansWhisper.esp")
+		Debug.Trace("PickmansWhisper: ERROR VoiceAlias unbound on Main quest")
 	EndIf
 	PickmansWhisperVictimsScript victims = Victims()
 	If !victims
@@ -954,17 +886,13 @@ Function RegisterKillerScanScripts()
 	EndIf
 EndFunction
 
-PickmansWhisperVoiceScanScript Function VoiceScan()
-	Return (Self as Quest) as PickmansWhisperVoiceScanScript
-EndFunction
-
 Function StartKillerScanLoop()
-	PickmansWhisperKillerScanScript scan = KillerScan()
-	If !scan
-		Debug.Trace("PickmansWhisper: ERROR StartKillerScanLoop — KillerScan missing")
-		Return
-	EndIf
-	scan.StartKillerScanLoop()
+	; PickmansWhisperKillerScanScript scan = KillerScan()
+	; If !scan
+	;	Debug.Trace("PickmansWhisper: ERROR StartKillerScanLoop — KillerScan missing")
+	;	Return
+	; EndIf
+	; scan.StartKillerScanLoop()
 EndFunction
 
 Function NoteKillerScanCounts(Int tick, Int aliveCount, Int deadCount, Int detectCount)
@@ -972,18 +900,6 @@ Function NoteKillerScanCounts(Int tick, Int aliveCount, Int deadCount, Int detec
 	LastGoeAliveCount = aliveCount
 	LastGoeDeadCount = deadCount
 	LastDetectCount = detectCount
-EndFunction
-
-; Called from VoiceScan.HandleKillerScanVoice every ~2s — proves dispatch reached Main.
-Function NoteVoiceDispatch(String detail)
-	If !detail
-		detail = "?"
-	EndIf
-	LastVoiceDispatchStatus = "t=" + KillScanTickCount + " " + detail
-	If MCM.IsInstalled()
-		MCM.SetModSettingString(MOD_NAME, "sVoiceDispatch:Debug", LastVoiceDispatchStatus)
-	EndIf
-	Debug.Trace("PickmansWhisper: voice dispatch | " + LastVoiceDispatchStatus)
 EndFunction
 
 ; KillerScan CallFunctionNoWait — knife credit + Victims aim + bed warm.
@@ -1009,7 +925,11 @@ Function HandleKillerScanKnifeAimWarm()
 		If IsBladeEquipped()
 			bladeBit = "blade=YES"
 		EndIf
-		ToastDebug("PW scan [" + DEBUG_BUILD + "] #" + KillScanTickCount + " near=" + BladeTaggedCount + " goeA=" + LastGoeAliveCount + " goeD=" + LastGoeDeadCount + " det=" + LastDetectCount + " " + bladeBit + " notice=" + LastNoticeStatus)
+		String noticeBit = ""
+		If VoiceAlias
+			noticeBit = VoiceAlias.LastNoticeStatus
+		EndIf
+		ToastDebug("PW scan [" + DEBUG_BUILD + "] #" + KillScanTickCount + " near=" + BladeTaggedCount + " goeA=" + LastGoeAliveCount + " goeD=" + LastGoeDeadCount + " det=" + LastDetectCount + " " + bladeBit + " notice=" + noticeBit)
 	EndIf
 EndFunction
 
@@ -1062,7 +982,9 @@ Event NecromanticMainQuestScript.OnNecroSceneStart(NecromanticMainQuestScript ak
 		Return
 	EndIf
 	NecroSceneActive = True
-	MaybeSpeakNamedIntimacyEvent(corpse, True)
+	If VoiceAlias
+		VoiceAlias.MaybeSpeakNamedIntimacyEvent(corpse, True)
+	EndIf
 EndEvent
 
 Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSender, Var[] akArgs)
@@ -1075,66 +997,12 @@ Event NecromanticMainQuestScript.OnNecroSceneEnd(NecromanticMainQuestScript akSe
 		completed = akArgs[10] as Bool
 	EndIf
 	; E5 — speak before clearing latch (same named-victim filter as start).
-	If corpse
-		MaybeSpeakNamedIntimacyEvent(corpse, False)
+	If corpse && VoiceAlias
+		VoiceAlias.MaybeSpeakNamedIntimacyEvent(corpse, False)
 	EndIf
 	NecroSceneActive = False
 	Debug.Trace("PickmansWhisper: OnNecroSceneEnd completed=" + completed)
 EndEvent
-
-; Named Potential Victim + iVoiceDelivery (0 toast+audio / 1 audio / 2 toast).
-; abStart=True → Start banks; False → End banks. Same-index toast/audio like notice D1.
-Function MaybeSpeakNamedIntimacyEvent(Actor partner, Bool abStart)
-	If !partner
-		Return
-	EndIf
-	String overrideName = GetVictimOverrideName(partner)
-	If !overrideName
-		Return
-	EndIf
-	If !IsVoiceEnabled()
-		Return
-	EndIf
-	If !IsVoiceWeaponReady()
-		Return
-	EndIf
-	Int mode = GetVoiceDeliveryMode()
-	If mode == 1
-		Int aIdx = PickIntimacyAudioIndex(abStart)
-		If aIdx < 0
-			Return
-		EndIf
-		PlayIntimacyAudioAt(abStart, aIdx)
-		Debug.Trace("PickmansWhisper: intimacy audio-only idx=" + aIdx + " start=" + abStart)
-		Return
-	EndIf
-	Int tIdx = PickIntimacyNamedIndex(abStart)
-	If tIdx < 0
-		If abStart
-			Debug.Notification("Pickman's Whisper: Intimacy_Start_Named.txt not loaded")
-			Debug.Trace("PickmansWhisper: ERROR intimacy start bank empty — " + IntimacyStartNamedStatus)
-		Else
-			Debug.Notification("Pickman's Whisper: Intimacy_End_Named.txt not loaded")
-			Debug.Trace("PickmansWhisper: ERROR intimacy end bank empty — " + IntimacyEndNamedStatus)
-		EndIf
-		Return
-	EndIf
-	String toastTemplate = ""
-	If abStart
-		toastTemplate = IntimacyStartNamedLines[tIdx]
-	Else
-		toastTemplate = IntimacyEndNamedLines[tIdx]
-	EndIf
-	String line = ApplyNamePlaceholder(toastTemplate, overrideName)
-	If !line || GardenOfEden.StrLength(line) < 1
-		Return
-	EndIf
-	ShowVoiceToast(line)
-	If mode == 0
-		PlayIntimacyAudioAt(abStart, tIdx)
-	EndIf
-	Debug.Trace("PickmansWhisper: named intimacy voice idx=" + tIdx + " start=" + abStart + " | " + line)
-EndFunction
 
 ; PlayerCombat quest owns the alias OnPlayerLoadGame hook. Start Game Enabled does
 ; not always start new quests on mid-game saves — force it so load arming works.
@@ -1168,7 +1036,7 @@ Function ArmRuntimeLoops()
 	NextTrustRealTime = 0.0
 	NextNoticeRealTime = 0.0
 	RegisterKillerScanScripts()
-	StartKillerScanLoop()
+	; StartKillerScanLoop()
 	Debug.Trace("PickmansWhisper: ArmRuntimeLoops — KillerScan only v" + MOD_VERSION)
 EndFunction
 
@@ -1191,7 +1059,9 @@ Function OnKillerScanCadence()
 	If PendingRenameAtReal > 0.0 && now >= PendingRenameAtReal
 		PendingRenameAtReal = 0.0
 		If PendingRenamePrompt
-			ShowVoiceToast(PendingRenamePrompt)
+			If VoiceAlias
+				VoiceAlias.ShowVoiceToast(PendingRenamePrompt)
+			EndIf
 			Debug.Trace("PickmansWhisper: name-her prompt (deadline) | " + PendingRenamePrompt)
 			PendingRenamePrompt = ""
 		Else
@@ -1212,7 +1082,9 @@ Function OnKillerScanCadence()
 	EndIf
 	If now >= NextNoticeRealTime
 		NextNoticeRealTime = now + NOTICE_VOICE_SECONDS
-		MaybeSpeakNoticeLine("timer")
+		If VoiceAlias
+			VoiceAlias.MaybeSpeakNoticeLine()
+		EndIf
 	EndIf
 EndFunction
 
@@ -1272,17 +1144,6 @@ Event Actor.OnItemRemoved(Actor akSender, Form akBaseItem, Int aiItemCount, Obje
 			OwnedPickmansBlade = False
 			Debug.Trace("PickmansWhisper: blade ownership cleared (removed)")
 		EndIf
-	EndIf
-EndEvent
-
-Event OnTimer(Int aiTimerID)
-	; Stale saves may still fire old feature timer ids — cancel only; KillerScan owns work.
-	CancelTimer(aiTimerID)
-	If aiTimerID == TIMER_KILL || aiTimerID == TIMER_KILL_SCAN || aiTimerID == TIMER_DECAY_SYNC || aiTimerID == TIMER_BOOT_ARM
-		StartKillerScanLoop()
-		Debug.Trace("PickmansWhisper: legacy OnTimer id=" + aiTimerID + " → StartKillerScanLoop")
-	Else
-		Debug.Trace("PickmansWhisper: legacy OnTimer id=" + aiTimerID + " cancelled (Killer Orchestrator)")
 	EndIf
 EndEvent
 
@@ -1486,7 +1347,11 @@ Function ToastAteRipeCorpse(Actor akCorpse)
 	If !overrideName
 		overrideName = "She"
 	EndIf
-	String line = ApplyNamePlaceholder(ModConfigAlias.AteRipeCorpseToast, overrideName)
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | VoiceAlias unbound")
+		Return
+	EndIf
+	String line = VoiceAlias.ApplyNamePlaceholder(ModConfigAlias.AteRipeCorpseToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | empty line after placeholder")
 		Return
@@ -1525,7 +1390,7 @@ Function RunBondPoll()
 	ResolveVanillaForms()
 
 	; Bond poll survives save load — re-arm world scan here (SingleUpdate does not).
-	StartKillerScanLoop()
+	; StartKillerScanLoop()
 
 	Bool inGallery = IsPlayerInGallery()
 	Bool hasBlade = PlayerHasBlade()
@@ -1849,40 +1714,16 @@ Bool Function ResyncDrawnBladeState()
 EndFunction
 
 Bool Function IsBladeEquipped()
-	; Drawn Pickman's only — GoE instance scan; never LVLI template / inventory count alone.
-	If !PlayerRef
-		Return False
+	If !PlayerAlias
+		Debug.Trace("PickmansWhisper Error: RegisterTarget — PlayerAlias unbound")
+		Return
 	EndIf
-	Weapon w = PlayerRef.GetEquippedWeapon(0)
-	If WeaponIsRanged(w)
-		BladeCurrentlyDrawn = False
-		DrawnWeaponStateValid = True
-		Return False
-	EndIf
-	; Always prefer live GoE scan (handles load + Combat Knife base name)
-	Int idx = FindEquippedPickmansBladeIndex()
-	If idx >= 0
-		BladeCurrentlyDrawn = True
-		DrawnWeaponStateValid = True
-		OwnedPickmansBlade = True
-		Return True
-	EndIf
-	BladeCurrentlyDrawn = False
-	DrawnWeaponStateValid = True
-	Return False
+
+	return PlayerAlias.IsPickmansBladeEquipped
 EndFunction
 
 ; Alias for kill checks — no sheath / empty-hand grace. Gun or fists = not ready.
 Bool Function IsBladeKillWeaponReady()
-	Return IsBladeEquipped()
-EndFunction
-
-; Voice / whisper gate — blade must be EQUIPPED (drawn), same requirement as kill
-; satiation (IsBladeEquipped / IsBladeKillWeaponReady). Was ownership-only ("on the
-; player, not necessarily drawn") — confirmed live that let ambient notice lines speak
-; with the blade merely owned/sheathed; the blade is what "speaks" to the player, so it
-; must be in hand, matching every other credited-action gate in the mod.
-Bool Function IsVoiceWeaponReady()
 	Return IsBladeEquipped()
 EndFunction
 
@@ -1971,7 +1812,7 @@ Function ToastBladeDetectStatus(String context)
 	EndIf
 	ToastDebug(msg)
 	; Blade toasts prove bond poll / load is alive — force-arm world scan there
-	StartKillerScanLoop()
+	; StartKillerScanLoop()
 	AnnounceKillScanArmed()
 EndFunction
 
@@ -1983,436 +1824,23 @@ Function StartTrustVoice()
 EndFunction
 
 Function MaybeSpeakTrustLine()
-	If !BondStarted || !IsVoiceEnabled()
+	If !BondStarted || !VoiceAlias || !VoiceAlias.IsVoiceEnabled()
 		Return
 	EndIf
 	If Utility.IsInMenuMode()
 		Return
 	EndIf
-	If !IsVoiceWeaponReady()
+	If !VoiceAlias || !VoiceAlias.IsVoiceWeaponReady()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	If (now - LastTrustToastRealTime) < TRUST_TOAST_COOLDOWN
+	If (now - VoiceAlias.LastTrustToastRealTime) < VoiceAlias.TRUST_TOAST_COOLDOWN
 		Return
 	EndIf
 	String line = PickTrustLine()
 	If line != ""
 		ToastVoice(line)
 	EndIf
-EndFunction
-
-Function StartNoticeVoice()
-	CancelTimer(TIMER_NOTICE)
-	NextNoticeRealTime = 0.0
-EndFunction
-
-Bool Function IsNoticePollDebugEnabled()
-	If MCM.IsInstalled()
-		Return MCM.GetModSettingBool(MOD_NAME, "bNoticePollDebug:Debug")
-	EndIf
-	Return NoticePollDebugDefault
-EndFunction
-
-Function ShowNoticePollDialog(String body)
-	If !IsNoticePollDebugEnabled()
-		Return
-	EndIf
-	If Utility.IsInMenuMode()
-		Return
-	EndIf
-	Float now = Utility.GetCurrentRealTime()
-	If (now - LastNoticeDiagRealTime) < NOTICE_DIAG_MIN_GAP
-		Return
-	EndIf
-	LastNoticeDiagRealTime = now
-	DEBUG_BUILD = "C2-stable"
-	Debug.Trace("PickmansWhisper: notice pipe | " + body)
-	DiagNotify(body)
-EndFunction
-
-Function WriteNearbyStatusToMcm()
-	If !MCM.IsInstalled()
-		Return
-	EndIf
-	If !LastNearbySummary
-		MCM.SetModSettingString(MOD_NAME, "sNearby:Debug", "(awaiting poll)")
-	Else
-		MCM.SetModSettingString(MOD_NAME, "sNearby:Debug", LastNearbySummary)
-	EndIf
-EndFunction
-
-Function WriteNoticeStatusToMcm()
-	If !MCM.IsInstalled()
-		Return
-	EndIf
-	If !LastNoticeStatus
-		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", "(none yet)")
-	Else
-		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus)
-	EndIf
-EndFunction
-
-; Full YES/NO checklist — first failing check is the break point for this actor.
-String Function FormatNoticeActorChecklist(Actor ak)
-	If !ak || ak == PlayerRef
-		Return "  (invalid actor)\n"
-	EndIf
-	String nm = GetActorDisplayName(ak)
-	If !nm
-		nm = "?"
-	EndIf
-	Int dist = 0
-	If PlayerRef
-		dist = PlayerRef.GetDistance(ak) as Int
-	EndIf
-	String out = "#" + nm + " d=" + dist + "\n"
-	String fail = ""
-
-	If ak.IsDead()
-		out += "  dead=YES <<\n"
-		If !fail
-			fail = "dead"
-		EndIf
-	Else
-		out += "  dead=no\n"
-	EndIf
-	If ak.IsDisabled()
-		out += "  disabled=YES <<\n"
-		If !fail
-			fail = "disabled"
-		EndIf
-	Else
-		out += "  disabled=no\n"
-	EndIf
-	If PlayerRef && PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
-		out += "  far=YES (>" + (KILL_WATCH_RADIUS as Int) + ") <<\n"
-		If !fail
-			fail = "too far"
-		EndIf
-	Else
-		out += "  far=no\n"
-	EndIf
-	If IsNoticeOnCooldown(ak)
-		out += "  npcCool=YES <<\n"
-		If !fail
-			fail = "npc cooldown"
-		EndIf
-	Else
-		out += "  npcCool=no\n"
-	EndIf
-	If IsChildNpc(ak)
-		If IsChildTargetAllowed()
-			out += "  child=YES (allowed by TargetOverrides)\n"
-		Else
-			out += "  child=YES <<\n"
-			If !fail
-				fail = "child"
-			EndIf
-		EndIf
-	Else
-		out += "  child=no\n"
-	EndIf
-	If ak.IsPlayerTeammate()
-		out += "  teammate=YES <<\n"
-		If !fail
-			fail = "teammate"
-		EndIf
-	Else
-		out += "  teammate=no\n"
-	EndIf
-
-	Bool ess = IsStoryEssential(ak)
-	Bool prot = False
-	ActorBase base = ak.GetLeveledActorBase()
-	If base
-		prot = base.IsProtected()
-	EndIf
-	If ess
-		out += "  essential=YES <<\n"
-		If !fail
-			fail = "essential"
-		EndIf
-	Else
-		out += "  essential=no\n"
-	EndIf
-	If prot
-		out += "  protected=YES (ok for notice)\n"
-	Else
-		out += "  protected=no\n"
-	EndIf
-
-	EnsureFilterKeywords()
-	If KW_ActorTypeAnimal && ak.HasKeyword(KW_ActorTypeAnimal)
-		out += "  animal=YES <<\n"
-		If !fail
-			fail = "animal"
-		EndIf
-	Else
-		out += "  animal=no\n"
-	EndIf
-	If KW_ActorTypeCreature && ak.HasKeyword(KW_ActorTypeCreature)
-		out += "  creature=YES <<\n"
-		If !fail
-			fail = "creature"
-		EndIf
-	Else
-		out += "  creature=no\n"
-	EndIf
-	If KW_ActorTypeRobot && ak.HasKeyword(KW_ActorTypeRobot)
-		If IsRobotTargetAllowed()
-			out += "  robot=YES (allowed by TargetOverrides)\n"
-		Else
-			out += "  robot=YES <<\n"
-			If !fail
-				fail = "robot"
-			EndIf
-		EndIf
-	Else
-		out += "  robot=no\n"
-	EndIf
-	If KW_ActorTypeGhoul && ak.HasKeyword(KW_ActorTypeGhoul)
-		out += "  ghoul=YES <<\n"
-		If !fail
-			fail = "ghoul"
-		EndIf
-	Else
-		out += "  ghoul=no\n"
-	EndIf
-	If KW_ActorTypeSuperMutant && ak.HasKeyword(KW_ActorTypeSuperMutant)
-		out += "  supermutant=YES <<\n"
-		If !fail
-			fail = "supermutant"
-		EndIf
-	Else
-		out += "  supermutant=no\n"
-	EndIf
-	If KW_ActorTypeSynth && ak.HasKeyword(KW_ActorTypeSynth)
-		out += "  synth=YES (allowed for notice)\n"
-	Else
-		out += "  synth=no\n"
-	EndIf
-
-	Int sex = -1
-	If base
-		sex = base.GetSex()
-	EndIf
-	If sex == 1
-		out += "  female=YES sex=1\n"
-	Else
-		out += "  female=NO sex=" + sex + " <<\n"
-		If !fail
-			fail = "not female"
-		EndIf
-	EndIf
-
-	If IsHumanNpc(ak)
-		out += "  knifeHuman=YES\n"
-	Else
-		out += "  knifeHuman=NO (notice uses exclusions)\n"
-	EndIf
-
-	If !fail
-		out += "  → PASS\n"
-	Else
-		out += "  → FAIL: " + fail + "\n"
-	EndIf
-	Return out
-EndFunction
-
-Function MaybeSpeakNoticeLine(String source)
-	; Proven C3 path — keep boring. Detection lives in ExplainNoticeReject / PickNoticeTarget.
-	; Do not add FindActors / approach timers here until ambient toasts are verified again.
-	NoticePollCount += 1
-	LastNoticePollSource = source
-	LastNoticeBreakAt = ""
-	DEBUG_BUILD = "C2-stable"
-
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !PlayerRef
-		LastNoticeStatus = "skip: no player"
-		WriteNoticeStatusToMcm()
-		Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
-		Return
-	EndIf
-	If !BondStarted
-		LastNoticeStatus = "skip: not bonded"
-		WriteNoticeStatusToMcm()
-		Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
-		Return
-	EndIf
-	If !IsVoiceEnabled()
-		LastNoticeStatus = "skip: voice off"
-		WriteNoticeStatusToMcm()
-		Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
-		Return
-	EndIf
-	If !IsVoiceWeaponReady()
-		LastNoticeStatus = "skip: no Pickman's Blade"
-		WriteNoticeStatusToMcm()
-		Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
-		Return
-	EndIf
-
-	; Ambient hunger cadence: at most once per NOTICE_MIN_GAME_HOURS (game time).
-	; Fixation has its own look-edge path and must not share this gate.
-	Float gnow = Utility.GetCurrentGameTime()
-	If LastNoticeToastGameTime > 0.0
-		Float hoursSince = (gnow - LastNoticeToastGameTime) * 24.0
-		If hoursSince < NOTICE_MIN_GAME_HOURS
-			LastNoticeStatus = "skip: hunger hour cooldown"
-			WriteNoticeStatusToMcm()
-			Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
-			Return
-		EndIf
-	EndIf
-
-	Actor target = PickNoticeTarget()
-	If !target
-		; PickNoticeTarget already set LastNoticeStatus — force skip: prefix for MCM clarity.
-		; GoE StrFind = occurrence count; <=0 means "skip:" not present.
-		If !LastNoticeStatus || GardenOfEden.StrFind(LastNoticeStatus, "skip:") <= 0
-			If LastNoticeBreakAt
-				LastNoticeStatus = "skip: no target (" + LastNoticeBreakAt + ")"
-			Else
-				LastNoticeStatus = "skip: no eligible target"
-			EndIf
-		EndIf
-		WriteNoticeStatusToMcm()
-		WriteNearbyStatusToMcm()
-		Debug.Trace("PickmansWhisper: notice skip | " + source + " | " + LastNoticeStatus)
-		Return
-	EndIf
-
-	String npcName = GetActorDisplayName(target)
-	Int stage = GetNoticeStage()
-	Int mode = GetVoiceDeliveryMode() ; 0 toast+audio / 1 audio only / 2 toast only
-
-	; --- Audio only: roll audio bank, no toast text ---
-	If mode == 1
-		Int aIdx = PickNoticeAudioIndex(stage)
-		If aIdx < 0
-			LastNoticeStatus = "skip: audio-only stage " + (stage + 1) + " map empty/mismatch"
-			WriteNoticeStatusToMcm()
-			WriteNearbyStatusToMcm()
-			Return
-		EndIf
-		PlayNoticeAudio(stage, aIdx)
-		MarkNoticeCooldown(target)
-		LastNoticeStatus = "ok: audio-only idx=" + aIdx
-		WriteNoticeStatusToMcm()
-		WriteNearbyStatusToMcm()
-		Return
-	EndIf
-
-	String line = PickNoticeLine(npcName)
-	If !line || GardenOfEden.StrLength(line) < 1
-		; Files-only: skip without arming cooldown so a later load can speak.
-		LastNoticeStatus = "skip: stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ") not loaded"
-		WriteNoticeStatusToMcm()
-		WriteNearbyStatusToMcm()
-		Return
-	EndIf
-
-	; Toast FIRST — do not put MCM / MessageBox before this (abort = silent voice).
-	ToastNoticeLine(line)
-	MarkNoticeCooldown(target)
-	; Toast + Audio: same index as PickNoticeLine (no second RandomInt).
-	If mode == 0
-		PlayNoticeAudio(stage, LastNoticePickIndex)
-	EndIf
-	If npcName
-		LastNoticeStatus = "ok: " + npcName
-	Else
-		LastNoticeStatus = "ok: (unnamed)"
-	EndIf
-	WriteNoticeStatusToMcm()
-	WriteNearbyStatusToMcm()
-	OnNoticeSpoken(target, npcName, line)
-EndFunction
-
-; Slice C3 will grow fixation memory + escalation banks from successful notices.
-Function OnNoticeSpoken(Actor akTarget, String npcName, String line)
-	If !akTarget
-		Return
-	EndIf
-	Debug.Trace("PickmansWhisper: C3 hook notice | " + npcName + " | " + line)
-EndFunction
-
-Function ToastNoticeLine(String line)
-	If !line
-		Debug.Trace("PickmansWhisper: ToastNoticeLine skip | empty line")
-		Return
-	EndIf
-	If !IsVoiceWeaponReady()
-		LastNoticeStatus = "skip: ToastNoticeLine — no Pickman's Blade"
-		WriteNoticeStatusToMcm()
-		Debug.Trace("PickmansWhisper: ToastNoticeLine skip | no Pickman's Blade")
-		Return
-	EndIf
-	LastNoticeToastRealTime = Utility.GetCurrentRealTime()
-	LastNoticeToastGameTime = Utility.GetCurrentGameTime()
-	ShowVoiceToast(line)
-	Debug.Trace("PickmansWhisper: notice | " + line)
-EndFunction
-
-; FO4 top-left notifications often clip 1–3 leading glyphs (HUD slide / stacked toasts /
-; FallUI). ASCII leading spaces are LTRIM'd by the UI, so pad with NBSP (U+00A0).
-; Trace stays unpadded. System/error toasts do not use this.
-String Function FormatVoiceToast(String line)
-	If !line
-		Return ""
-	EndIf
-	Return "  " + line
-EndFunction
-
-Function ShowVoiceToast(String line)
-	If !line
-		Debug.Trace("PickmansWhisper: ShowVoiceToast skip | empty line")
-		Return
-	EndIf
-	; Central toast sink — recognition / rename / trust / praise all land here.
-	If !IsVoiceWeaponReady()
-		Debug.Trace("PickmansWhisper: ShowVoiceToast skip | no Pickman's Blade | " + line)
-		Return
-	EndIf
-	Debug.Notification(FormatVoiceToast(line))
-EndFunction
-
-; Whisper / fixation / notice label for an actor.
-; P3+P4 Potential Victims: override + GoE2.SetDisplayName so {name} matches aim/HUD.
-String Function GetActorDisplayName(Actor ak)
-	If !ak
-		Return ""
-	EndIf
-	String label = ""
-	String overrideName = GetVictimOverrideName(ak)
-	If overrideName
-		; Lazy re-apply after load (ExtraTextDisplayData can drop; FormID table persists).
-		EnsureVictimDisplayName(ak)
-		label = overrideName
-	Else
-		String disp = ak.GetDisplayName()
-		If disp
-			label = disp
-		Else
-			ActorBase base = ak.GetLeveledActorBase()
-			If base
-				label = base.GetName()
-			EndIf
-		EndIf
-	EndIf
-	If !label
-		Return ""
-	EndIf
-	; Slice I — toast {name} matches desperate world suffix while stage 4.
-	PickmansWhisperDesperateRenameScript dr = DesperateRename()
-	If dr
-		Return dr.MaybeSuffixDisplayName(ak, label)
-	EndIf
-	Return label
 EndFunction
 
 ; --- C5 P3+P4 Potential Victims ------------------------------------------------
@@ -2511,22 +1939,25 @@ Bool Function ApplyVictimName(Actor ak, String name)
 		WriteVictimsStatusToMcm()
 		Return False
 	EndIf
-	; Lighter naming-only gate (human/female/non-hostile) — see IsValidNamingTarget.
-	If !IsValidNamingTarget(ak)
-		LastVictimStatus = "apply failed — not a valid target (" + LastKillIgnoreReason + ")"
-		WriteVictimsStatusToMcm()
-		Debug.Notification("Pickman's Whisper: can't name her — " + LastKillIgnoreReason)
+	If !IsValidTarget(ak)
+		; Hard-gate Trace already fired inside IsValidTarget.
 		Return False
 	EndIf
-	String useName = TrimString(name)
-	If !IsUsableWhisperName(useName)
+	If !VoiceAlias
+		LastVictimStatus = "apply failed — VoiceAlias unbound"
+		WriteVictimsStatusToMcm()
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Return False
+	EndIf
+	String useName = VoiceAlias.TrimString(name)
+	If !VoiceAlias.IsUsableWhisperName(useName)
 		LastVictimStatus = "apply failed — name not usable (generic/junk?)"
 		WriteVictimsStatusToMcm()
 		Debug.Notification("Pickman's Whisper: name rejected — use a real name (not Settler/Resident)")
 		Return False
 	EndIf
 	; Block workshop generics even if they pass glyph checks
-	If NoticeNameForLine(useName) == ""
+	If VoiceAlias.NoticeNameForLine(useName) == ""
 		LastVictimStatus = "apply failed — generic label blocked"
 		WriteVictimsStatusToMcm()
 		Debug.Notification("Pickman's Whisper: generic labels can't be victim names")
@@ -2760,50 +2191,6 @@ Function MCMQuestPing()
 	DiagNotify("Pickman's Whisper — QUEST PING\n\nCallFunction reached PickmansWhisperMainQuestScript.\nBond=" + BondStarted + " killsTracked=" + DecayKillSlotCount + " cacheId=" + cacheId + "\n" + victimsBit)
 EndFunction
 
-; MCM Debug — DiagNotify with every gate that can silence whispers.
-Function DebugVoicePathDump()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	Bool voiceOn = IsVoiceEnabled()
-	Bool blade = IsBladeEquipped()
-	Bool voiceReady = IsVoiceWeaponReady()
-	String worldBit = "KillerScan=MISSING"
-	PickmansWhisperKillerScanScript ws = KillerScan()
-	If ws
-		worldBit = "KillerScan=OK tick=" + ws.ScanTick
-	EndIf
-	String voiceBit = "VoiceScan=MISSING"
-	PickmansWhisperVoiceScanScript vs = VoiceScan()
-	If vs
-		voiceBit = "VoiceScan=OK"
-	EndIf
-	Float hoursLeft = 0.0
-	If LastNoticeToastGameTime > 0.0
-		Float hoursSince = (Utility.GetCurrentGameTime() - LastNoticeToastGameTime) * 24.0
-		hoursLeft = NOTICE_MIN_GAME_HOURS - hoursSince
-		If hoursLeft < 0.0
-			hoursLeft = 0.0
-		EndIf
-	EndIf
-	String body = "Pickman's Whisper — VOICE PATH DUMP\n\n"
-	body += "BondStarted=" + BondStarted + "\n"
-	body += "Voice enabled=" + voiceOn + "\n"
-	body += "Blade drawn=" + blade + " voiceReady=" + voiceReady + "\n"
-	body += "Drawn: " + GetDrawnWeaponDebugName() + "\n"
-	body += worldBit + "\n"
-	body += voiceBit + "\n"
-	body += "KillScanTick=" + KillScanTickCount + "\n"
-	body += "Dispatch: " + LastVoiceDispatchStatus + "\n"
-	body += "Notice: " + LastNoticeStatus + "\n"
-	body += "Nearby: " + LastNearbySummary + "\n"
-	body += "Fixation: " + LastFixationStatus + "\n"
-	body += "Hunger cooldown left (game h): " + hoursLeft + "\n"
-	body += "\nPapyrus log (if enabled):\nDocuments\\My Games\\Fallout4\\Logs\\Script\\Papyrus.0.log\nFilter: PickmansWhisper"
-	Debug.Trace("PickmansWhisper: VoicePathDump | " + body)
-	DiagNotify(body)
-EndFunction
-
 ; Façade — MCM CallFunction targets VictimsScript (own lock). Kept for old configs.
 Function MCMRefreshVictimsPanel()
 	PickmansWhisperVictimsScript v = Victims()
@@ -2921,43 +2308,6 @@ Function MCMNameAimedVictim()
 	EndIf
 EndFunction
 
-Bool Function IsNoticeCandidate(Actor ak)
-	; Prefer boolean empty-check — Caprica/runtime can be finicky with == ""
-	String reason = ExplainNoticeReject(ak, False)
-	Return !reason
-EndFunction
-
-; Fixation ignores hunger/NPC toast cooldown so a hunger whisper never suppresses "seen xN".
-Bool Function IsFixationEligible(Actor ak)
-	String reason = ExplainNoticeReject(ak, True)
-	Return !reason
-EndFunction
-
-; --- C5 P1 look-fixation (additive; ambient MaybeSpeakNoticeLine untouched) ------
-
-Function EnsureFixationLists()
-	If !FixationIds || FixationIds.Length == 0
-		FixationIds = new Int[32]
-		FixationCounts = new Int[32]
-		RecognitionToastCounts = new Int[32]
-		FixationSlotCount = 0
-	ElseIf !RecognitionToastCounts || RecognitionToastCounts.Length == 0
-		; Mid-save upgrade from pre-prompt builds
-		RecognitionToastCounts = new Int[32]
-	EndIf
-EndFunction
-
-Function WriteFixationStatusToMcm()
-	If !MCM.IsInstalled()
-		Return
-	EndIf
-	If !LastFixationStatus
-		MCM.SetModSettingString(MOD_NAME, "sFixation:Debug", "(none yet)")
-	Else
-		MCM.SetModSettingString(MOD_NAME, "sFixation:Debug", LastFixationStatus)
-	EndIf
-EndFunction
-
 ; True if she is in the Potential Victims FormID table (Named victims).
 Bool Function IsTrackedVictim(Actor ak)
 	If !ak
@@ -3052,7 +2402,10 @@ String Function FormatDecayStageStatusForActor(Actor ak)
 	If ak == PlayerRef
 		Return "(player)"
 	EndIf
-	String label = GetActorDisplayName(ak)
+	String label = ""
+	If VoiceAlias
+		label = VoiceAlias.GetActorDisplayName(ak)
+	EndIf
 	If !label
 		label = "corpse"
 	EndIf
@@ -3112,110 +2465,6 @@ Function WriteVictimsMcmAuxRows()
 	WriteVictimsStatusToMcm()
 EndFunction
 
-; Drop lowest count (tie → lowest index / oldest). Leaves one free slot.
-Function EvictLowestFixation()
-	EnsureFixationLists()
-	If FixationSlotCount < 1
-		Return
-	EndIf
-	Int best = 0
-	Int bestCount = FixationCounts[0]
-	Int i = 1
-	While i < FixationSlotCount
-		If FixationCounts[i] < bestCount
-			best = i
-			bestCount = FixationCounts[i]
-		EndIf
-		i += 1
-	EndWhile
-	Int j = best
-	While j < FixationSlotCount - 1
-		FixationIds[j] = FixationIds[j + 1]
-		FixationCounts[j] = FixationCounts[j + 1]
-		RecognitionToastCounts[j] = RecognitionToastCounts[j + 1]
-		j += 1
-	EndWhile
-	FixationIds[FixationSlotCount - 1] = 0
-	FixationCounts[FixationSlotCount - 1] = 0
-	RecognitionToastCounts[FixationSlotCount - 1] = 0
-	FixationSlotCount -= 1
-EndFunction
-
-; Returns new seen count for formId (1 on first insert).
-Int Function IncrementFixation(Int formId)
-	EnsureFixationLists()
-	Int i = 0
-	While i < FixationSlotCount
-		If FixationIds[i] == formId
-			FixationCounts[i] = FixationCounts[i] + 1
-			Return FixationCounts[i]
-		EndIf
-		i += 1
-	EndWhile
-	If FixationSlotCount >= FIXATION_MAX
-		EvictLowestFixation()
-	EndIf
-	If FixationSlotCount >= FIXATION_MAX
-		Return 0
-	EndIf
-	FixationIds[FixationSlotCount] = formId
-	FixationCounts[FixationSlotCount] = 1
-	RecognitionToastCounts[FixationSlotCount] = 0
-	FixationSlotCount += 1
-	Return 1
-EndFunction
-
-; Bump how many RecognitionLines toasts this FormID has heard. 0 if unknown slot.
-Int Function IncrementRecognitionToast(Int formId)
-	EnsureFixationLists()
-	Int i = 0
-	While i < FixationSlotCount
-		If FixationIds[i] == formId
-			RecognitionToastCounts[i] = RecognitionToastCounts[i] + 1
-			Return RecognitionToastCounts[i]
-		EndIf
-		i += 1
-	EndWhile
-	Return 0
-EndFunction
-
-; After N recognition toasts, if still unnamed, queue MCM Victims nudge (delayed).
-; Never ShowVoiceToast here — a second Notification in the same tick replaces the
-; RecognitionLines toast in the FO4 HUD.
-; Prompt text: ModConfig.txt → renamePromptFemaleNPC (files-only).
-Function MaybePromptNameHer(Actor ak, Int recognitionToasts)
-	If !ak || recognitionToasts < RECOGNITION_NAME_PROMPT_AT
-		Return
-	EndIf
-	If GetVictimOverrideName(ak)
-		Return
-	EndIf
-	If !ModConfigAlias || !ModConfigAlias.RenamePromptFemaleNPC
-		; Trace only — Notification here would also clobber the recognition toast.
-		String st = ""
-		If ModConfigAlias
-			st = ModConfigAlias.ModConfigLoadStatus
-		EndIf
-		Debug.Trace("PickmansWhisper: ERROR rename prompt — " + st)
-		Return
-	EndIf
-	PendingRenamePrompt = ModConfigAlias.RenamePromptFemaleNPC
-	CancelTimer(TIMER_RENAME_PROMPT)
-	PendingRenameAtReal = Utility.GetCurrentRealTime() + RENAME_PROMPT_DELAY
-	Debug.Trace("PickmansWhisper: name-her prompt queued (deadline) | id=0x" + GardenOfEden.GetHexFormID(ak))
-EndFunction
-
-; Aim actor for fixation — real GoE APIs only (never Game.GetCurrentCrosshairRef).
-Actor Function GetLookAimActor()
-	ObjectReference cam = GardenOfEden3.GetCameraTargetReference()
-	Actor ak = cam as Actor
-	If ak
-		Return ak
-	EndIf
-	ObjectReference pick = GardenOfEden2.GetLastActivateTargetRef()
-	Return pick as Actor
-EndFunction
-
 ; Victims MCM cache helper — body on VictimsScript.
 Function TickVictimsAimCache()
 	PickmansWhisperVictimsScript v = Victims()
@@ -3254,120 +2503,6 @@ Function NoteFacedDeadForVictimsAim(Actor[] dead, Int count)
 	EndIf
 EndFunction
 
-; Aim edge → bump seen count → MCM status; voice by count (P2).
-; Runs before hunger whisper on killscan so look-edge is not lost to Notification drop / cooldown.
-Function TickLookFixation()
-	If !BondStarted
-		; Expected before gallery/blade — do not spam Trace every 2s.
-		Return
-	EndIf
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !PlayerRef
-		LastFixationStatus = "skip: no player"
-		WriteFixationStatusToMcm()
-		Debug.Trace("PickmansWhisper: fixation skip | no player")
-		Return
-	EndIf
-
-	Actor ak = GetLookAimActor()
-	If !ak || ak == PlayerRef || !IsFixationEligible(ak)
-		LastLookFixationId = 0
-		; Hold last edge status in MCM; only note when we had a prior aim.
-		Return
-	EndIf
-
-	Int id = ak.GetFormID()
-	If id == 0
-		LastLookFixationId = 0
-		LastFixationStatus = "skip: aim FormID=0"
-		WriteFixationStatusToMcm()
-		Debug.Trace("PickmansWhisper: fixation skip | FormID=0")
-		Return
-	EndIf
-	If id == LastLookFixationId
-		Return
-	EndIf
-	LastLookFixationId = id
-
-	Int count = IncrementFixation(id)
-	If count < 1
-		LastFixationStatus = "skip: fixation table full"
-		WriteFixationStatusToMcm()
-		Debug.Trace("PickmansWhisper: fixation skip | table full")
-		Return
-	EndIf
-
-	; Whisper-safe name (rejects □□ junk; P3 override via GetActorDisplayName).
-	String displayName = NoticeNameForLine(GetActorDisplayName(ak))
-	String label = displayName
-	If !label
-		label = "unnamed"
-	EndIf
-	; Count always in MCM; voice by look count (P2): 1 silent / 2 stage / 3+ recognition.
-	LastFixationStatus = label + " seen x" + count + " (" + FixationSlotCount + "/" + FIXATION_MAX + ")"
-	WriteFixationStatusToMcm()
-	Debug.Trace("PickmansWhisper: fixation edge | " + LastFixationStatus)
-	If count == 1
-		; First look — track only (silent).
-		Return
-	EndIf
-	If !IsVoiceWeaponReady()
-		LastFixationStatus = label + " seen x" + count + " (no blade — silent)"
-		WriteFixationStatusToMcm()
-		Return
-	EndIf
-	If count == 2
-		SpeakFixationStageWhisper(ak, displayName)
-	Else
-		SpeakRecognitionLine(ak, displayName)
-	EndIf
-EndFunction
-
-; Empty string = passes. Otherwise a short reject reason for MCM / MessageBox.
-; abIgnoreCooldown=True for fixation (hunger NPC cool must not suppress look-edge toasts).
-String Function ExplainNoticeReject(Actor ak, Bool abIgnoreCooldown = False)
-	If !ak || ak == PlayerRef
-		Return "no actor"
-	EndIf
-	If ak.IsDead()
-		Return "dead"
-	EndIf
-	If ak.IsDisabled()
-		Return "disabled"
-	EndIf
-	If PlayerRef && PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
-		Return "too far"
-	EndIf
-	If !abIgnoreCooldown && IsNoticeOnCooldown(ak)
-		Return "cooldown"
-	EndIf
-	If IsChildNpc(ak) && !IsChildTargetAllowed()
-		Return "child"
-	EndIf
-	If ak.IsPlayerTeammate()
-		Return "teammate"
-	EndIf
-	If IsStoryEssential(ak)
-		Return "essential"
-	EndIf
-	; Exclusion-based — blocks Brahmin/animals; do not gate on hostility (settler false positives)
-	String nonHuman = ExplainNonHumanForNotice(ak)
-	If nonHuman
-		Return nonHuman
-	EndIf
-	If !IsAdultFemale(ak)
-		ActorBase base = ak.GetLeveledActorBase()
-		Int sex = -1
-		If base
-			sex = base.GetSex()
-		EndIf
-		Return "not female (sex=" + sex + ")"
-	EndIf
-	Return ""
-EndFunction
-
 ; For notice only: reject clear non-humans. Synths allowed (look human). No positive keyword required.
 String Function ExplainNonHumanForNotice(Actor ak)
 	If !ak
@@ -3395,252 +2530,42 @@ String Function ExplainNonHumanForNotice(Actor ak)
 	Return ""
 EndFunction
 
-Actor Function PickNoticeTarget()
-	LastNoticeDiag = ""
-	If !PlayerRef
-		LastNoticeStatus = "skip: no player"
-		LastNoticeDiag = "no player"
-		LastNearbySummary = "live=? (no player)"
-		Return None
-	EndIf
-
-	Actor[] living = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, -1, -1, -1, -1, -1, None, None, "", 0, 1, 0)
-	Int nLive = 0
-	If living
-		nLive = living.Length
-	EndIf
-
-	; Checklist: two closest only (MessageBox size). Pick: all living via PickBestNoticeFromList.
-	Actor a0 = None
-	Actor a1 = None
-	Float d0 = 999999.0
-	Float d1 = 999999.0
-	Int i = 0
-	Int n = nLive
-	If n > 48
-		n = 48
-	EndIf
-	While i < n
-		Actor ak = living[i]
-		i += 1
-		If ak && ak != PlayerRef && !ak.IsDead()
-			Float d = PlayerRef.GetDistance(ak)
-			If d < d0
-				d1 = d0
-				a1 = a0
-				d0 = d
-				a0 = ak
-			ElseIf d < d1
-				d1 = d
-				a1 = ak
-			EndIf
-		EndIf
-	EndWhile
-
-	String report = "GoE living=" + nLive + " r=" + (KILL_WATCH_RADIUS as Int) + "\n"
-	If a0
-		report += FormatNoticeActorChecklist(a0)
-		If !IsNoticeCandidate(a0)
-			String why0 = ExplainNoticeReject(a0)
-			If why0
-				LastNoticeBreakAt = why0
-			EndIf
-		EndIf
-	EndIf
-	If a1
-		report += FormatNoticeActorChecklist(a1)
-	EndIf
-	If nLive == 0
-		report += "(no living actors in radius)\n"
-		If !LastNoticeBreakAt
-			LastNoticeBreakAt = "GoE living=0"
-		EndIf
-	EndIf
-
-	; Real pick — not limited to the two checklist actors (Brahmin/men closer used to block toast).
-	Actor best = PickBestNoticeFromList(living)
-	If best
-		LastNoticeStatus = "pick live=" + nLive
-		LastNoticeDiag = report + "PICK: " + GetActorDisplayName(best)
-		LastNoticeBreakAt = "(none — pick ok)"
-		CommitNearbyPickSummary(nLive, best)
-		Return best
-	EndIf
-
-	; Fallback detecting (one-line only to save space)
-	Actor[] detecting = GardenOfEden2.GetActorsDetecting(PlayerRef, False)
-	Int nDet = 0
-	If detecting
-		nDet = detecting.Length
-	EndIf
-	report += "Detecting=" + nDet + " (no living PASS)\n"
-	best = PickBestNoticeFromList(detecting)
-	If best
-		LastNoticeStatus = "pick detecting"
-		LastNoticeDiag = report + FormatNoticeActorChecklist(best) + "PICK: detecting"
-		LastNoticeBreakAt = "(none — pick ok)"
-		CommitNearbyPickSummary(nLive, best)
-		Return best
-	EndIf
-
-	LastNoticeStatus = "no notice pass live=" + nLive
-	If !LastNoticeBreakAt || LastNoticeBreakAt == "(none — pick ok)"
-		LastNoticeBreakAt = "no PASS actor"
-	EndIf
-	LastNoticeDiag = report + "PICK: none"
-	CommitNearbyPickSummary(nLive, None)
-	Return None
-EndFunction
-
-Function CommitNearbyPickSummary(Int nLive, Actor best)
-	; Memory only during poll — MCM writes happen after ToastNoticeLine / on Refresh.
-	String s = "live=" + nLive + " r=" + (KILL_WATCH_RADIUS as Int)
-	If best
-		String nm = GetActorDisplayName(best)
-		If !nm
-			nm = "?"
-		EndIf
-		s = s + " pick=" + nm
-	Else
-		s = s + " pick=none"
-		If LastNoticeBreakAt
-			s = s + " (" + LastNoticeBreakAt + ")"
-		EndIf
-	EndIf
-	LastNearbySummary = s
-EndFunction
-
-Actor Function PickBestNoticeFromList(Actor[] alive)
-	If !alive || alive.Length == 0
-		Return None
-	EndIf
-	Actor best = None
-	Float bestDist = 999999.0
-	Int n = alive.Length
-	If n > 48
-		n = 48
-	EndIf
-	Int i = 0
-	While i < n
-		Actor ak = alive[i]
-		If IsNoticeCandidate(ak)
-			Float d = PlayerRef.GetDistance(ak)
-			If d < bestDist
-				bestDist = d
-				best = ak
-			EndIf
-		EndIf
-		i += 1
-	EndWhile
-	Return best
-EndFunction
-
-Function EnsureNoticeCoolLists()
-	If !NoticeCoolIds || NoticeCoolIds.Length == 0
-		NoticeCoolIds = new Int[16]
-		NoticeCoolTimes = new Float[16]
-		NoticeCoolCount = 0
-	EndIf
-EndFunction
-
-Bool Function IsNoticeOnCooldown(Actor ak)
-	If !ak
-		Return True
-	EndIf
-	EnsureNoticeCoolLists()
-	Int id = ak.GetFormID()
-	Float now = Utility.GetCurrentRealTime()
-	Int i = 0
-	While i < NoticeCoolCount
-		If NoticeCoolIds[i] == id
-			If (now - NoticeCoolTimes[i]) < NOTICE_NPC_COOLDOWN
-				Return True
-			EndIf
-			Return False
-		EndIf
-		i += 1
-	EndWhile
-	Return False
-EndFunction
-
-Function MarkNoticeCooldown(Actor ak)
-	If !ak
-		Return
-	EndIf
-	EnsureNoticeCoolLists()
-	Int id = ak.GetFormID()
-	Float now = Utility.GetCurrentRealTime()
-	Int i = 0
-	While i < NoticeCoolCount
-		If NoticeCoolIds[i] == id
-			NoticeCoolTimes[i] = now
-			Return
-		EndIf
-		i += 1
-	EndWhile
-	If NoticeCoolCount >= NOTICE_COOL_MAX
-		; Drop oldest slot 0
-		Int j = 0
-		While j < NOTICE_COOL_MAX - 1
-			NoticeCoolIds[j] = NoticeCoolIds[j + 1]
-			NoticeCoolTimes[j] = NoticeCoolTimes[j + 1]
-			j += 1
-		EndWhile
-		NoticeCoolCount = NOTICE_COOL_MAX - 1
-	EndIf
-	NoticeCoolIds[NoticeCoolCount] = id
-	NoticeCoolTimes[NoticeCoolCount] = now
-	NoticeCoolCount += 1
-EndFunction
-
 Function ToastVoice(String line)
-	If line == "" || !IsVoiceEnabled()
+	If line == "" || !VoiceAlias || !VoiceAlias.IsVoiceEnabled()
 		Return
 	EndIf
 	If Utility.IsInMenuMode()
 		Return
 	EndIf
-	If !IsVoiceWeaponReady()
+	If !VoiceAlias || !VoiceAlias.IsVoiceWeaponReady()
 		Return
 	EndIf
-	LastTrustToastRealTime = Utility.GetCurrentRealTime()
-	ShowVoiceToast(line)
+	VoiceAlias.LastTrustToastRealTime = Utility.GetCurrentRealTime()
+	VoiceAlias.ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: voice | " + line)
 EndFunction
 
 Function ToastHungerLine(String line)
-	If line == "" || !IsVoiceEnabled()
+	If line == "" || !VoiceAlias || !VoiceAlias.IsVoiceEnabled()
 		Return
 	EndIf
 	If Utility.IsInMenuMode()
 		Return
 	EndIf
-	If !IsVoiceWeaponReady()
+	If !VoiceAlias || !VoiceAlias.IsVoiceWeaponReady()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	If (now - LastHungerToastRealTime) < HUNGER_TOAST_COOLDOWN
+	If (now - VoiceAlias.LastHungerToastRealTime) < VoiceAlias.HUNGER_TOAST_COOLDOWN
 		Return
 	EndIf
-	LastHungerToastRealTime = now
-	ShowVoiceToast(line)
+	VoiceAlias.LastHungerToastRealTime = now
+	VoiceAlias.ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: hunger voice | " + line)
 EndFunction
 
 ; --- Line banks ----------------------------------------------------------------
 
-Function LoadLineBanks()
-	LoadTrustLines()
-	LoadHungerLines()
-	LoadPraiseLines()
-	LoadNoticeLines()
-	LoadAudioBanks()
-	LoadWhisperSndrIds()
-	LoadRecognitionLines()
-	LoadSleepRecognitionLines()
-	LoadIntimacyNamedLines()
-	LoadTargetOverrides()
-EndFunction
 
 ; --- ModConfigAlias façades (bodies on PickmansWhisperModConfigScript) ----------
 
@@ -3848,134 +2773,6 @@ PickmansWhisperDesperateRenameScript Function DesperateRename()
 	Return (Self as Quest) as PickmansWhisperDesperateRenameScript
 EndFunction
 
-; E4/E5 — named intimacy toast + audio maps (files-only under config/necromantic/).
-Function LoadIntimacyNamedLines()
-	IntimacyStartNamedLines = new String[64]
-	IntimacyStartNamedCount = LoadStageBankAt("Intimacy_Start_Named.txt", IntimacyStartNamedLines, NecromanticConfigPath())
-	IntimacyStartNamedStatus = LastStageLoadStatus
-	If IntimacyStartNamedCount <= 0
-		Debug.Trace("PickmansWhisper: ERROR Intimacy_Start_Named.txt — " + IntimacyStartNamedStatus)
-	Else
-		Debug.Trace("PickmansWhisper: intimacy start named lines ready (" + IntimacyStartNamedCount + ")")
-	EndIf
-	IntimacyEndNamedLines = new String[64]
-	IntimacyEndNamedCount = LoadStageBankAt("Intimacy_End_Named.txt", IntimacyEndNamedLines, NecromanticConfigPath())
-	IntimacyEndNamedStatus = LastStageLoadStatus
-	If IntimacyEndNamedCount <= 0
-		Debug.Trace("PickmansWhisper: ERROR Intimacy_End_Named.txt — " + IntimacyEndNamedStatus)
-	Else
-		Debug.Trace("PickmansWhisper: intimacy end named lines ready (" + IntimacyEndNamedCount + ")")
-	EndIf
-	IntimacyStartAudioLines = new String[64]
-	IntimacyStartAudioCount = LoadStageBankAt("Intimacy_Start_Audio.txt", IntimacyStartAudioLines, NecromanticConfigPath())
-	IntimacyStartAudioStatus = LastStageLoadStatus
-	IntimacyEndAudioLines = new String[64]
-	IntimacyEndAudioCount = LoadStageBankAt("Intimacy_End_Audio.txt", IntimacyEndAudioLines, NecromanticConfigPath())
-	IntimacyEndAudioStatus = LastStageLoadStatus
-	ReportIntimacyAudioCountMismatch(True, IntimacyStartNamedCount, IntimacyStartAudioCount)
-	ReportIntimacyAudioCountMismatch(False, IntimacyEndNamedCount, IntimacyEndAudioCount)
-	Debug.Trace("PickmansWhisper: intimacy audio start=" + IntimacyStartAudioCount + " end=" + IntimacyEndAudioCount)
-EndFunction
-
-Function ReportIntimacyAudioCountMismatch(Bool abStart, Int toastCount, Int audioCount)
-	If audioCount <= 0
-		Return
-	EndIf
-	If toastCount == audioCount
-		Return
-	EndIf
-	String which = "End"
-	If abStart
-		which = "Start"
-	EndIf
-	String msg = "intimacy " + which + " toast/audio mismatch toast=" + toastCount + " audio=" + audioCount
-	Debug.Notification("Pickman's Whisper: " + msg)
-	Debug.Trace("PickmansWhisper: ERROR " + msg)
-EndFunction
-
-; Random toast index; -1 if unloaded. No-immediate-repeat on raw template.
-Int Function PickIntimacyNamedIndex(Bool abStart)
-	If abStart
-		If IntimacyStartNamedCount <= 0 || !IntimacyStartNamedLines
-			Return -1
-		EndIf
-		Int idx = Utility.RandomInt(0, IntimacyStartNamedCount - 1)
-		String raw = IntimacyStartNamedLines[idx]
-		Int tries = 0
-		While tries < 8 && IntimacyStartNamedCount > 1 && raw == LastIntimacyStartLine
-			idx = Utility.RandomInt(0, IntimacyStartNamedCount - 1)
-			raw = IntimacyStartNamedLines[idx]
-			tries += 1
-		EndWhile
-		LastIntimacyStartLine = raw
-		LastIntimacyStartPickIndex = idx
-		Return idx
-	EndIf
-	If IntimacyEndNamedCount <= 0 || !IntimacyEndNamedLines
-		Return -1
-	EndIf
-	Int eIdx = Utility.RandomInt(0, IntimacyEndNamedCount - 1)
-	String eRaw = IntimacyEndNamedLines[eIdx]
-	Int eTries = 0
-	While eTries < 8 && IntimacyEndNamedCount > 1 && eRaw == LastIntimacyEndLine
-		eIdx = Utility.RandomInt(0, IntimacyEndNamedCount - 1)
-		eRaw = IntimacyEndNamedLines[eIdx]
-		eTries += 1
-	EndWhile
-	LastIntimacyEndLine = eRaw
-	LastIntimacyEndPickIndex = eIdx
-	Return eIdx
-EndFunction
-
-; Audio-only roll — index or -1.
-Int Function PickIntimacyAudioIndex(Bool abStart)
-	Int count = IntimacyEndAudioCount
-	String[] bank = IntimacyEndAudioLines
-	If abStart
-		count = IntimacyStartAudioCount
-		bank = IntimacyStartAudioLines
-	EndIf
-	If count <= 0 || !bank
-		Debug.Notification("Pickman's Whisper: intimacy audio map empty")
-		Debug.Trace("PickmansWhisper: ERROR PickIntimacyAudioIndex empty start=" + abStart)
-		Return -1
-	EndIf
-	Int idx = Utility.RandomInt(0, count - 1)
-	String fileName = bank[idx]
-	Int tries = 0
-	While tries < 8 && count > 1 && fileName == LastIntimacyAudioFile
-		idx = Utility.RandomInt(0, count - 1)
-		fileName = bank[idx]
-		tries += 1
-	EndWhile
-	LastIntimacyAudioFile = fileName
-	Return idx
-EndFunction
-
-Function PlayIntimacyAudioAt(Bool abStart, Int index)
-	Int count = IntimacyEndAudioCount
-	String[] bank = IntimacyEndAudioLines
-	If abStart
-		count = IntimacyStartAudioCount
-		bank = IntimacyStartAudioLines
-	EndIf
-	If count <= 0 || !bank
-		Debug.Notification("Pickman's Whisper: intimacy audio map empty")
-		Return
-	EndIf
-	If index < 0 || index >= count
-		Debug.Notification("Pickman's Whisper: intimacy audio index out of range " + index)
-		Debug.Trace("PickmansWhisper: ERROR PlayIntimacyAudioAt idx=" + index + " count=" + count)
-		Return
-	EndIf
-	String fileName = bank[index]
-	If !fileName || GardenOfEden.StrLength(fileName) < 1
-		Debug.Notification("Pickman's Whisper: empty intimacy audio filename at " + index)
-		Return
-	EndIf
-	PlayWhisperXwmByFile(fileName)
-EndFunction
-
 ; --- Slice G — bed corpse hallucination (façade) ------------------------------
 ; Logic lives on PickmansWhisperBedGiftScript (same QUST). Alias/MCM/killscan
 ; keep calling these Main names so external APIs do not change.
@@ -4145,789 +2942,13 @@ Function DebugApplyAllFaceLabOverlays()
 	EndIf
 EndFunction
 
-; C5 P2 — awake recognition bank (files-only). Later bands can use GetRecognitionBank(band).
-Function LoadRecognitionLines()
-	; Zero count before realloc so a concurrent pick never reads empty slots with a stale count.
-	RecognitionLineCount = 0
-	RecognitionLines = new String[64]
-	RecognitionLineCount = LoadStageBank("RecognitionLines.txt", RecognitionLines)
-	RecognitionLoadStatus = LastStageLoadStatus
-	If RecognitionLineCount <= 0
-		Debug.Trace("PickmansWhisper: ERROR RecognitionLines.txt — " + RecognitionLoadStatus)
-	Else
-		Debug.Trace("PickmansWhisper: recognition lines ready (" + RecognitionLineCount + ")")
-	EndIf
-EndFunction
-
-; C5 P5 — sleep recognition bank (files-only).
-Function LoadSleepRecognitionLines()
-	SleepRecognitionLineCount = 0
-	SleepRecognitionLines = new String[64]
-	SleepRecognitionLineCount = LoadStageBank("SleepRecognitionLines.txt", SleepRecognitionLines)
-	SleepRecognitionLoadStatus = LastStageLoadStatus
-	If SleepRecognitionLineCount <= 0
-		Debug.Trace("PickmansWhisper: ERROR SleepRecognitionLines.txt — " + SleepRecognitionLoadStatus)
-	Else
-		Debug.Trace("PickmansWhisper: sleep recognition lines ready (" + SleepRecognitionLineCount + ")")
-	EndIf
-EndFunction
-
-; FO4 GetSleepState: 3 = sleeping, 4 = sleeping wants wake. Treat both as asleep.
-Bool Function IsActorSleeping(Actor ak)
-	If !ak
-		Return False
-	EndIf
-	Int st = ak.GetSleepState()
-	Return st >= 3
-EndFunction
-
-; encounterBand reserved for later multi-file mapping; P2 always returns the single bank.
-String[] Function GetRecognitionBank(Int encounterBand)
-	Return RecognitionLines
-EndFunction
-
-Int Function GetRecognitionBankCount(Int encounterBand)
-	Return RecognitionLineCount
-EndFunction
-
-String Function PickRecognitionLine(String npcName)
-	String[] bank = GetRecognitionBank(0)
-	Int count = GetRecognitionBankCount(0)
-	If count <= 0 || !bank
-		LoadRecognitionLines()
-		bank = GetRecognitionBank(0)
-		count = GetRecognitionBankCount(0)
-	EndIf
-	If count <= 0 || !bank
-		Return ""
-	EndIf
-	String useName = NoticeNameForLine(npcName)
-	Bool wantNameless = (useName == "")
-	Int attempt = 0
-	While attempt < 20
-		String raw = bank[Utility.RandomInt(0, count - 1)]
-		Int tries = 0
-		While tries < 8 && count > 1 && (!raw || raw == LastRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
-			raw = bank[Utility.RandomInt(0, count - 1)]
-			tries += 1
-		EndWhile
-		attempt += 1
-		If !raw
-			LoadRecognitionLines()
-			bank = GetRecognitionBank(0)
-			count = GetRecognitionBankCount(0)
-			If count <= 0 || !bank
-				Return ""
-			EndIf
-		Else
-			String line = ApplyNamePlaceholder(raw, useName)
-			If line && GardenOfEden.StrLength(line) >= 1
-				LastRecognitionLine = raw
-				Return line
-			EndIf
-		EndIf
-	EndWhile
-	Return ""
-EndFunction
-
-String Function PickSleepRecognitionLine(String npcName)
-	If SleepRecognitionLineCount <= 0 || !SleepRecognitionLines
-		LoadSleepRecognitionLines()
-	EndIf
-	If SleepRecognitionLineCount <= 0 || !SleepRecognitionLines
-		Return ""
-	EndIf
-	String useName = NoticeNameForLine(npcName)
-	Bool wantNameless = (useName == "")
-	Int attempt = 0
-	While attempt < 20
-		String raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
-		Int tries = 0
-		While tries < 8 && SleepRecognitionLineCount > 1 && (!raw || raw == LastSleepRecognitionLine || (wantNameless && StrContains(raw, "{name}")))
-			raw = SleepRecognitionLines[Utility.RandomInt(0, SleepRecognitionLineCount - 1)]
-			tries += 1
-		EndWhile
-		attempt += 1
-		If !raw
-			; Empty slot with non-zero count = stale array; reload and retry.
-			LoadSleepRecognitionLines()
-			If SleepRecognitionLineCount <= 0 || !SleepRecognitionLines
-				Return ""
-			EndIf
-		Else
-			String line = ApplyNamePlaceholder(raw, useName)
-			If line && GardenOfEden.StrLength(line) >= 1
-				LastSleepRecognitionLine = raw
-				Return line
-			EndIf
-		EndIf
-	EndWhile
-	Return ""
-EndFunction
-
-; 2nd look — speak current hunger-stage notice line (does not rewrite MaybeSpeakNoticeLine).
-Function SpeakFixationStageWhisper(Actor ak, String npcName)
-	String line = PickNoticeLine(npcName)
-	If !line || GardenOfEden.StrLength(line) < 1
-		LastFixationStatus = "seen x2 — stage line skipped (bank empty)"
-		WriteFixationStatusToMcm()
-		Return
-	EndIf
-	; ToastNoticeLine stamps game-hour gate so ambient won't double-toast soon after.
-	ToastNoticeLine(line)
-	If ak
-		MarkNoticeCooldown(ak)
-		OnNoticeSpoken(ak, npcName, line)
-	EndIf
-EndFunction
-
-; 3rd+ look — awake RecognitionLines / sleep SleepRecognitionLines (no hunger hour stamp).
-; After RECOGNITION_NAME_PROMPT_AT successful toasts on this NPC (still unnamed),
-; queue ModConfig renamePromptFemaleNPC until named.
-Function SpeakRecognitionLine(Actor ak, String npcName)
-	Bool asleep = IsActorSleeping(ak)
-	String line = ""
-	If asleep
-		line = PickSleepRecognitionLine(npcName)
-	Else
-		line = PickRecognitionLine(npcName)
-	EndIf
-	If !line || GardenOfEden.StrLength(line) < 1
-		; "N lines" in load status means the file loaded — do not toast a false missing-file error.
-		If asleep
-			If SleepRecognitionLineCount <= 0
-				LastFixationStatus = "sleep recognition MISSING — " + SleepRecognitionLoadStatus
-				WriteFixationStatusToMcm()
-				Debug.Notification("Pickman's Whisper: SleepRecognitionLines.txt not loaded — see MCM / config")
-				Debug.Trace("PickmansWhisper: ERROR SleepRecognitionLines.txt — " + SleepRecognitionLoadStatus)
-			Else
-				LastFixationStatus = "sleep recognition pick empty — bank " + SleepRecognitionLoadStatus
-				WriteFixationStatusToMcm()
-				Debug.Trace("PickmansWhisper: ERROR sleep recognition pick empty — bank ok (" + SleepRecognitionLoadStatus + ")")
-			EndIf
-		Else
-			If RecognitionLineCount <= 0
-				LastFixationStatus = "recognition MISSING — " + RecognitionLoadStatus
-				WriteFixationStatusToMcm()
-				Debug.Notification("Pickman's Whisper: RecognitionLines.txt not loaded — see MCM / config")
-				Debug.Trace("PickmansWhisper: ERROR RecognitionLines.txt — " + RecognitionLoadStatus)
-			Else
-				LastFixationStatus = "recognition pick empty — bank " + RecognitionLoadStatus
-				WriteFixationStatusToMcm()
-				Debug.Trace("PickmansWhisper: ERROR recognition pick empty — bank ok (" + RecognitionLoadStatus + ")")
-			EndIf
-		EndIf
-		Return
-	EndIf
-	ShowVoiceToast(line)
-	If asleep
-		Debug.Trace("PickmansWhisper: sleep recognition | " + line)
-	Else
-		Debug.Trace("PickmansWhisper: recognition | " + line)
-	EndIf
-	If !ak
-		Return
-	EndIf
-	Int n = IncrementRecognitionToast(ak.GetFormID())
-	MaybePromptNameHer(ak, n)
-EndFunction
-
-Function LoadTrustLines()
-	; Builtin-only bank. Only the Notice whispers are file-editable (per-stage txt);
-	; trust/hunger/praise ship no config .txt to avoid dead, unread files.
-	UseBuiltinTrustFallback()
-	Debug.Trace("PickmansWhisper: trust lines ready (" + TrustLineCount + ")")
-EndFunction
-
-Function LoadHungerLines()
-	UseBuiltinHungerFallback()
-	Debug.Trace("PickmansWhisper: hunger lines ready (" + HungerLineCount + ")")
-EndFunction
-
-Function LoadPraiseLines()
-	UseBuiltinPraiseFallback()
-	Debug.Trace("PickmansWhisper: praise lines ready (" + PraiseLineCount + ")")
-EndFunction
-
-; C3 — hunger-stage whispers, FILES-ONLY. Content lives solely in the editable
-; config .txt files; there are no hardcoded builtin copies. Each stage's load
-; result is recorded for the MCM Debug rows, and any failure raises a load-time
-; error toast so a missing/unreadable file is never silently masked.
-; Does NOT MessageBox itself — callers that want the Necromantic-style popup call
-; ReportNoticeLoadStatus() (MCM Debug button only). Lazy retries from PickNoticeLine
-; must not spam dialogs.
-Function LoadNoticeLines()
-	; Pre-arm every row with a pessimistic sentinel and PUSH it to MCM *before* any
-	; GoE2 call. If a GoE2 native aborts the Papyrus stack, these rows survive and
-	; show the abort point instead of silently reading "(not loaded)".
-	NoticeCalmStatus = "load did not complete (GoE2 file read aborted?)"
-	NoticeRestlessStatus = NoticeCalmStatus
-	NoticeHungryStatus = NoticeCalmStatus
-	NoticeStarvingStatus = NoticeCalmStatus
-	NoticeDesperateStatus = NoticeCalmStatus
-	WriteNoticeLoadStatusToMcm()
-
-	NoticeLoadDiag = "NOTICE | path=" + NoticeConfigPath() + " | GoE rel=" + GardenOfEden.GetVersionRelease()
-
-	NoticeCalmLines = new String[64]
-	NoticeCalmCount = LoadStageBank("NoticeLines_Calm.txt", NoticeCalmLines)
-	NoticeCalmStatus = LastStageLoadStatus
-	NoticeLoadDiag += " || " + LastStageLoadDiag
-	WriteNoticeLoadStatusToMcm()
-	NoticeRestlessLines = new String[64]
-	NoticeRestlessCount = LoadStageBank("NoticeLines_Restless.txt", NoticeRestlessLines)
-	NoticeRestlessStatus = LastStageLoadStatus
-	NoticeLoadDiag += " || " + LastStageLoadDiag
-	WriteNoticeLoadStatusToMcm()
-	NoticeHungryLines = new String[64]
-	NoticeHungryCount = LoadStageBank("NoticeLines_Hungry.txt", NoticeHungryLines)
-	NoticeHungryStatus = LastStageLoadStatus
-	NoticeLoadDiag += " || " + LastStageLoadDiag
-	WriteNoticeLoadStatusToMcm()
-	NoticeStarvingLines = new String[64]
-	NoticeStarvingCount = LoadStageBank("NoticeLines_Starving.txt", NoticeStarvingLines)
-	NoticeStarvingStatus = LastStageLoadStatus
-	NoticeLoadDiag += " || " + LastStageLoadDiag
-	WriteNoticeLoadStatusToMcm()
-	NoticeDesperateLines = new String[64]
-	NoticeDesperateCount = LoadStageBank("NoticeLines_Desperate.txt", NoticeDesperateLines)
-	NoticeDesperateStatus = LastStageLoadStatus
-	NoticeLoadDiag += " || " + LastStageLoadDiag
-	WriteNoticeLoadStatusToMcm()
-
-	String failed = NoticeLoadFailureList()
-	If failed != ""
-		Debug.Notification("Pickman's Whisper: notice lines failed to load — " + failed + ". See MCM > Debug.")
-	EndIf
-
-	Debug.Trace("PickmansWhisper: notice stages calm=" + NoticeCalmCount + " restless=" + NoticeRestlessCount + " hungry=" + NoticeHungryCount + " starving=" + NoticeStarvingCount + " desperate=" + NoticeDesperateCount)
-EndFunction
-
-; D1 — load five *_Audio.txt maps (filenames only). Empty stages are valid (count 0)
-; until clips are authored; mismatch vs notice count fails loud at load.
-Function LoadAudioBanks()
-	AudioCalmLines = new String[64]
-	AudioCalmCount = LoadStageBank("Calm_Audio.txt", AudioCalmLines)
-	AudioCalmStatus = LastStageLoadStatus
-	AudioRestlessLines = new String[64]
-	AudioRestlessCount = LoadStageBank("Restless_Audio.txt", AudioRestlessLines)
-	AudioRestlessStatus = LastStageLoadStatus
-	AudioHungryLines = new String[64]
-	AudioHungryCount = LoadStageBank("Hungry_Audio.txt", AudioHungryLines)
-	AudioHungryStatus = LastStageLoadStatus
-	AudioStarvingLines = new String[64]
-	AudioStarvingCount = LoadStageBank("Starving_Audio.txt", AudioStarvingLines)
-	AudioStarvingStatus = LastStageLoadStatus
-	AudioDesperateLines = new String[64]
-	AudioDesperateCount = LoadStageBank("Desperate_Audio.txt", AudioDesperateLines)
-	AudioDesperateStatus = LastStageLoadStatus
-
-	ReportAudioNoticeCountMismatch(0, NoticeCalmCount, AudioCalmCount, "Calm")
-	ReportAudioNoticeCountMismatch(1, NoticeRestlessCount, AudioRestlessCount, "Restless")
-	ReportAudioNoticeCountMismatch(2, NoticeHungryCount, AudioHungryCount, "Hungry")
-	ReportAudioNoticeCountMismatch(3, NoticeStarvingCount, AudioStarvingCount, "Starving")
-	ReportAudioNoticeCountMismatch(4, NoticeDesperateCount, AudioDesperateCount, "Desperate")
-
-	Debug.Trace("PickmansWhisper: audio maps calm=" + AudioCalmCount + " restless=" + AudioRestlessCount + " hungry=" + AudioHungryCount + " starving=" + AudioStarvingCount + " desperate=" + AudioDesperateCount)
-EndFunction
-
-Function ReportAudioNoticeCountMismatch(Int stage, Int noticeCount, Int audioCount, String stageName)
-	; Empty audio map (0) while notices exist: OK for unfinished stages — PlayNoticeAudio fails loud if used.
-	; Non-zero mismatch: author error — surface at load.
-	If audioCount <= 0
-		Return
-	EndIf
-	If noticeCount == audioCount
-		Return
-	EndIf
-	String msg = "audio/notice count mismatch " + stageName + " notice=" + noticeCount + " audio=" + audioCount
-	Debug.Notification("Pickman's Whisper: " + msg)
-	Debug.Trace("PickmansWhisper: ERROR " + msg)
-EndFunction
-
-; Generated by esp build — maps EndIt.xwm=2055 (local FormID decimal).
-Function LoadWhisperSndrIds()
-	; Cap must fit Desperate + Necromantic Start/End maps (see WHISPER_SNDR_MAX).
-	WhisperSndrFiles = new String[128]
-	WhisperSndrFids = new Int[128]
-	WhisperSndrCount = 0
-	WhisperSndrIdsStatus = "READ FAILED (GoE2 missing?)"
-	String fileName = "WhisperSndrIds.txt"
-	String path = NoticeConfigPath()
-	If !GardenOfEden2.DoesFileExist(fileName, path)
-		WhisperSndrIdsStatus = "MISSING FILE"
-		Debug.Notification("Pickman's Whisper: WhisperSndrIds.txt missing — rebuild ESP")
-		Debug.Trace("PickmansWhisper: ERROR WhisperSndrIds.txt missing at " + path)
-		Return
-	EndIf
-	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
-	If !raw || raw.Length == 0
-		WhisperSndrIdsStatus = "EMPTY/UNREADABLE"
-		Debug.Notification("Pickman's Whisper: WhisperSndrIds.txt empty — rebuild ESP")
-		Debug.Trace("PickmansWhisper: ERROR WhisperSndrIds.txt empty")
-		Return
-	EndIf
-	Int i = 0
-	While i < raw.Length && WhisperSndrCount < WHISPER_SNDR_MAX
-		String line = TrimString(raw[i])
-		i += 1
-		If line == ""
-			; skip
-		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
-			; comment
-		Else
-			Int eq = -1
-			Int li = 0
-			Int ln = GardenOfEden.StrLength(line)
-			While li < ln && eq < 0
-				If GardenOfEden.SubStr(line, li, 1) == "="
-					eq = li
-				EndIf
-				li += 1
-			EndWhile
-			If eq > 0
-				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
-				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
-				Int fid = ParsePositiveInt(val)
-				If key != "" && fid > 0
-					WhisperSndrFiles[WhisperSndrCount] = key
-					WhisperSndrFids[WhisperSndrCount] = fid
-					WhisperSndrCount += 1
-				EndIf
-			EndIf
-		EndIf
-	EndWhile
-	If WhisperSndrCount <= 0
-		WhisperSndrIdsStatus = "EMPTY (no usable rows)"
-		Debug.Notification("Pickman's Whisper: WhisperSndrIds.txt has no rows")
-		Debug.Trace("PickmansWhisper: ERROR WhisperSndrIds.txt parsed 0 rows")
-		Return
-	EndIf
-	WhisperSndrIdsStatus = WhisperSndrCount + " SNDRs"
-	Debug.Trace("PickmansWhisper: WhisperSndrIds loaded " + WhisperSndrCount)
-EndFunction
-
-; Digits only; trailing junk (CRLF leftover \r, spaces) ignored after the first digit.
-Int Function ParsePositiveInt(String s)
-	If !s
-		Return -1
-	EndIf
-	Int n = 0
-	Int i = 0
-	Int len = GardenOfEden.StrLength(s)
-	If len <= 0
-		Return -1
-	EndIf
-	Bool gotDigit = False
-	While i < len
-		String c = GardenOfEden.SubStr(s, i, 1)
-		Int d = -1
-		If c == "0"
-			d = 0
-		ElseIf c == "1"
-			d = 1
-		ElseIf c == "2"
-			d = 2
-		ElseIf c == "3"
-			d = 3
-		ElseIf c == "4"
-			d = 4
-		ElseIf c == "5"
-			d = 5
-		ElseIf c == "6"
-			d = 6
-		ElseIf c == "7"
-			d = 7
-		ElseIf c == "8"
-			d = 8
-		ElseIf c == "9"
-			d = 9
-		EndIf
-		If d < 0
-			If gotDigit
-				Return n
-			EndIf
-			Return -1
-		EndIf
-		gotDigit = True
-		n = n * 10 + d
-		i += 1
-	EndWhile
-	If !gotDigit
-		Return -1
-	EndIf
-	Return n
-EndFunction
-
-String[] Function GetAudioBankForStage(Int stage)
-	If stage == 4
-		Return AudioDesperateLines
-	ElseIf stage == 3
-		Return AudioStarvingLines
-	ElseIf stage == 2
-		Return AudioHungryLines
-	ElseIf stage == 1
-		Return AudioRestlessLines
-	EndIf
-	Return AudioCalmLines
-EndFunction
-
-Int Function GetAudioCountForStage(Int stage)
-	If stage == 4
-		Return AudioDesperateCount
-	ElseIf stage == 3
-		Return AudioStarvingCount
-	ElseIf stage == 2
-		Return AudioHungryCount
-	ElseIf stage == 1
-		Return AudioRestlessCount
-	EndIf
-	Return AudioCalmCount
-EndFunction
-
-Int Function FindWhisperSndrFid(String fileName)
-	If !fileName || WhisperSndrCount <= 0
-		Return 0
-	EndIf
-	Int i = 0
-	While i < WhisperSndrCount
-		If WhisperSndrFiles[i] == fileName
-			Return WhisperSndrFids[i]
-		EndIf
-		i += 1
-	EndWhile
-	Return 0
-EndFunction
-
-; Audio-only roll — returns index or -1. No toast. Fail-loud via Notification if empty.
-Int Function PickNoticeAudioIndex(Int stage)
-	String[] bank = GetAudioBankForStage(stage)
-	Int count = GetAudioCountForStage(stage)
-	If count <= 0 || !bank
-		Debug.Notification("Pickman's Whisper: audio-only — stage " + GetNoticeStageName(stage) + " map empty")
-		Debug.Trace("PickmansWhisper: ERROR PickNoticeAudioIndex empty stage=" + stage)
-		Return -1
-	EndIf
-	Int idx = Utility.RandomInt(0, count - 1)
-	String fileName = bank[idx]
-	Int tries = 0
-	While tries < 8 && count > 1 && fileName == LastAudioFile
-		idx = Utility.RandomInt(0, count - 1)
-		fileName = bank[idx]
-		tries += 1
-	EndWhile
-	LastAudioFile = fileName
-	LastNoticePickIndex = idx
-	LastNoticePickStage = stage
-	Return idx
-EndFunction
-
-; Play SNDR for *_Audio.txt[index]. Fail loud on missing map/xwm/SNDR — never substitute.
-Function PlayNoticeAudio(Int stage, Int index)
-	; Same drawn-blade gate as toasts — silent skip (no error spam while gun is out).
-	If !IsVoiceWeaponReady()
-		Return
-	EndIf
-	If index < 0
-		Debug.Notification("Pickman's Whisper: audio play skipped — bad index")
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio bad index stage=" + stage)
-		Return
-	EndIf
-	String[] bank = GetAudioBankForStage(stage)
-	Int count = GetAudioCountForStage(stage)
-	If count <= 0 || !bank
-		Debug.Notification("Pickman's Whisper: no audio map for " + GetNoticeStageName(stage))
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio empty map stage=" + stage)
-		Return
-	EndIf
-	If index >= count
-		Debug.Notification("Pickman's Whisper: audio index " + index + " out of range (" + count + ") " + GetNoticeStageName(stage))
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio OOB stage=" + stage + " idx=" + index + " count=" + count)
-		Return
-	EndIf
-	String fileName = bank[index]
-	If !fileName || GardenOfEden.StrLength(fileName) < 1
-		Debug.Notification("Pickman's Whisper: empty audio filename at " + GetNoticeStageName(stage) + "[" + index + "]")
-		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio empty filename")
-		Return
-	EndIf
-	PlayWhisperXwmByFile(fileName)
-EndFunction
-
-; Play one Whisper SNDR by map key (WhisperSndrIds). Top-level or relative
-; under Sound\PickmansWhisper\ (e.g. Necromantic/Start/01-LooksPeaceful.xwm).
-; Fail loud — never substitute.
-Function PlayWhisperXwmByFile(String fileName)
-	If !IsVoiceWeaponReady()
-		Return
-	EndIf
-	If !fileName || GardenOfEden.StrLength(fileName) < 1
-		Debug.Notification("Pickman's Whisper: empty audio filename")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile empty filename")
-		Return
-	EndIf
-	String leaf = fileName
-	String dirPath = ".\\Data\\Sound\\PickmansWhisper\\"
-	Int len = GardenOfEden.StrLength(fileName)
-	Int lastSep = -1
-	Int si = 0
-	While si < len
-		String c = GardenOfEden.SubStr(fileName, si, 1)
-		If c == "/" || c == "\\"
-			lastSep = si
-		EndIf
-		si += 1
-	EndWhile
-	If lastSep >= 0
-		String relDir = GardenOfEden.SubStr(fileName, 0, lastSep + 1)
-		leaf = GardenOfEden.SubStr(fileName, lastSep + 1, -1)
-		; GoE paths use backslashes; audio maps use forward slashes.
-		String relBack = ""
-		Int ri = 0
-		Int rlen = GardenOfEden.StrLength(relDir)
-		While ri < rlen
-			String rc = GardenOfEden.SubStr(relDir, ri, 1)
-			If rc == "/"
-				relBack += "\\"
-			Else
-				relBack += rc
-			EndIf
-			ri += 1
-		EndWhile
-		dirPath = ".\\Data\\Sound\\PickmansWhisper\\" + relBack
-	EndIf
-	If !leaf || GardenOfEden.StrLength(leaf) < 1
-		Debug.Notification("Pickman's Whisper: empty audio leaf for " + fileName)
-		Return
-	EndIf
-	Bool xwmOk = GardenOfEden2.DoesFileExist(leaf, dirPath)
-	If !xwmOk
-		Debug.Notification("Pickman's Whisper: missing xwm " + fileName)
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile xwm missing " + fileName + " path=" + dirPath)
-		Return
-	EndIf
-	; WhisperSndrIds keys match the map line (forward-slash relative path).
-	Int fid = FindWhisperSndrFid(fileName)
-	If fid <= 0
-		Debug.Notification("Pickman's Whisper: no SNDR id for " + fileName + " — rebuild ESP")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile no FormID for " + fileName)
-		Return
-	EndIf
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !PlayerRef
-		Debug.Notification("Pickman's Whisper: audio play — no player")
-		Return
-	EndIf
-	Sound snd = Game.GetFormFromFile(fid, "PickmansWhisper.esp") as Sound
-	If !snd
-		Debug.Notification("Pickman's Whisper: SNDR missing for " + fileName + " (fid=" + fid + ")")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile GetFormFromFile failed fid=" + fid + " file=" + fileName)
-		Return
-	EndIf
-	Int inst = snd.Play(PlayerRef)
-	If inst == 0
-		Debug.Notification("Pickman's Whisper: Play failed for " + fileName + " (instance 0)")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile Play=0 file=" + fileName)
-		Return
-	EndIf
-	LastAudioFile = fileName
-	Debug.Trace("PickmansWhisper: PlayWhisperXwmByFile " + fileName + " inst=" + inst)
-EndFunction
-
-; One modal dialog with the full step-by-step load trace (screenshot-friendly).
-; MCM Debug "Test notice file load" only — never call from OnQuestInit / load resume.
-Function ReportNoticeLoadStatus()
-	String msg = "PICKMANS WHISPER NOTICE LOAD || " + NoticeLoadDiag
-	Debug.Trace("PickmansWhisper notice load: " + msg)
-	DiagNotify(msg)
-EndFunction
-
-; Space-joined list of stages whose file did not load (count <= 0), else "".
-String Function NoticeLoadFailureList()
-	String s = ""
-	If NoticeCalmCount <= 0
-		s += "calm "
-	EndIf
-	If NoticeRestlessCount <= 0
-		s += "restless "
-	EndIf
-	If NoticeHungryCount <= 0
-		s += "hungry "
-	EndIf
-	If NoticeStarvingCount <= 0
-		s += "starving "
-	EndIf
-	If NoticeDesperateCount <= 0
-		s += "desperate "
-	EndIf
-	Return TrimString(s)
-EndFunction
-
-; Push the five per-stage load results to their MCM Debug rows.
-Function WriteNoticeLoadStatusToMcm()
-	If !MCM.IsInstalled()
-		Return
-	EndIf
-	MCM.SetModSettingString(MOD_NAME, "sNoticeCalm:Debug", NoticeCalmStatus)
-	MCM.SetModSettingString(MOD_NAME, "sNoticeRestless:Debug", NoticeRestlessStatus)
-	MCM.SetModSettingString(MOD_NAME, "sNoticeHungry:Debug", NoticeHungryStatus)
-	MCM.SetModSettingString(MOD_NAME, "sNoticeStarving:Debug", NoticeStarvingStatus)
-	MCM.SetModSettingString(MOD_NAME, "sNoticeDesperate:Debug", NoticeDesperateStatus)
-EndFunction
-
-; Game-root-relative config path, exactly mirroring Necromantic's proven
-; WitnessInsults/Positions loader (".\Data\<Mod>\config\"). This is the form GoE
-; documents (asFilePath relative to the Fallout 4 root, leading ".\", trailing "\").
-; Returned from a function so it can never be "" on an old save (a stale script
-; String var can deserialize empty, which would break the read).
-String Function NoticeConfigPath()
-	Return ".\\Data\\PickmansWhisper\\config\\"
-EndFunction
-
-; Necromantic intimacy banks (E4) — subdirectory under config/.
-String Function NecromanticConfigPath()
-	Return ".\\Data\\PickmansWhisper\\config\\necromantic\\"
-EndFunction
-
-; Load one config .txt into a pre-allocated String[64] bank; returns usable count.
-; Exposed for feature scripts (BedGift) that load banks via Main.
-String Function GetLastStageLoadStatus()
-	Return LastStageLoadStatus
-EndFunction
-
-Int Function LoadStageBank(String fileName, String[] bank)
-	Return LoadStageBankAt(fileName, bank, NoticeConfigPath())
-EndFunction
-
-; Mirrors Necromantic LoadWitnessInsults / LoadPositionList: DoesFileExist ->
-; GetLinesFromFile -> parse (# and blank lines skipped). Files-only (no builtin
-; fallback). Sets LastStageLoadStatus (MCM) and LastStageLoadDiag (MessageBox trace).
-Int Function LoadStageBankAt(String fileName, String[] bank, String path)
-	String nl = " | "
-	LastStageLoadDiag = fileName
-	; Pessimistic default survives a GoE2 native abort (e.g. GoE not installed).
-	LastStageLoadStatus = "READ FAILED (GoE2 missing?)"
-	Bool exists = GardenOfEden2.DoesFileExist(fileName, path)
-	LastStageLoadDiag += nl + "exists=" + exists
-	If !exists
-		LastStageLoadStatus = "MISSING FILE (" + path + fileName + ")"
-		LastStageLoadDiag += nl + "RESULT: NOT FOUND"
-		Return 0
-	EndIf
-	String[] raw = GardenOfEden2.GetLinesFromFile(fileName, path)
-	Int rawLen = 0
-	If raw
-		rawLen = raw.Length
-	EndIf
-	LastStageLoadDiag += nl + "raw lines=" + rawLen
-	If raw && rawLen > 0
-		LastStageLoadDiag += nl + "line0='" + raw[0] + "' len=" + GardenOfEden.StrLength(raw[0])
-	EndIf
-	If !raw || raw.Length == 0
-		LastStageLoadStatus = "READ FAILED / EMPTY (GoE2 returned nothing)"
-		LastStageLoadDiag += nl + "RESULT: EMPTY/UNREADABLE"
-		Return 0
-	EndIf
-	Int n = ParseRawIntoBank(raw, bank)
-	LastStageLoadDiag += nl + "parsed=" + n
-	If n <= 0
-		LastStageLoadStatus = "EMPTY (no usable lines)"
-		LastStageLoadDiag += nl + "RESULT: NO USABLE LINES"
-	Else
-		LastStageLoadStatus = n + " lines"
-		LastStageLoadDiag += nl + "RESULT: OK (" + n + ")"
-	EndIf
-	Return n
-EndFunction
-
-; Copy trimmed, non-comment, non-blank lines into bank (max 64). Returns count.
-; Comment check uses GoE SubStr — FO4 has no StringUtil (see no-fake-native-stubs).
-Int Function ParseRawIntoBank(String[] raw, String[] bank)
-	Int n = 0
-	Int i = 0
-	While i < raw.Length && n < 64
-		String line = TrimString(raw[i])
-		i += 1
-		If line == ""
-			; skip
-		ElseIf GardenOfEden.SubStr(line, 0, 1) == "#"
-			; comment
-		Else
-			bank[n] = line
-			n += 1
-		EndIf
-	EndWhile
-	Return n
-EndFunction
-
-; Trims leading/trailing whitespace (spaces, tabs, trailing CR that GetLinesFromFile
-; can leave on CRLF files) and normalizes internal runs of whitespace to single
-; spaces. FO4/F4SE has NO built-in StringUtil (Skyrim/SKSE only), so this goes
-; through Garden of Eden: GetWordsInStringAsArray. See no-fake-native-stubs.
-; Mirrors Necromantic TrimString exactly.
-String Function TrimString(String s)
-	If s == ""
-		Return s
-	EndIf
-	String[] words = GardenOfEden2.GetWordsInStringAsArray(s)
-	If !words || words.Length == 0
-		Return ""
-	EndIf
-	String out = words[0]
-	Int i = 1
-	While i < words.Length
-		out += " " + words[i]
-		i += 1
-	EndWhile
-	Return out
-EndFunction
-
-Function UseBuiltinTrustFallback()
-	TrustLines = new String[LINE_FILE_MAX]
-	TrustLines[0] = "You hear me. Good. Stay a while."
-	TrustLines[1] = "I like the way you hold still in these halls."
-	TrustLines[2] = "We're getting along already... aren't we?"
-	TrustLines[3] = "Keep the knife close. It likes you."
-	TrustLines[4] = "No need to rush. I'm not going anywhere."
-	TrustLines[5] = "The paint chips look like smiles up close."
-	TrustLines[6] = "You came seeking a gift. You found a friend."
-	TrustLines[7] = "Quiet steps. Careful hands. Perfect."
-	TrustLineCount = 8
-EndFunction
-
-Function UseBuiltinHungerFallback()
-	HungerLines = new String[LINE_FILE_MAX]
-	HungerLines[0] = "A restless edge... the blade wants use."
-	HungerLines[1] = "Hunger grows while the knife sleeps."
-	HungerLines[2] = "You feel it — that neat, bright need."
-	HungerLines[3] = "Feed me. Just once. You'll see."
-	HungerLines[4] = "The itching behind your eyes is for someone soft and still."
-	HungerLines[5] = "Unused steel turns mean. You know how to fix that."
-	HungerLines[6] = "They won't understand. We will."
-	HungerLineCount = 7
-EndFunction
-
-Function UseBuiltinPraiseFallback()
-	PraiseLines = new String[LINE_FILE_MAX]
-	PraiseLines[0] = "Yes... that was beautiful. Rest a moment."
-	PraiseLines[1] = "Perfect. Clean. The blade is smiling."
-	PraiseLines[2] = "You felt that, didn't you? So did I."
-	PraiseLines[3] = "Again when you're ready. I'll wait."
-	PraiseLines[4] = "Good. They hardly knew how to thank you."
-	PraiseLines[5] = "Quiet work. Elegant. Keep going."
-	PraiseLines[6] = "I knew you'd understand us."
-	PraiseLines[7] = "Hunger sleeps. For a little while."
-	PraiseLineCount = 8
-EndFunction
-
 String Function PickTrustLine()
 	If TrustLineCount <= 0 || !TrustLines
 		LoadTrustLines()
 	EndIf
 	If TrustLineCount <= 0
-		Return "You hear me. Good."
+		Debug.Trace("PickmansWhisper: ERROR PickTrustLine — TrustLines bank empty")
+		Return ""
 	EndIf
 	Return TrustLines[Utility.RandomInt(0, TrustLineCount - 1)]
 EndFunction
@@ -4937,7 +2958,8 @@ String Function PickHungerLine()
 		LoadHungerLines()
 	EndIf
 	If HungerLineCount <= 0
-		Return "The blade is hungry."
+		Debug.Trace("PickmansWhisper: ERROR PickHungerLine — HungerLines bank empty")
+		Return ""
 	EndIf
 	Return HungerLines[Utility.RandomInt(0, HungerLineCount - 1)]
 EndFunction
@@ -4947,202 +2969,10 @@ String Function PickPraiseLine()
 		LoadPraiseLines()
 	EndIf
 	If PraiseLineCount <= 0
-		Return "Yes... that was beautiful. Rest a moment."
+		Debug.Trace("PickmansWhisper: ERROR PickPraiseLine — PraiseLines bank empty")
+		Return ""
 	EndIf
 	Return PraiseLines[Utility.RandomInt(0, PraiseLineCount - 1)]
-EndFunction
-
-; Whisper stage from hunger %: 0 calm / 1 restless / 2 hungry / 3 starving / 4 desperate.
-; Read-only off HungerLevel — speaking a line never advances the stage.
-Int Function GetNoticeStage()
-	; Debug override: MCM "Force notice stage" pins the stage to the dropdown value
-	; so each stage can be tested without grinding hunger. Off = derive from hunger.
-	If IsNoticeStageForced()
-		Int forced = MCM.GetModSettingInt(MOD_NAME, "iNoticeStage:Debug")
-		If forced < 0
-			Return 0
-		ElseIf forced > 4
-			Return 4
-		EndIf
-		Return forced
-	EndIf
-	Float level = HungerLevel
-	If level >= 90.0
-		Return 4
-	ElseIf level >= 70.0
-		Return 3
-	ElseIf level >= 50.0
-		Return 2
-	ElseIf level >= 25.0
-		Return 1
-	EndIf
-	Return 0
-EndFunction
-
-Bool Function IsNoticeStageForced()
-	If !MCM.IsInstalled()
-		Return False
-	EndIf
-	Return MCM.GetModSettingBool(MOD_NAME, "bForceNoticeStage:Debug")
-EndFunction
-
-String Function GetNoticeStageName(Int stage)
-	If stage == 4
-		Return "desperate"
-	ElseIf stage == 3
-		Return "starving"
-	ElseIf stage == 2
-		Return "hungry"
-	ElseIf stage == 1
-		Return "restless"
-	EndIf
-	Return "calm"
-EndFunction
-
-String[] Function GetNoticeBankForStage(Int stage)
-	If stage == 4
-		Return NoticeDesperateLines
-	ElseIf stage == 3
-		Return NoticeStarvingLines
-	ElseIf stage == 2
-		Return NoticeHungryLines
-	ElseIf stage == 1
-		Return NoticeRestlessLines
-	EndIf
-	Return NoticeCalmLines
-EndFunction
-
-Int Function GetNoticeCountForStage(Int stage)
-	If stage == 4
-		Return NoticeDesperateCount
-	ElseIf stage == 3
-		Return NoticeStarvingCount
-	ElseIf stage == 2
-		Return NoticeHungryCount
-	ElseIf stage == 1
-		Return NoticeRestlessCount
-	EndIf
-	Return NoticeCalmCount
-EndFunction
-
-; Files-only: returns "" when the current stage's file did not load. Callers must
-; treat "" as "skip this whisper" — there is no hardcoded fallback line.
-; Sets LastNoticePickIndex / LastNoticePickStage for D1 same-index audio.
-String Function PickNoticeLine(String npcName)
-	Int stage = GetNoticeStage()
-	String[] bank = GetNoticeBankForStage(stage)
-	Int count = GetNoticeCountForStage(stage)
-	If count <= 0 || !bank
-		; One retry in case the poll beat the initial load; then give up (skip).
-		LoadNoticeLines()
-		bank = GetNoticeBankForStage(stage)
-		count = GetNoticeCountForStage(stage)
-	EndIf
-	If count <= 0 || !bank
-		LastNoticePickIndex = -1
-		LastNoticePickStage = stage
-		Return ""
-	EndIf
-
-	String useName = NoticeNameForLine(npcName)
-	Bool wantNameless = (useName == "")
-
-	Int idx = Utility.RandomInt(0, count - 1)
-	String raw = bank[idx]
-	; One bounded reroll loop covers two wants: no immediate repeat, and (for
-	; unnamed targets like generic settlers) prefer lines without {name} so we
-	; never toast an awkwardly stripped sentence.
-	Int tries = 0
-	While tries < 8 && count > 1 && (raw == LastNoticeLine || (wantNameless && StrContains(raw, "{name}")))
-		idx = Utility.RandomInt(0, count - 1)
-		raw = bank[idx]
-		tries += 1
-	EndWhile
-	If !raw
-		LastNoticePickIndex = -1
-		LastNoticePickStage = stage
-		Return ""
-	EndIf
-	LastNoticeLine = raw
-	LastNoticePickIndex = idx
-	LastNoticePickStage = stage
-
-	; ApplyNamePlaceholder strips {name} safely when there's no usable name.
-	Return ApplyNamePlaceholder(raw, useName)
-EndFunction
-
-; Workshop / leveled labels / glyph junk are useless in whispers — treat as unnamed.
-; Real names (Piper) and P3 player-assigned labels (Anne-Marie, O'Malley) pass.
-String Function NoticeNameForLine(String npcName)
-	If !npcName
-		Return ""
-	EndIf
-	; Engine sometimes returns 1–2 unprintable glyphs (toast shows solid squares).
-	If !IsUsableWhisperName(npcName)
-		Return ""
-	EndIf
-	; Papyrus string compare is case-insensitive
-	If npcName == "Settler" || npcName == "Raider" || npcName == "Gunner" || npcName == "Tramp"
-		Return ""
-	EndIf
-	If npcName == "Scavenger" || npcName == "Farmer" || npcName == "Wastelander" || npcName == "Survivor"
-		Return ""
-	EndIf
-	; Workshop / SS2-style labels (e.g. "Resident") — never toast as a personal name.
-	If npcName == "Resident" || npcName == "Citizen" || npcName == "Neighbor" || npcName == "Worker"
-		Return ""
-	EndIf
-	; Placeholder label from fixation / display fallbacks — not a real name.
-	If npcName == "Unnamed" || npcName == "unnamed"
-		Return ""
-	EndIf
-	If StrContains(npcName, "Settler") || StrContains(npcName, "Resident")
-		Return ""
-	EndIf
-	Return npcName
-EndFunction
-
-; True if every character is a common name glyph and at least one letter is present.
-; GoE-only (no StringUtil) — rejects □□ / control junk that FO4 still treats as non-empty.
-Bool Function IsUsableWhisperName(String npcName)
-	If !npcName
-		Return False
-	EndIf
-	String s = TrimString(npcName)
-	Int n = GardenOfEden.StrLength(s)
-	If n < 2
-		Return False
-	EndIf
-	; Letters + digits + common name punctuation (case-insensitive via ReplaceStr path).
-	String allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -'."
-	String letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	Bool hasLetter = False
-	Int i = 0
-	While i < n
-		String c = GardenOfEden.SubStr(s, i, 1)
-		If !c || !StrContains(allowed, c)
-			Return False
-		EndIf
-		If StrContains(letters, c)
-			hasLetter = True
-		EndIf
-		i += 1
-	EndWhile
-	Return hasLetter
-EndFunction
-
-; GoE string ops only — FO4 has no StringUtil (see no-fake-native-stubs).
-String Function ApplyNamePlaceholder(String line, String npcName)
-	If !line
-		Return ""
-	EndIf
-	If !npcName
-		Return StripNamePlaceholder(line)
-	EndIf
-	If !StrContains(line, "{name}")
-		Return line
-	EndIf
-	Return GardenOfEden.ReplaceStr(line, "{name}", npcName)
 EndFunction
 
 ; Remove {name} — do NOT substitute "them" (that became a one-word toast).
@@ -5164,7 +2994,9 @@ String Function StripNamePlaceholder(String line)
 	out = GardenOfEden.ReplaceStr(out, "{name}— ", "")
 	out = GardenOfEden.ReplaceStr(out, "{name}.", "")
 	out = GardenOfEden.ReplaceStr(out, "{name}", "")
-	out = TrimString(out)
+	If VoiceAlias
+		out = VoiceAlias.TrimString(out)
+	EndIf
 	out = StripLeadingNameSeparator(out)
 	If !out || GardenOfEden.StrLength(out) < 8
 		; Degenerate user line (e.g. just "{name}") — skip rather than fake one.
@@ -5205,20 +3037,88 @@ String Function StripLeadingNameSeparator(String s)
 EndFunction
 
 Function ToastPraiseLine(String line)
-	If line == "" || !IsVoiceEnabled()
+	If line == "" || !VoiceAlias || !VoiceAlias.IsVoiceEnabled()
 		Return
 	EndIf
-	If !IsVoiceWeaponReady()
+	If !VoiceAlias || !VoiceAlias.IsVoiceWeaponReady()
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	If (now - LastPraiseToastRealTime) < PRAISE_TOAST_COOLDOWN
+	If (now - VoiceAlias.LastPraiseToastRealTime) < VoiceAlias.PRAISE_TOAST_COOLDOWN
 		Return
 	EndIf
-	LastPraiseToastRealTime = now
+	VoiceAlias.LastPraiseToastRealTime = now
 	; Praise may fire mid-combat; allow even if menus briefly steal focus
-	ShowVoiceToast(line)
+	VoiceAlias.ShowVoiceToast(line)
 	Debug.Trace("PickmansWhisper: praise | " + line)
+EndFunction
+
+; Trust / Hunger / Praise banks — files-only via VoiceAlias.LoadStageBank (no builtins).
+Function LoadTrustLines()
+	TrustLines = new String[LINE_FILE_MAX]
+	TrustLineCount = 0
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR LoadTrustLines — VoiceAlias unbound")
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Return
+	EndIf
+	TrustLineCount = VoiceAlias.LoadStageBank("TrustLines.txt", TrustLines)
+	If TrustLineCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR TrustLines.txt — " + VoiceAlias.GetLastStageLoadStatus())
+	Else
+		Debug.Trace("PickmansWhisper: trust lines ready (" + TrustLineCount + ")")
+	EndIf
+EndFunction
+
+Function LoadHungerLines()
+	HungerLines = new String[LINE_FILE_MAX]
+	HungerLineCount = 0
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR LoadHungerLines — VoiceAlias unbound")
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Return
+	EndIf
+	HungerLineCount = VoiceAlias.LoadStageBank("HungerLines.txt", HungerLines)
+	If HungerLineCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR HungerLines.txt — " + VoiceAlias.GetLastStageLoadStatus())
+	Else
+		Debug.Trace("PickmansWhisper: hunger lines ready (" + HungerLineCount + ")")
+	EndIf
+EndFunction
+
+Function LoadPraiseLines()
+	PraiseLines = new String[LINE_FILE_MAX]
+	PraiseLineCount = 0
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR LoadPraiseLines — VoiceAlias unbound")
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+		Return
+	EndIf
+	PraiseLineCount = VoiceAlias.LoadStageBank("PraiseLines.txt", PraiseLines)
+	If PraiseLineCount <= 0
+		Debug.Trace("PickmansWhisper: ERROR PraiseLines.txt — " + VoiceAlias.GetLastStageLoadStatus())
+	Else
+		Debug.Trace("PickmansWhisper: praise lines ready (" + PraiseLineCount + ")")
+	EndIf
+EndFunction
+
+Function LoadLineBanks()
+	If ModConfigAlias
+		ModConfigAlias.LoadModConfig()
+	Else
+		Debug.Trace("PickmansWhisper: ERROR LoadLineBanks — ModConfigAlias unbound")
+		Debug.Notification("Pickman's Whisper: ModConfigAlias unbound — rebuild esp")
+	EndIf
+	If VoiceAlias
+		VoiceAlias.LoadVoiceBanks()
+	Else
+		Debug.Trace("PickmansWhisper: ERROR LoadLineBanks — VoiceAlias unbound")
+		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
+	EndIf
+	LoadTrustLines()
+	LoadHungerLines()
+	LoadPraiseLines()
+	LoadTargetOverrides()
 EndFunction
 
 ; --- Hunger --------------------------------------------------------------------
@@ -5269,28 +3169,6 @@ Bool Function IsHungerAddictionSpellEnabled()
 		Return MCM.GetModSettingBool(MOD_NAME, "bAddictionSpell:Hunger")
 	EndIf
 	Return True
-EndFunction
-
-Bool Function IsVoiceEnabled()
-	If MCM.IsInstalled()
-		Return MCM.GetModSettingBool(MOD_NAME, "bVoiceToasts:Voice")
-	EndIf
-	Return True
-EndFunction
-
-; 0 = Toast + Audio (default), 1 = Audio only, 2 = Toast only.
-Int Function GetVoiceDeliveryMode()
-	If MCM.IsInstalled()
-		Int v = MCM.GetModSettingInt(MOD_NAME, "iVoiceDelivery:Voice")
-		If v < 0
-			Return 0
-		EndIf
-		If v > 2
-			Return 2
-		EndIf
-		Return v
-	EndIf
-	Return 0
 EndFunction
 
 Float Function GetHungerTimeGainPerHour()
@@ -5363,7 +3241,11 @@ Function RunHungerTick()
 
 	Bool satedNow = IsHungerSated()
 	If HungerWasSated && !satedNow
-		ToastHungerLine("The quiet ends. The knife remembers.")
+		If ModConfigAlias && ModConfigAlias.HungerWithdrawalToast != ""
+			ToastHungerLine(ModConfigAlias.HungerWithdrawalToast)
+		Else
+			Debug.Trace("PickmansWhisper: ERROR hunger withdrawal toast skipped — hungerWithdrawalToast missing/empty")
+		EndIf
 		ApplyHungerDelta(20.0, "withdrawal-onset")
 	EndIf
 
@@ -5389,7 +3271,9 @@ Function RunHungerTick()
 	SyncHungerAddictionSpell()
 	RefreshHungerPanel(False)
 	; Hunger timer is proven live — drive notice poll from here too
-	MaybeSpeakNoticeLine("hunger")
+	If VoiceAlias
+		VoiceAlias.MaybeSpeakNoticeLine()
+	EndIf
 EndFunction
 
 Function ApplyHungerDelta(Float amount, String reason)
@@ -5422,24 +3306,11 @@ Function MaybeToastHungerBand(Float before, Float after)
 	If band > LastHungerBand
 		LastHungerBand = band
 		String line = PickHungerLine()
-		If band == 25
-			If line == ""
-				line = "A restless edge... the blade wants use."
-			EndIf
-		ElseIf band == 50
-			If line == ""
-				line = "Hunger grows while the knife sleeps."
-			EndIf
-		ElseIf band == 70
-			If line == ""
-				line = "You feel it — that neat, bright need."
-			EndIf
-		ElseIf band == 90
-			If line == ""
-				line = "Feed me. Just once. You'll see."
-			EndIf
+		If line != ""
+			ToastHungerLine(line)
+		Else
+			Debug.Trace("PickmansWhisper: ERROR MaybeToastHungerBand — HungerLines empty (band=" + band + ")")
 		EndIf
-		ToastHungerLine(line)
 	ElseIf after < 25.0 && LastHungerBand > 0
 		LastHungerBand = 0
 	EndIf
@@ -5452,7 +3323,7 @@ String Function EnsureCombatKillHooks()
 	If !PlayerRef
 		PlayerRef = Game.GetPlayer()
 	EndIf
-	StartKillerScanLoop()
+	; StartKillerScanLoop()
 	String status = "scan WORLD+T16 tagged=" + BladeTaggedCount
 	ToastDebug("PW [" + DEBUG_BUILD + "]: " + status)
 	Debug.Trace("PickmansWhisper: EnsureCombatKillHooks " + DEBUG_BUILD + " " + status)
@@ -5474,7 +3345,7 @@ EndFunction
 Function StartKillScanLoop()
 	CancelTimer(TIMER_KILL_SCAN)
 	CancelTimer(TIMER_DECAY_SYNC)
-	StartKillerScanLoop()
+	; StartKillerScanLoop()
 EndFunction
 
 ; Knife credit from KillerScan snapshot — no FindActors, no LooksMenu.
@@ -5581,7 +3452,7 @@ Function NoteBackgroundDead(Int id)
 EndFunction
 
 Function TrackLivingNear(Actor ak)
-	; Ambient sighting for WasFriendlySeen (IsValidTarget's hostility-history check), AND
+	; Ambient sighting for WasFriendlySeen (knife feature hostility-history), AND
 	; the ONLY place that proactively arms hit detection. RegisterForHitEvent is otherwise
 	; only ever called reactively, inside HandleBladeHit, to re-arm AFTER a hit already
 	; landed — nothing else registers a fresh, never-hit actor, so without this call here
@@ -5602,7 +3473,8 @@ Function TrackLivingNear(Actor ak)
 		Return
 	EndIf
 
-	If IsChildNpc(ak) && !IsChildTargetAllowed()
+	; Hard gate — stamp friendly / arm hits only for mod-eligible NPCs.
+	If !IsValidTarget(ak)
 		Return
 	EndIf
 
@@ -5708,7 +3580,12 @@ Function LoadTargetOverrides()
 	AllowChildFemalesOverride = False
 	AllowRobotsOverride = False
 	String fileName = "TargetOverrides.txt"
-	String path = NoticeConfigPath()
+	If !VoiceAlias
+		LastTargetOverridesStatus = "ERROR: VoiceAlias unbound (cannot resolve config path)"
+		Debug.Trace("PickmansWhisper: ERROR LoadTargetOverrides — VoiceAlias unbound")
+		Return
+	EndIf
+	String path = VoiceAlias.NoticeConfigPath()
 	If !GardenOfEden2.DoesFileExist(fileName, path)
 		LastTargetOverridesStatus = "optional file absent (defaults: blocked)"
 		Debug.Trace("PickmansWhisper: TargetOverrides.txt not present — using safe defaults (see TargetOverrides.example.txt)")
@@ -5722,7 +3599,10 @@ Function LoadTargetOverrides()
 	EndIf
 	Int i = 0
 	While i < raw.Length
-		String line = TrimString(raw[i])
+		String line = raw[i]
+		If VoiceAlias
+			line = VoiceAlias.TrimString(raw[i])
+		EndIf
 		i += 1
 		If line == ""
 			; skip
@@ -5740,8 +3620,12 @@ Function LoadTargetOverrides()
 				li += 1
 			EndWhile
 			If eq > 0
-				String key = TrimString(GardenOfEden.SubStr(line, 0, eq))
-				String val = TrimString(GardenOfEden.SubStr(line, eq + 1, -1))
+				String key = GardenOfEden.SubStr(line, 0, eq)
+				String val = GardenOfEden.SubStr(line, eq + 1, -1)
+				If VoiceAlias
+					key = VoiceAlias.TrimString(key)
+					val = VoiceAlias.TrimString(val)
+				EndIf
 				If key == "AllowChildFemales"
 					AllowChildFemalesOverride = ParseOverrideTruthy(val)
 				ElseIf key == "AllowRobots"
@@ -5914,7 +3798,7 @@ Function HandleBladeHit(ObjectReference akTarget, ObjectReference akAggressor, F
 		Return
 	EndIf
 	If !IsPickmansBladeForm(akSource) || !IsBladeEquipped()
-		LastKillIgnoreReason = "hit not with blade; drawn=" + GetDrawnWeaponDebugName()
+		Debug.Trace("PickmansWhisper: HandleBladeHit reject | hit not with blade; drawn=" + GetDrawnWeaponDebugName())
 		If !victim.IsDead()
 			RegisterForHitEvent(victim, PlayerRef)
 		EndIf
@@ -5924,7 +3808,7 @@ Function HandleBladeHit(ObjectReference akTarget, ObjectReference akAggressor, F
 	Debug.Trace("Pickman's Whisper: HandleBladeHit 1")
 
 	; Stamp disposition while we can — same rule as TrackLivingNear (raiders already hostile
-	; at hit-time still fail IsValidTarget's WasFriendlySeen check; a stealth kill on someone
+	; at hit-time still fail the knife WasFriendlySeen feature check; a stealth kill on someone
 	; who never got the chance to react correctly passes).
 	If !PlayerRef || !victim.IsHostileToActor(PlayerRef)
 		NoteFriendlySeen(victim)
@@ -6051,70 +3935,44 @@ Bool Function IsHumanNpc(Actor ak)
 	Return False
 EndFunction
 
-; Eligibility gate for anything that actually credits/affects gameplay — knife-kill
-; crediting (ProcessKnifeKill) and pre-kill watch registration (WatchKillCandidate).
-; Was IsValidKnifeKillVictim; renamed since it is the shared gate for that whole
-; pipeline, not just the literal kill moment. MCM naming (ApplyVictimName) deliberately
-; does NOT use this — see IsValidNamingTarget below, a lighter gate for a non-destructive
-; action (naming does not credit hunger or affect the world, so it doesn't need the
-; essential/teammate/alive protections a real kill does).
-Bool Function IsValidTarget(Actor ak, Bool abRequireAlive = True)
+; Hard eligibility — "this NPC can never be a Pickman's Whisper target."
+; Feature paths compose their own checks (IsDead, WasFriendlySeen, distance, cooldown).
+; Bool only; every reject Traces. No Autovar reason side-channel.
+Bool Function IsValidTarget(Actor ak)
 	If !ak || ak == PlayerRef
-		LastKillIgnoreReason = "no actor"
+		Debug.Trace("PickmansWhisper: target reject | no actor")
+		Debug.Notification("PickmansWhisper: target reject | no actor")
 		Return False
 	EndIf
-	If abRequireAlive && ak.IsDead()
-		LastKillIgnoreReason = "already dead"
+	Int id = ak.GetFormID()
+	If ak.IsDisabled()
+		Debug.Trace("PickmansWhisper: target reject | disabled id=" + id)
+		Debug.Notification("PickmansWhisper: target reject | disabled id=" + id)
 		Return False
 	EndIf
 	If IsChildNpc(ak) && !IsChildTargetAllowed()
-		LastKillIgnoreReason = "child"
+		Debug.Trace("PickmansWhisper: target reject | child id=" + id)
+		Debug.Notification("PickmansWhisper: target reject | child id=" + id)
 		Return False
 	EndIf
 	If ak.IsPlayerTeammate()
-		LastKillIgnoreReason = "teammate"
+		Debug.Trace("PickmansWhisper: target reject | teammate id=" + id)
+		Debug.Notification("PickmansWhisper: target reject | teammate id=" + id)
 		Return False
 	EndIf
 	If IsStoryEssential(ak)
-		LastKillIgnoreReason = "essential (story NPC)"
+		Debug.Trace("PickmansWhisper: target reject | essential (story NPC) id=" + id)
+		Debug.Notification("PickmansWhisper: target reject | essential (story NPC) id=" + id)
 		Return False
 	EndIf
 	If !IsHumanNpc(ak)
-		LastKillIgnoreReason = "not human NPC"
+		Debug.Trace("PickmansWhisper: target reject | not human NPC id=" + id)
+		Debug.Notification("PickmansWhisper: target reject | not human NPC id=" + id)
 		Return False
 	EndIf
 	If !IsAdultFemale(ak)
-		LastKillIgnoreReason = "not adult female"
-		Return False
-	EndIf
-	; Must have been seen non-hostile while alive (raiders fail; settlers you aggro still pass).
-	If !WasFriendlySeen(ak)
-		LastKillIgnoreReason = "hostile / not seen friendly"
-		Return False
-	EndIf
-	Return True
-EndFunction
-
-; Naming gate (ApplyVictimName only) — deliberately lighter than IsValidTarget. Naming is
-; non-destructive (just a label) and must work on a corpse, not only a living actor (MCM's
-; own copy: "aim a corpse, then open MCM"), so there is no alive/dead requirement here and
-; no essential/teammate protection — human, adult female (which itself already honors
-; IsChildTargetAllowed — see IsAdultFemale), and seen-non-hostile, nothing else.
-Bool Function IsValidNamingTarget(Actor ak)
-	If !ak || ak == PlayerRef
-		LastKillIgnoreReason = "no actor"
-		Return False
-	EndIf
-	If !IsHumanNpc(ak)
-		LastKillIgnoreReason = "not human NPC"
-		Return False
-	EndIf
-	If !IsAdultFemale(ak)
-		LastKillIgnoreReason = "not adult female"
-		Return False
-	EndIf
-	If !WasFriendlySeen(ak)
-		LastKillIgnoreReason = "hostile / not seen friendly"
+		Debug.Trace("PickmansWhisper: target reject | not adult female id=" + id)
+		Debug.Notification("PickmansWhisper: target reject | not adult female id=" + id)
 		Return False
 	EndIf
 	Return True
@@ -6154,7 +4012,6 @@ EndFunction
 ; are routine/expected (non-gameplay corpse, cooldown) rather than something worth a
 ; debug toast every time.
 Function RejectKill(String reason, Bool abToastDebug = True)
-	LastKillIgnoreReason = reason
 	If abToastDebug
 		ToastDebug("PW debug: kill ignored — " + reason)
 	EndIf
@@ -6195,9 +4052,13 @@ Function HandleNPCDeath(Actor victim, Actor akKiller, String path)
 		RejectKill("not blade; drawn=" + drawn)
 		Return
 	EndIf
-	If !IsValidTarget(victim, False)
-		; IsValidTarget already set its own specific reason — pass it through as-is.
-		RejectKill(LastKillIgnoreReason)
+	If !IsValidTarget(victim)
+		RejectKill("not a valid target")
+		Return
+	EndIf
+	; Knife feature: must have been seen non-hostile while alive (raiders fail; settlers you aggro still pass).
+	If !WasFriendlySeen(victim)
+		RejectKill("hostile / not seen friendly")
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
@@ -6207,7 +4068,7 @@ Function HandleNPCDeath(Actor victim, Actor akKiller, String path)
 	EndIf
 	LastKnifeKillRealTime = now
 	LastHandledKillId = vid
-	LastKillIgnoreReason = "ok satiated; drawn=" + drawn
+	Debug.Trace("PickmansWhisper: kill ok satiated; drawn=" + drawn + " id=" + vid)
 	If !BondStarted
 		StartBond("knife-kill")
 	EndIf
@@ -6217,8 +4078,9 @@ EndFunction
 Function ProcessKnifeKill(Actor victim)
 	; Final gate — never praise/sate unless blade is still the drawn weapon
 	If !IsBladeEquipped()
-		LastKillIgnoreReason = "abort satiate; drawn=" + GetDrawnWeaponDebugName()
-		ToastDebug("PW debug: " + LastKillIgnoreReason)
+		String abortReason = "abort satiate; drawn=" + GetDrawnWeaponDebugName()
+		ToastDebug("PW debug: " + abortReason)
+		Debug.Trace("PickmansWhisper: " + abortReason)
 		Return
 	EndIf
 	KnifeKillCount += 1
@@ -6259,31 +4121,31 @@ Bool Function MaybeSpeakNamedKillVoice(Actor victim)
 	If !ModConfigAlias || !ModConfigAlias.NamedKillToast
 		Return False
 	EndIf
-	If !IsVoiceEnabled()
+	If !VoiceAlias || !VoiceAlias.IsVoiceEnabled()
 		Return True
 	EndIf
-	If !IsVoiceWeaponReady()
+	If !VoiceAlias || !VoiceAlias.IsVoiceWeaponReady()
 		Return True
 	EndIf
-	String line = ApplyNamePlaceholder(ModConfigAlias.NamedKillToast, overrideName)
+	String line = VoiceAlias.ApplyNamePlaceholder(ModConfigAlias.NamedKillToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return False
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	If (now - LastPraiseToastRealTime) < PRAISE_TOAST_COOLDOWN
+	If (now - VoiceAlias.LastPraiseToastRealTime) < VoiceAlias.PRAISE_TOAST_COOLDOWN
 		Return True
 	EndIf
-	LastPraiseToastRealTime = now
-	Int mode = GetVoiceDeliveryMode()
+	VoiceAlias.LastPraiseToastRealTime = now
+	Int mode = VoiceAlias.GetVoiceDeliveryMode()
 	If mode != 1
-		ShowVoiceToast(line)
+		VoiceAlias.ShowVoiceToast(line)
 	EndIf
 	If mode != 2
 		If ModConfigAlias.NamedKillAudio
-			PlayWhisperXwmByFile(ModConfigAlias.NamedKillAudio)
+			VoiceAlias.PlayWhisperXwmByFile(ModConfigAlias.NamedKillAudio)
 		ElseIf mode == 1
 			; Audio-only with no audio key — still deliver toast so the kill is not silent.
-			ShowVoiceToast(line)
+			VoiceAlias.ShowVoiceToast(line)
 			Debug.Trace("PickmansWhisper: namedKillAudio missing — toast fallback for audio-only mode")
 		EndIf
 	EndIf
@@ -6317,7 +4179,11 @@ Function MaybeToastEatRipeCorpse(Actor akCorpse)
 	If !overrideName
 		overrideName = "her"
 	EndIf
-	String line = ApplyNamePlaceholder(ModConfigAlias.EatRipeCorpseToast, overrideName)
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | VoiceAlias unbound")
+		Return
+	EndIf
+	String line = VoiceAlias.ApplyNamePlaceholder(ModConfigAlias.EatRipeCorpseToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | empty line after placeholder")
 		Return
@@ -6607,7 +4473,9 @@ Function OnMCMMenuOpen(String modName)
 	If MCM.IsInstalled()
 		MCM.RefreshMenu()
 	EndIf
-	LoadNoticeLines()
+	If VoiceAlias
+		VoiceAlias.LoadNoticeLines()
+	EndIf
 	RefreshDebugStatus()
 	; After Debug's RefreshMenu wipe — push Victims (incl. decay) from aim cache.
 	RefreshVictimsPanel(False)
@@ -6837,21 +4705,18 @@ Function DebugResetBond()
 EndFunction
 
 Function DebugReloadLines()
-	LoadLineBanks()
-	DiagNotify("Pickman's Whisper — reloaded line banks\n\nTrust (builtin): " + TrustLineCount + "\nHunger (builtin): " + HungerLineCount + "\nPraise (builtin): " + PraiseLineCount + "\n\nNotice stages (files-only):\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
-EndFunction
-
-; MCM Debug button — reload all five notice files NOW and show the full
-; step-by-step load trace MessageBox (mirrors Necromantic ShowConfigLoadInfo).
-Function DebugTestNoticeFiles()
-	LoadNoticeLines()
-	String failed = NoticeLoadFailureList()
-	If failed != ""
-		Debug.Notification("Pickman's Whisper: NO/partial notice load — " + failed)
-	Else
-		Debug.Notification("Pickman's Whisper: notice files OK at " + NoticeConfigPath())
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: ERROR DebugReloadLines — VoiceAlias unbound")
+		DiagNotify("Pickman's Whisper\n\nVoiceAlias unbound — rebuild / reinstall PickmansWhisper.esp")
+		Return
 	EndIf
-	ReportNoticeLoadStatus()
+	LoadLineBanks()
+	String calm = VoiceAlias.NoticeCalmStatus
+	String restless = VoiceAlias.NoticeRestlessStatus
+	String hungry = VoiceAlias.NoticeHungryStatus
+	String starving = VoiceAlias.NoticeStarvingStatus
+	String desperate = VoiceAlias.NoticeDesperateStatus
+	DiagNotify("Pickman's Whisper — reloaded line banks\n\nTrust (files): " + TrustLineCount + "\nHunger (files): " + HungerLineCount + "\nPraise (files): " + PraiseLineCount + "\n\nNotice stages (files-only):\ncalm: " + calm + "\nrestless: " + restless + "\nhungry: " + hungry + "\nstarving: " + starving + "\ndesperate: " + desperate)
 EndFunction
 
 Function DebugTestPraiseLine()
@@ -6870,65 +4735,6 @@ Function DebugTestTrustLine()
 	EndIf
 EndFunction
 
-Function DebugTestNoticeLine()
-	If !PlayerRef
-		PlayerRef = Game.GetPlayer()
-	EndIf
-	If !BondStarted
-		DiagNotify("Pickman's Whisper — Notice\n\nBond first (gallery or blade).")
-		Return
-	EndIf
-	If !IsVoiceEnabled()
-		DiagNotify("Pickman's Whisper — Notice\n\nEnable toast voice on the Voice page.")
-		Return
-	EndIf
-	; Diagnostics: raw GoE counts before filters
-	Actor[] fem = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, 1, -1, 1, -1, -1, None, None, "", 0, 1, 1)
-	Actor[] anyA = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, -1, -1, -1, -1, -1, None, None, "", 0, 1, 0)
-	Int nFem = 0
-	Int nAny = 0
-	If fem
-		nFem = fem.Length
-	EndIf
-	If anyA
-		nAny = anyA.Length
-	EndIf
-	Actor target = PickNoticeTarget()
-	If !target
-		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nTagged: " + BladeTaggedCount + "\nRadius: " + (KILL_WATCH_RADIUS as Int) + "\nNeed adult female, not hostile, not essential.")
-		Return
-	EndIf
-	String npcName = GetActorDisplayName(target)
-	String who = npcName
-	If who == ""
-		who = "id=" + target.GetFormID()
-	EndIf
-	Int stage = GetNoticeStage()
-	Int mode = GetVoiceDeliveryMode()
-	If mode == 1
-		Int aIdx = PickNoticeAudioIndex(stage)
-		If aIdx < 0
-			DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nAudio-only: no map for stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ").")
-			Return
-		EndIf
-		PlayNoticeAudio(stage, aIdx)
-		MarkNoticeCooldown(target)
-		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nMode: Audio only\nIndex: " + aIdx)
-		Return
-	EndIf
-	String line = PickNoticeLine(npcName)
-	If line == ""
-		DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\n\nNo whisper: stage " + (stage + 1) + " (" + GetNoticeStageName(stage) + ") file not loaded.\ncalm: " + NoticeCalmStatus + "\nrestless: " + NoticeRestlessStatus + "\nhungry: " + NoticeHungryStatus + "\nstarving: " + NoticeStarvingStatus + "\ndesperate: " + NoticeDesperateStatus)
-		Return
-	EndIf
-	MarkNoticeCooldown(target)
-	ToastNoticeLine(line)
-	If mode == 0
-		PlayNoticeAudio(stage, LastNoticePickIndex)
-	EndIf
-	DiagNotify("Pickman's Whisper — Notice [" + DEBUG_BUILD + "]\n\nTarget: " + who + "\nGoE female: " + nFem + " any: " + nAny + "\nMode: " + mode + " idx: " + LastNoticePickIndex + "\n\n" + line)
-EndFunction
-
 ; Unfiltered proximity probe — prove GoE/Detecting see anyone before notice filters.
 ; Mirrors Necromantic witness distance idea (GetActorsDetecting) + kill-scan FindActors living.
 Function DebugScanNearbyNpcs()
@@ -6945,29 +4751,35 @@ Function DebugScanNearbyNpcs()
 	ArmRuntimeLoops()
 	; Clear cools, toast, then leave the passive path un-throttled: do not arm
 	; any notice cooldown here. (Old button re-stamped the per-NPC cooldown.)
-	NoticeCoolCount = 0
-	LastNoticeToastRealTime = 0.0
-	Actor target = PickNoticeTarget()
-	String body = "Manual scan (button)\n\n" + LastNoticeDiag
+	String noticeDiag = ""
+	If !VoiceAlias
+		DiagNotify("C2-polldbg\n\nVoiceAlias unbound — rebuild esp.")
+		Return
+	EndIf
+	VoiceAlias.NoticeCoolCount = 0
+	VoiceAlias.LastNoticeToastRealTime = 0.0
+	noticeDiag = VoiceAlias.LastNoticeDiag
+	Actor target = VoiceAlias.PickNoticeTarget()
+	String body = "Manual scan (button)\n\n" + noticeDiag
 	If target
-		String nm = GetActorDisplayName(target)
-		String line = PickNoticeLine(nm)
+		String nm = VoiceAlias.GetActorDisplayName(target)
+		String line = VoiceAlias.PickNoticeLine(nm)
 		If line == ""
 			; Files-only: stage file didn't load — surface it, don't fake a line.
-			LastNoticeStatus = "skip: stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") not loaded"
-			WriteNoticeStatusToMcm()
-			WriteNearbyStatusToMcm()
-			body += "\n\nNO LINE — stage " + (GetNoticeStage() + 1) + " (" + GetNoticeStageName(GetNoticeStage()) + ") file not loaded. See Debug rows."
+			VoiceAlias.LastNoticeStatus = "skip: stage " + (VoiceAlias.GetNoticeStage() + 1) + " (" + VoiceAlias.GetNoticeStageName(VoiceAlias.GetNoticeStage()) + ") not loaded"
+			VoiceAlias.WriteNoticeStatusToMcm()
+			VoiceAlias.WriteNearbyStatusToMcm()
+			body += "\n\nNO LINE — stage " + (VoiceAlias.GetNoticeStage() + 1) + " (" + VoiceAlias.GetNoticeStageName(VoiceAlias.GetNoticeStage()) + ") file not loaded. See Debug rows."
 		Else
-			ToastNoticeLine(line)
-			LastNoticeToastRealTime = 0.0 ; probe must not arm the global cooldown
-			LastNoticeStatus = "ok: manual scan (probe)"
-			WriteNoticeStatusToMcm()
-			WriteNearbyStatusToMcm()
+			VoiceAlias.ToastNoticeLine(line)
+			VoiceAlias.LastNoticeToastRealTime = 0.0 ; probe must not arm the global cooldown
+			VoiceAlias.LastNoticeStatus = "ok: manual scan (probe)"
+			VoiceAlias.WriteNoticeStatusToMcm()
+			VoiceAlias.WriteNearbyStatusToMcm()
 			body += "\n\nTOASTED: " + line
 		EndIf
 	Else
-		WriteNearbyStatusToMcm()
+		VoiceAlias.WriteNearbyStatusToMcm()
 		body += "\n\nNo toast target"
 	EndIf
 	DiagNotify("PW [" + DEBUG_BUILD + "]\n\n" + body)
@@ -6994,7 +4806,13 @@ Function RefreshDebugStatus()
 	InvalidateDebugToastCache()
 
 	; Load BEFORE writing MCM rows so the five file statuses are live.
-	LoadNoticeLines()
+	If !VoiceAlias
+		RefreshDebugBusy = False
+		ToastDebug("PW debug refresh: VoiceAlias unbound")
+		Debug.Trace("PickmansWhisper: ERROR RefreshDebugStatus — VoiceAlias unbound")
+		Return
+	EndIf
+	VoiceAlias.LoadNoticeLines()
 
 	Bool allOk = True
 	Int f4seRel = F4SE.GetVersionRelease()
@@ -7067,33 +4885,32 @@ Function RefreshDebugStatus()
 	Else
 		MCM.SetModSettingString(MOD_NAME, "sBond:Debug", "not bonded")
 	EndIf
-	If LastKillIgnoreReason == ""
-		MCM.SetModSettingString(MOD_NAME, "sLastKill:Debug", "(none yet)")
-	Else
-		MCM.SetModSettingString(MOD_NAME, "sLastKill:Debug", LastKillIgnoreReason)
-	EndIf
 
 	String aliasStatus = EnsureCombatKillHooks()
 	MCM.SetModSettingString(MOD_NAME, "sWatch:Debug", "tagged " + BladeTaggedCount + " | " + aliasStatus)
 
-	Int noticeStage = GetNoticeStage()
+	Int noticeStage = VoiceAlias.GetNoticeStage()
 	String stageSrc = "auto"
-	If IsNoticeStageForced()
+	If VoiceAlias.IsNoticeStageForced()
 		stageSrc = "forced"
 	Else
 		; Reflect the live (hunger-derived) stage in the dropdown so it reads as a
 		; status display when not forcing. When forcing, leave the user's choice.
 		MCM.SetModSettingInt(MOD_NAME, "iNoticeStage:Debug", noticeStage)
 	EndIf
-	String stageInfo = "stage " + (noticeStage + 1) + "/5 " + GetNoticeStageName(noticeStage) + " (" + stageSrc + ", " + GetNoticeCountForStage(noticeStage) + " lines)"
-	If LastNoticeStatus == ""
+	String stageInfo = "stage " + (noticeStage + 1) + "/5 " + VoiceAlias.GetNoticeStageName(noticeStage) + " (" + stageSrc + ", " + VoiceAlias.GetNoticeCountForStage(noticeStage) + " lines)"
+	String noticeStatus = ""
+	If VoiceAlias
+		noticeStatus = VoiceAlias.LastNoticeStatus
+	EndIf
+	If noticeStatus == ""
 		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", "(none yet) | " + stageInfo)
 	Else
-		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus + " | " + stageInfo)
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", noticeStatus + " | " + stageInfo)
 	EndIf
-	WriteFixationStatusToMcm()
-	WriteNoticeLoadStatusToMcm()
-	WriteNearbyStatusToMcm()
+	VoiceAlias.WriteFixationStatusToMcm()
+	VoiceAlias.WriteNoticeLoadStatusToMcm()
+	VoiceAlias.WriteNearbyStatusToMcm()
 
 	EnsureHungerSpell()
 	If KnifeHungerSpell
@@ -7112,16 +4929,16 @@ Function RefreshDebugStatus()
 	; (our shipped defaults were "(not loaded)"). Re-push the live load rows AFTER
 	; the menu refresh so the Debug page shows the real result.
 	MCM.RefreshMenu()
-	WriteNoticeLoadStatusToMcm()
-	WriteNearbyStatusToMcm()
-	WriteFixationStatusToMcm()
+	VoiceAlias.WriteNoticeLoadStatusToMcm()
+	VoiceAlias.WriteNearbyStatusToMcm()
+	VoiceAlias.WriteFixationStatusToMcm()
 	; Victims page strings live outside Debug — RefreshMenu wipes them to settings.ini.
 	TickVictimsAimCache()
 	PushVictimsPanelStrings()
-	If LastNoticeStatus == ""
+	If noticeStatus == ""
 		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", "(none yet) | " + stageInfo)
 	Else
-		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", LastNoticeStatus + " | " + stageInfo)
+		MCM.SetModSettingString(MOD_NAME, "sNotice:Debug", noticeStatus + " | " + stageInfo)
 	EndIf
 	RefreshDebugBusy = False
 	ToastDebug("PW debug refreshed [" + DEBUG_BUILD + "]")

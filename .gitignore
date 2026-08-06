@@ -11,6 +11,9 @@ dist/staging/
 # Copy .env.example to .env and fill in local paths. Never commit .env.
 .env
 
+# Local junction/symlink to FO4 Papyrus Script logs (My Documents\...\Logs\Script)
+logs/
+
 Data/PickmansWhisper/whispers/*.mp3
 
 Data/PickmansWhisper/config/TargetOverrides.txt

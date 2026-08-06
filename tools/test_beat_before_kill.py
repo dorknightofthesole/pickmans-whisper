@@ -123,14 +123,18 @@ def test_manual_toggle() -> None:
         fail("ToggleEssentialForAimed off-path must use the shared RemoveEssentialTracked helper")
     if "AddEssentialTracked(ak)" not in toggle:
         fail("ToggleEssentialForAimed on-path must use the shared AddEssentialTracked helper")
-    if "m.IsValidTarget(ak, True)" not in toggle:
-        fail("ToggleEssentialForAimed must gate the ON path on IsValidTarget(ak, True) — same eligibility as knife-kill crediting, alive required")
+    if "m.IsValidTarget(ak)" not in toggle:
+        fail("ToggleEssentialForAimed must gate the ON path on IsValidTarget(ak)")
+    if "ak.IsDead()" not in toggle:
+        fail("ToggleEssentialForAimed ON path must require living (feature: !IsDead)")
+    if "WasFriendlySeen(ak)" not in toggle:
+        fail("ToggleEssentialForAimed ON path must require WasFriendlySeen (knife feature)")
 
     # Ordering: the off-path (tracked-list check) must come BEFORE the eligibility gate,
     # so removing essential from an already-tracked NPC never gets blocked by her now
     # being essential (which would always fail IsValidTarget).
     off_idx = toggle.find("FindEssentialSlot(ak)")
-    gate_idx = toggle.find("IsValidTarget(ak, True)")
+    gate_idx = toggle.find("IsValidTarget(ak)")
     if off_idx < 0 or gate_idx < 0 or off_idx > gate_idx:
         fail("ToggleEssentialForAimed must check the tracked list BEFORE the IsValidTarget gate (removal must not be blocked by her being essential)")
 
@@ -158,8 +162,12 @@ def test_auto_trigger() -> None:
         fail("OnPlayerEnterCombatWith must check the player is unarmed (fists only)")
     if "m.PlayerHasBlade()" not in enter:
         fail("OnPlayerEnterCombatWith must hard-require PlayerHasBlade() (no blade owned = no beat-before-kill fantasy)")
-    if "m.IsValidTarget(target, True)" not in enter:
-        fail("OnPlayerEnterCombatWith must gate on IsValidTarget(target, True) — same eligibility as knife-kill crediting")
+    if "m.IsValidTarget(target)" not in enter:
+        fail("OnPlayerEnterCombatWith must gate on IsValidTarget(target)")
+    if "target.IsDead()" not in enter:
+        fail("OnPlayerEnterCombatWith must require living (feature: !IsDead)")
+    if "WasFriendlySeen(target)" not in enter:
+        fail("OnPlayerEnterCombatWith must require WasFriendlySeen (knife feature)")
     if "AddEssentialTracked(target)" not in enter:
         fail("OnPlayerEnterCombatWith must call AddEssentialTracked(target) on success")
     if "EssentialCount >= ESSENTIAL_MAX" not in enter:
@@ -179,8 +187,8 @@ def test_auto_trigger() -> None:
     toast = extract_function(text, "ToastEssentialChange")
     if "Debug.MessageBox" not in toast:
         fail("ToastEssentialChange must Debug.MessageBox (blocking dialog, requires OK click — a toast was confirmed firing but easy to miss during combat)")
-    if "GetActorDisplayName(ak)" not in toast:
-        fail("ToastEssentialChange must resolve her name via Main().GetActorDisplayName (Victim override -> world name -> base)")
+    if "VoiceAlias.GetActorDisplayName(ak)" not in toast and "GetActorDisplayName(ak)" not in toast:
+        fail("ToastEssentialChange must resolve her name via VoiceAlias.GetActorDisplayName (Victim override -> world name -> base)")
     if "ESSENTIAL" not in toast or "NOT essential" not in toast:
         fail("ToastEssentialChange must say which state she's changing TO, both directions")
     if "ak.IsEssential() != abNowEssential" not in toast:

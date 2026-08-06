@@ -88,8 +88,8 @@ Function ToastEssentialChange(Actor ak, Bool abNowEssential)
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
 	String label = "her"
-	If m
-		String resolved = m.GetActorDisplayName(ak)
+	If m && m.VoiceAlias
+		String resolved = m.VoiceAlias.GetActorDisplayName(ak)
 		If resolved
 			label = resolved
 		EndIf
@@ -146,9 +146,10 @@ Bool Function ToggleEssentialForAimed(Actor ak)
 		Debug.Trace("PickmansWhisper: " + m.LastVictimStatus)
 		Return True
 	EndIf
-	If !m.IsValidTarget(ak, True)
-		m.LastVictimStatus = "toggle essential failed — not a valid target (" + m.LastKillIgnoreReason + ")"
-		Debug.Trace("PickmansWhisper: " + m.LastVictimStatus)
+	; Feature: living + knife friendly-seen; hard gate Traces its own rejects.
+	If ak.IsDead() || !m.IsValidTarget(ak) || !m.WasFriendlySeen(ak)
+		m.LastVictimStatus = "toggle essential failed — not a valid target"
+		Debug.Trace("PickmansWhisper: " + m.LastVictimStatus + " id=" + ak.GetFormID())
 		Return False
 	EndIf
 	EnsureEssentialList()
@@ -189,8 +190,8 @@ Function OnPlayerEnterCombatWith(Actor target)
 		Debug.Trace("PickmansWhisper: beat-before-kill skip | player does not own Pickman's Blade")
 		Return
 	EndIf
-	If !m.IsValidTarget(target, True)
-		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target (" + m.LastKillIgnoreReason + ") id=" + target.GetFormID())
+	If target.IsDead() || !m.IsValidTarget(target) || !m.WasFriendlySeen(target)
+		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target id=" + target.GetFormID())
 		Return
 	EndIf
 	EnsureEssentialList()

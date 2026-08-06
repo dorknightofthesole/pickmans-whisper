@@ -5,6 +5,7 @@ Toast/float keys + decayStage0..4 live/pending arrays. Main keeps thin façades.
 ; Loaded from ModConfig.txt — files-only, no baked mirror.
 ; Properties: Main (and other scripts) may read via ModConfigAlias.*; locals stay private.
 String Property BondIntroGreeting = "" Auto
+String Property HungerWithdrawalToast = "" Auto
 String Property RenamePromptFemaleNPC = "" Auto
 String Property BedGiftWakeToast = "" Auto
 String Property DesperateNameSuffix = "" Auto
@@ -364,6 +365,7 @@ Function LoadModConfig()
 	; LoadModConfig) raced ambient reads often enough to flicker desperateNameSuffix
 	; empty for seconds at a time.
 	String nextBondIntroGreeting = ""
+	String nextHungerWithdrawalToast = ""
 	String nextRenamePromptFemaleNPC = ""
 	String nextBedGiftWakeToast = ""
 	Float nextBedGiftCooldownDays = -1.0
@@ -416,6 +418,8 @@ Function LoadModConfig()
 				String val = ConfigFieldTrim(GardenOfEden.SubStr(line, eq + 1, -1))
 				If key == "bondIntroGreeting"
 					nextBondIntroGreeting = val
+				ElseIf key == "hungerWithdrawalToast"
+					nextHungerWithdrawalToast = val
 				ElseIf key == "renamePromptFemaleNPC"
 					nextRenamePromptFemaleNPC = val
 				ElseIf key == "bedGiftWakeToast"
@@ -483,6 +487,7 @@ Function LoadModConfig()
 	; Commit all-or-nothing, now that the full file read succeeded — no reader can
 	; observe a half-cleared state.
 	BondIntroGreeting = nextBondIntroGreeting
+	HungerWithdrawalToast = nextHungerWithdrawalToast
 	RenamePromptFemaleNPC = nextRenamePromptFemaleNPC
 	BedGiftWakeToast = nextBedGiftWakeToast
 	BedGiftCooldownDays = nextBedGiftCooldownDays
@@ -497,6 +502,9 @@ Function LoadModConfig()
 	EatRipeCorpseEndBuffHours = nextEatRipeCorpseEndBuffHours
 	If !BondIntroGreeting
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bondIntroGreeting missing/empty")
+	EndIf
+	If !HungerWithdrawalToast
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — hungerWithdrawalToast missing/empty")
 	EndIf
 	If BedGiftCooldownDays <= 0.0
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftCooldownDays missing or <=0")
@@ -537,6 +545,9 @@ Function LoadModConfig()
 	String status = ""
 	If BondIntroGreeting
 		status += "bondIntro "
+	EndIf
+	If HungerWithdrawalToast
+		status += "hungerWithdraw "
 	EndIf
 	If RenamePromptFemaleNPC
 		status += "rename "

@@ -11,7 +11,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
+MAIN_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
 CONFIG = ROOT / "Data" / "PickmansWhisper" / "config"
 SOUND = ROOT / "Data" / "Sound" / "PickmansWhisper"
@@ -108,11 +109,11 @@ def test_builder_clone() -> None:
 
 
 def test_psc(text: str) -> None:
-    load_banks = extract_function(text, "LoadLineBanks")
+    load_banks = extract_function(text, "LoadVoiceBanks")
     if "LoadAudioBanks()" not in load_banks:
-        fail("LoadLineBanks must call LoadAudioBanks")
+        fail("LoadVoiceBanks must call LoadAudioBanks")
     if "LoadWhisperSndrIds()" not in load_banks:
-        fail("LoadLineBanks must call LoadWhisperSndrIds")
+        fail("LoadVoiceBanks must call LoadWhisperSndrIds")
     for name in (
         "LoadAudioBanks",
         "LoadWhisperSndrIds",

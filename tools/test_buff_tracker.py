@@ -150,7 +150,7 @@ def test_main_wiring() -> None:
     if "PickmansWhisperBuffTrackerScript" not in facade:
         fail("MainQuestScript.BuffTracker() facade must cast to PickmansWhisperBuffTrackerScript")
 
-    if "ModConfigAlias Auto Const" not in text:
+    if "ModConfigAlias Auto" not in text:
         fail("Main must expose ModConfigAlias for BuffTracker END buff keys")
 
     modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
