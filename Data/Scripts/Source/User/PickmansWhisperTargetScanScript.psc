@@ -64,8 +64,8 @@ Function ScanAndCleanTargets()
         If !currentTarget || !currentTarget.Is3DLoaded() || (currentTarget.GetDistance(PlayerRef) > (KILL_WATCH_RADIUS + FIVE_FEET_IN_UNITS))
             ; TODO unregister with the MainQuest
             TrackedTargets.Remove(i)
-            Debug.Trace("PW: Cleaned up target -> " + currentTarget)
-            Debug.Notification("PW: Cleaned up target -> " + currentTarget)
+            Debug.Trace("PW: Cleaned up target -> " + currentTarget.GetDisplayName())
+            Debug.Notification("PW: Cleaned up target -> " + currentTarget.GetDisplayName())
             MainQuest.UnRegisterTarget(currentTarget)
         EndIf
     EndWhile
@@ -83,13 +83,14 @@ Function ScanAndCleanTargets()
         Float now = Utility.GetCurrentRealTime()
         If LastLookCommentRealTime <= 0.0 || (now - LastLookCommentRealTime) >= LookCommentCooldownSeconds
             LastLookCommentRealTime = now
+            ; TODO do something with this in Main
             Debug.Notification("PW Debug: " + WhoIsThat.GetDisplayName() + ", they look interesting... ")
         EndIf
     EndIf
 EndFunction
 
 Function ProcessTargets(Actor[] akTargets, String debugContext)
-    Debug.Notification("PW Debug: " + debugContext + " targets found: " + akTargets.Length)
+    ; Debug.Notification("PW Debug: " + debugContext + " targets found: " + akTargets.Length)
 
     Int j = 0
     While j < akTargets.Length
@@ -104,10 +105,10 @@ Function ProcessTargets(Actor[] akTargets, String debugContext)
                 regArgs[0] = potentialTarget
                 MainQuest.CallFunctionNoWait("RegisterTarget", regArgs)
 
-                Debug.Notification("PW: Now tracking -> " + potentialTarget.GetDisplayName())
+                ; Debug.Notification("PW: Now tracking -> " + potentialTarget.GetDisplayName())
                 Debug.Trace("PW: Now tracking -> " + potentialTarget.GetDisplayName())
             Else
-                Debug.Notification("PW: Already tracking -> " + potentialTarget.GetDisplayName())
+                ; Debug.Notification("PW: Already tracking -> " + potentialTarget.GetDisplayName())
                 Debug.Trace("PW: Already tracking -> " + potentialTarget.GetDisplayName())
             EndIf
         EndIf

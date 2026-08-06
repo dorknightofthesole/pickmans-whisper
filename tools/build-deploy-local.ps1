@@ -56,7 +56,6 @@ $PscVoiceScan = "PickmansWhisperVoiceAliasScript.psc"
 $PscAlias = "PickmansWhisperPlayerAliasScript.psc"
 $PscBuffTracker = "PickmansWhisperBuffTrackerScript.psc"
 $PscBeatBeforeKill = "PickmansWhisperBeatBeforeKillScript.psc"
-$PscProximityEffect = "PickmansWhisperProximityEffect.psc"
 $PscKillReward = "PickmansWhisperKillRewardScript.psc"
 $PscModConfig = "PickmansWhisperModConfigScript.psc"
 $PscTargetScan = "PickmansWhisperTargetScanScript.psc"
@@ -334,10 +333,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias + $PscBuffTracker + $PscBeatBeforeKill + $PscProximityEffect + $PscKillReward + $PscModConfig + $PscTargetScan"
+Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscKillerScan + $PscVoiceScan + $PscAlias + $PscBuffTracker + $PscBeatBeforeKill + $PscKillReward + $PscModConfig + $PscTargetScan"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias, $PscBuffTracker, $PscBeatBeforeKill, $PscProximityEffect, $PscKillReward, $PscModConfig, $PscTargetScan)) {
+  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscKillerScan, $PscVoiceScan, $PscAlias, $PscBuffTracker, $PscBeatBeforeKill, $PscKillReward, $PscModConfig, $PscTargetScan)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -360,7 +359,6 @@ $PexVoiceScan = Join-Path $PexOut "PickmansWhisperVoiceAliasScript.pex"
 $PexAlias = Join-Path $PexOut "PickmansWhisperPlayerAliasScript.pex"
 $PexBuffTracker = Join-Path $PexOut "PickmansWhisperBuffTrackerScript.pex"
 $PexBeatBeforeKill = Join-Path $PexOut "PickmansWhisperBeatBeforeKillScript.pex"
-$PexProximityEffect = Join-Path $PexOut "PickmansWhisperProximityEffect.pex"
 $PexKillReward = Join-Path $PexOut "PickmansWhisperKillRewardScript.pex"
 $PexModConfig = Join-Path $PexOut "PickmansWhisperModConfigScript.pex"
 $PexTargetScan = Join-Path $PexOut "PickmansWhisperTargetScanScript.pex"
@@ -375,7 +373,6 @@ if (-not (Test-Path $PexVoiceScan)) { throw "compile produced no VoiceScan .pex"
 if (-not (Test-Path $PexAlias)) { throw "compile produced no PlayerAlias .pex" }
 if (-not (Test-Path $PexBuffTracker)) { throw "compile produced no BuffTracker .pex" }
 if (-not (Test-Path $PexBeatBeforeKill)) { throw "compile produced no BeatBeforeKill .pex" }
-if (-not (Test-Path $PexProximityEffect)) { throw "compile produced no ProximityEffect .pex" }
 if (-not (Test-Path $PexKillReward)) { throw "compile produced no KillReward .pex" }
 if (-not (Test-Path $PexModConfig)) { throw "compile produced no ModConfig .pex" }
 if (-not (Test-Path $PexTargetScan)) { throw "compile produced no TargetScan .pex" }
@@ -407,7 +404,6 @@ Copy-Item -Force $PexVoiceScan (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexAlias (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexBuffTracker (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexBeatBeforeKill (Join-Path $Deploy "Scripts\")
-Copy-Item -Force $PexProximityEffect (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexKillReward (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexModConfig (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexTargetScan (Join-Path $Deploy "Scripts\")
@@ -422,7 +418,6 @@ Copy-Item -Force (Join-Path $Src $PscVoiceScan) (Join-Path $Deploy "Scripts\Sour
 Copy-Item -Force (Join-Path $Src $PscAlias) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscBuffTracker) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscBeatBeforeKill) (Join-Path $Deploy "Scripts\Source\User\")
-Copy-Item -Force (Join-Path $Src $PscProximityEffect) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscKillReward) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscModConfig) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscTargetScan) (Join-Path $Deploy "Scripts\Source\User\")

@@ -1,41 +1,19 @@
 ---
-description: Do not edit the proximity cloak SPEL/MGEF chain without explicit permission
+description: Proximity cloak SPEL/MGEF chain is retired — do not reintroduce without permission
 alwaysApply: true
 ---
 
-# Protect proximity cloak SPEL / MGEF records
+# Proximity cloak SPEL / MGEF — retired
 
-The Glowing One–cloned proximity cloak chain is proven in-game. **Do not create, edit, delete, or retarget these specific SPEL/MGEF records without the user's explicit permission in that conversation.**
+The Glowing One–cloned proximity cloak chain (FormIDs `0x870`–`0x873`) and
+`PickmansWhisperProximityEffect.psc` were **removed** with user approval.
 
-## Frozen records (FormIDs / EDIDs)
+## Do not reintroduce without explicit permission
 
-| Role | FormID | EDID |
-|------|--------|------|
-| Hit MGEF | `0x01000870` | `PickmansWhisperProximityHitEffect` |
-| Hit SPEL | `0x01000871` | `PickmansWhisperProximityHit` |
-| Cloak MGEF | `0x01000872` | `PickmansWhisperProximityCloakEffect` |
-| Ability SPEL | `0x01000873` | `PickmansWhisperProximityCloak` |
+- Ability/Hit/Cloak SPEL or MGEF at `0x01000870`–`0x01000873`
+- `PickmansWhisperProximityEffect` / `PickmansCloakSpell` / `GrantProximityCloak`
+- Builder `build_proximity_*` helpers or VMAD binds for those records
 
-Frozen surface for **these four only**:
+## Allowed
 
-- Builder payloads / constants in [`tools/build_hunger_spell_esp.py`](tools/build_hunger_spell_esp.py) (`FID_PROXIMITY_*`, `VANILLA_CLOAK_*`, `build_proximity_*`)
-- Matching bytes in [`Data/PickmansWhisper.esp`](Data/PickmansWhisper.esp)
-- Assoc Item, Archetype, Area, cast/delivery, EFID/EFIT, SPIT, DATA, VMAD on these records
-- Contracts that **change** these records’ layout or FormID locks ([`tools/test_proximity_cloak.py`](tools/test_proximity_cloak.py))
-
-## Not allowed without permission
-
-- Rewriting this chain’s DATA, Assoc, Area, Archetype, effect list, or VMAD
-- Cloning a different vanilla source into these FormIDs
-- Regenerating the ESP in a way that alters these four records’ bytes as a side effect
-
-## Allowed without asking
-
-- Other SPEL/MGEF (Knife Hunger, future magic) — not covered by this rule
-- Papyrus that **uses** FormID `0x00000873` / hit effect scripts without changing these ESP records
-- `.psc` logic on `PickmansWhisperProximityEffect` when ESP VMAD / FormIDs stay unchanged
-- Non-proximity ESP work that leaves these four records untouched
-
-## If a change to this chain seems required
-
-Stop. State what you want to change and **why**. Wait for explicit user approval.
+- Other SPEL/MGEF (Knife Hunger, future magic) unrelated to that retired chain

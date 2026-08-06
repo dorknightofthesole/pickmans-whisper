@@ -88,7 +88,6 @@ def stage() -> None:
         "PickmansWhisperPlayerAliasScript",
         "PickmansWhisperBuffTrackerScript",
         "PickmansWhisperBeatBeforeKillScript",
-        "PickmansWhisperProximityEffect",
         "PickmansWhisperKillRewardScript",
         "PickmansWhisperTargetScanScript",
     ):

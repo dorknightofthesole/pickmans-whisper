@@ -8,13 +8,6 @@ Scriptname PickmansWhisperPlayerAliasScript extends ReferenceAlias
 ; Slice G sleep: RegisterForPlayerSleep also lives HERE for the same reason.
 
 Int FID_MAIN_QUEST = 0x00000800
-; Proximity-cloak refactor (Phase 1 hello world) — Ability SPEL granting a Cloak MGEF
-; (Archetype=35) whose Assoc Item applies a hit SPEL/MGEF to actors in radius.
-; Script lives on the hit MGEF (PickmansWhisperProximityEffect). Granted here, not on
-; the Quest, matching this alias's established role for all direct-to-player natives.
-; GetFormFromFile wants the LOCAL form id (mod index bytes zeroed) — e.g. 0x873.
-Int FID_PROXIMITY_CLOAK_SPELL = 0x00000873
-Bool ProximityCloakGranted = False
 ; F4SE RegisterForKey uses Windows VK codes (same as Necromantic N=78), not DX DIK.
 ; /? on US keyboards = VK_OEM_2 = 191 (DIK 53 was wrong and never fired).
 Int KEY_BUTCHER = 191
@@ -32,7 +25,6 @@ Bool MagicEffectSniffRegistered = False
 
 Weapon Property CombatKnifeBase Auto Const
 Keyword Property PickmanModKeyword Auto Const
-Spell Property PickmansCloakSpell Auto Const
 Bool Property IsPickmansBladeEquipped = False Auto
 
 Event OnAliasInit()
@@ -76,7 +68,6 @@ Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference 
 	if IsPickmansBlade(akSender, akBaseObject) || IsPickmansBladeEquipped
 		Debug.Notification("PW PlayerAlias: Unequipping Pickman's Blade")
 		IsPickmansBladeEquipped = False
-		akSender.RemoveSpell(PickmansCloakSpell)
 	EndIf
 EndEvent
 
@@ -91,8 +82,7 @@ Function CheckAndHandleBladeReady(Actor PlayerRef, Form akBaseObject)
 	if IsPickmansBlade(PlayerRef, akBaseObject)
 		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
 		IsPickmansBladeEquipped = True
-		PlayerRef.AddSpell(PickmansCloakSpell, false)
-		
+
 		PickmansWhisperMainQuestScript main = GetMain()
 		If main
 			main.StartBond("blade-equipped")
@@ -115,67 +105,16 @@ Bool Function IsPickmansBlade(Actor PlayerRef, Form akBaseObject)
 	return false
 EndFunction
 
-; Idempotent grant of the proximity Cloak Ability.
-; IMPORTANT: also invoked from RegisterMagicEffectDetect — that function is proven to run
-; from both fresh PEX and old OnPlayerLoadGame save-stacks (nested calls use the new body).
-; Waiting in-game does NOT clear stale OnPlayerLoadGame stacks that predate GrantProximityCloak.
-Function GrantProximityCloak()
-	Debug.Trace("PickmansWhisper: alias GrantProximityCloak enter")
-	Actor p = Game.GetPlayer()
-	If !p
-		Debug.Trace("PickmansWhisper: ERROR alias GrantProximityCloak — Game.GetPlayer() None")
-		Debug.Notification("PW Cloak: player None")
-		Return
-	EndIf
-	Form cloakForm = Game.GetFormFromFile(FID_PROXIMITY_CLOAK_SPELL, "PickmansWhisper.esp")
-	If !cloakForm
-		Debug.Trace("PickmansWhisper: ERROR alias GrantProximityCloak — GetFormFromFile None (localFid=0x" + FID_PROXIMITY_CLOAK_SPELL + ")")
-		Debug.Notification("PW Cloak: form not found")
-		Return
-	EndIf
-	Spell cloak = cloakForm as Spell
-	If !cloak
-		Debug.Trace("PickmansWhisper: ERROR alias GrantProximityCloak — Form not Spell (fid=0x" + cloakForm.GetFormID() + ")")
-		Debug.Notification("PW Cloak: form not Spell")
-		Return
-	EndIf
-	; Constant Effect Abilities: HasSpell can be true while the Cloak is NOT running.
-	; AddSpell alone is a no-op in that case — console player.addspell "works" because it
-	; forces a fresh apply. Always RemoveSpell then AddSpell so the Constant Cloak starts.
-	Bool hadSpell = p.HasSpell(cloak)
-	If hadSpell
-		p.RemoveSpell(cloak)
-	EndIf
-	Bool added = p.AddSpell(cloak, False)
-	ProximityCloakGranted = True
-	Bool nowHas = p.HasSpell(cloak)
-	Debug.Trace("PickmansWhisper: alias GrantProximityCloak done had=" + hadSpell + " add=" + added + " has=" + nowHas + " fid=0x" + cloak.GetFormID())
-	If nowHas
-		If hadSpell
-			Debug.Notification("PW Cloak: re-applied")
-		Else
-			Debug.Notification("PW Cloak: granted")
-		EndIf
-	Else
-		Debug.Notification("PW Cloak: AddSpell failed")
-		Debug.Trace("PickmansWhisper: ERROR alias GrantProximityCloak — AddSpell did not stick")
-	EndIf
-EndFunction
-
 ; Re-register every load, same pattern as RegisterButcherKey/RegisterBedGiftSleep.
-; Ends with GrantProximityCloak so stale OnPlayerLoadGame stacks that call this (but never
-; call Grant themselves) still pick up the cloak Ability from the new function body.
 Function RegisterMagicEffectDetect()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If !main
 		Debug.Trace("PickmansWhisper: alias RegisterMagicEffectDetect — main quest script not found")
-		GrantProximityCloak()
 		Return
 	EndIf
 	MagicEffect effect = main.GetRestoreHealthGenericEffect()
 	If !effect
 		Debug.Trace("PickmansWhisper: ERROR alias RegisterMagicEffectDetect — RestoreHealthGenericEffect missing")
-		GrantProximityCloak()
 		Return
 	EndIf
 	If MagicEffectDetectRegistered
@@ -184,7 +123,6 @@ Function RegisterMagicEffectDetect()
 	RegisterForMagicEffectApplyEvent(Self, None, effect, True)
 	MagicEffectDetectRegistered = True
 	Debug.Trace("PickmansWhisper: alias registered MagicEffectApply effect=" + effect)
-	GrantProximityCloak()
 EndFunction
 
 ; Called by MainQuestScript.SyncMagicEffectSniffer (MCM Debug switcher). Unfiltered catch-

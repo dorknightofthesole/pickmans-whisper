@@ -447,11 +447,9 @@ Function RegisterTarget(Actor akTarget)
 
 	; Hard gate + knife feature: must have been seen non-hostile while alive.
 	If !IsValidTarget(akTarget) || !WasFriendlySeen(akTarget)
-		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest.")
+		; Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest.")
 		Debug.Trace("PickmansWhisper: RegisterTarget reject | " + akTarget.GetDisplayName() + " id=" + akTarget.GetFormID())
 		Return
-	ElseIf !IsTargetDead
-		Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is fresh meat.")
 	EndIf
 
 	Bool isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
@@ -461,7 +459,9 @@ Function RegisterTarget(Actor akTarget)
 		RegisterForRemoteEvent(akTarget, "OnDeath")
 		RegisterForHitEvent(akTarget, PlayerRef)
 		
-		Debug.Notification("PW RegisterTarget: Registering death event for " + akTarget.GetDisplayName())
+		; TODO replace with a toast that indicates that the NPC is being watched
+		Debug.Notification("You notice " + akTarget.GetDisplayName())
+
 		; TODO call whisper Logic
 		;     Initial encounter with living target
 		;     [x] Slice C integration

@@ -20,6 +20,10 @@ On the surface, Occult Pact and Pickman's Whisper are **not sexual**. Necromanti
 - Soft ties later: Lady Killer / Black Widow, Cannibal, optional butcher cell.
 - Later vignette: wake to a bed corpse that vanishes when you look away (see [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md) / Slice G).
 
+## Nearby NPC discovery (architecture)
+
+TargetScan replaces the Glowing One proximity-cloak bus and thins Main’s NPC tracking. Vision only — see [TARGET_SCAN_VISION.md](TARGET_SCAN_VISION.md).
+
 ## Product hard rules
 
 - **No AAF**, no sexual content, no TopicInfo dialogue scenes for the voice.
