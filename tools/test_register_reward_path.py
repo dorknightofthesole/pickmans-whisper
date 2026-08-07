@@ -102,6 +102,37 @@ def test_main_register_reward_path() -> None:
     onhit = fn_body(psc, "OnHit")
     if "RegisterForHitEvent" in onhit:
         fail("OnHit must not re-arm RegisterForHitEvent (sticky hit AV)")
+    if "MaybeSpeakHitWhisper" not in onhit:
+        fail("OnHit must VoiceAlias.MaybeSpeakHitWhisper (ModConfig hitWhisper)")
+    if "Finish what you started" in onhit:
+        fail("OnHit must not hard-code hit toast (ModConfig HitWhisper is source of truth)")
+
+    voice_psc = (
+        ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
+    )
+    if not voice_psc.is_file():
+        fail("VoiceAliasScript missing")
+    voice = voice_psc.read_text(encoding="utf-8", errors="replace")
+    hit = fn_body(voice, "MaybeSpeakHitWhisper")
+    if "ModConfigAlias.HitWhisper" not in hit:
+        fail("MaybeSpeakHitWhisper must read ModConfigAlias.HitWhisper")
+    if "ShowVoiceToast" not in hit:
+        fail("MaybeSpeakHitWhisper must ShowVoiceToast (toast now; audio later)")
+
+    reg = fn_body(psc, "RegisterTarget")
+    if "MaybeSpeakNeedsBeatingWhisper" not in reg:
+        fail("RegisterTarget unequipped path must VoiceAlias.MaybeSpeakNeedsBeatingWhisper")
+    if "needs a good beating" in reg:
+        fail("RegisterTarget must not hard-code beating toast (ModConfig NeedsBeatingWhisper)")
+    beat = fn_body(voice, "MaybeSpeakNeedsBeatingWhisper")
+    if "ModConfigAlias.NeedsBeatingWhisper" not in beat:
+        fail("MaybeSpeakNeedsBeatingWhisper must read ModConfigAlias.NeedsBeatingWhisper")
+    if "ApplyNamePlaceholder" not in beat:
+        fail("MaybeSpeakNeedsBeatingWhisper must ApplyNamePlaceholder for {name}")
+    if "ShowVoiceToast" in beat:
+        fail("MaybeSpeakNeedsBeatingWhisper must not ShowVoiceToast (blade gate; knife is away)")
+    if "FormatVoiceToast" not in beat or "Debug.Notification" not in beat:
+        fail("MaybeSpeakNeedsBeatingWhisper must Notification(FormatVoiceToast(...))")
 
     ondeath = fn_body(psc, "OnDeath")
     if "RewardKill(akSender)" not in ondeath:
@@ -126,9 +157,17 @@ def test_start_bond_equip_path() -> None:
     if not ALIAS_PSC.is_file():
         fail("PlayerAliasScript missing")
     alias = ALIAS_PSC.read_text(encoding="utf-8", errors="replace")
+    if "Bool Property IsReadyToGiveBeating" not in alias:
+        fail("PlayerAlias must expose IsReadyToGiveBeating Property")
     ready = fn_body(alias, "CheckAndHandleBladeReady")
     if 'StartBond("blade-equipped")' not in ready:
         fail('PlayerAlias CheckAndHandleBladeReady must StartBond("blade-equipped")')
+    if "GetEquippedWeapon()" not in ready:
+        fail("CheckAndHandleBladeReady must treat !GetEquippedWeapon as unarmed → IsReadyToGiveBeating")
+    if "IsReadyToGiveBeating = True" not in ready:
+        fail("CheckAndHandleBladeReady unarmed path must set IsReadyToGiveBeating = True")
+    if "IsReadyToGiveBeating = False" not in ready:
+        fail("CheckAndHandleBladeReady must clear IsReadyToGiveBeating when armed")
 
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     rew = fn_body(psc, "RewardKill")

@@ -836,17 +836,6 @@
 					}
 				},
 				{
-					"text": "Force corpse decay overlays",
-					"type": "button",
-					"help": "Slice H: apply bed-gift decay path (darkened DeathMarks + Black Putrefaction) on aimed / last-look corpse. Needs LooksMenu + DeadOverlays + porcOverlays.esl. Quit FO4 to desktop after deploy so MCM reloads. Decay stage status lives on the Victims page.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugForceCorpseDecayOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
 					"type": "spacer",
 					"numLines": 1
 				},

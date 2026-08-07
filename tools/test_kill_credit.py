@@ -189,6 +189,8 @@ def main() -> None:
         fail("ReconcileBladeTagged must clean up via ForgetBladeTagged")
     if "IsDead()" not in reconcile or "KILL_WATCH_RADIUS" not in reconcile:
         fail("ReconcileBladeTagged must evict actors who died some other way or wandered out of range")
+    if "TargetScan()" not in reconcile:
+        fail("ReconcileBladeTagged range must come from TargetScan.KILL_WATCH_RADIUS")
     ok("BladeTagged list: Actor[] refs, dedup add, paired unregister+remove, range/dead reconcile sweep")
 
     # --- ProcessKnifeCreditFromKillerScan still feeds TrackLivingNear + reconcile ---

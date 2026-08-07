@@ -73,8 +73,6 @@ Int HitArmedCount = 0
 Int HIT_ARMED_MAX = 32
 Float LastKnifeKillRealTime = 0.0
 Float KNIFE_KILL_COOLDOWN = 1.5
-Float Property KILL_WATCH_RADIUS = 800.0 Auto
-Float KILL_CORPSE_RADIUS = 400.0 ; Necromantic-ish close corpse window
 Int LastDeathToastId = 0
 Int LastHandledKillId = 0
 Cell LastBladeToastCell
@@ -298,7 +296,6 @@ EndFunction
 
 Event OnQuestInit()
 	DEBUG_BUILD = "1.3.0-KO"
-	KILL_WATCH_RADIUS = 800.0
 	Debug.Trace("PickmansWhisper: === v1.3.0 Killer Orchestrator loaded ===")
 	ToastDebug("PW OnQuestInit FIRED [" + DEBUG_BUILD + "]")
 	PlayerRef = Game.GetPlayer()
@@ -362,7 +359,6 @@ Function HandleGameResume(String reason)
 
 	; Save games persist script vars — force build id from this PEX every load
 	DEBUG_BUILD = "C2-stable"
-	KILL_WATCH_RADIUS = 800.0
 	PlayerRef = Game.GetPlayer()
 	InvalidateDebugToastCache()
 	ResolveVanillaForms()
@@ -479,12 +475,16 @@ Function RegisterTarget(Actor akTarget)
 		;     Slice H
 		;     Slice F
 
-	ElseIf !isPickmansBladeEquipped
-		; Not dead and currently tracked,
-		Debug.Notification("PW RegisterTarget: She needs a good beating " + akTarget.GetDisplayName())
+	ElseIf !IsTargetDead && PlayerAlias.IsReadyToGiveBeating
+		; Not dead and currently tracked — blade away nudge (ModConfig needsBeatingWhisper).
+		If VoiceAlias
+			VoiceAlias.MaybeSpeakNeedsBeatingWhisper(akTarget)
+		Else
+			Debug.Trace("PickmansWhisper: RegisterTarget skip | VoiceAlias unbound (needsBeating)")
+		EndIf
 		; TODO handle beating use case
 		;     Slice Q — victim beat-before-kill
-		return
+		Return
 	EndIf
 
 	Debug.Trace("PW RegisterTarget: Registered events for " + akTarget.GetDisplayName())
@@ -501,13 +501,20 @@ Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource
 		isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
 	EndIf
 	If isPickmansBladeEquipped
-		; TODO add encouragement to finish them
+		If VoiceAlias
+			VoiceAlias.MaybeSpeakHitWhisper(targetActor)
+		Else
+			Debug.Trace("PickmansWhisper: OnHit skip | VoiceAlias unbound")
+		EndIf
 	EndIf
 EndEvent
 
 Event Actor.OnDeath(Actor akSender, Actor akKiller)
 	Debug.Notification("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
 	RewardKill(akSender)
+	If VoiceAlias
+		VoiceAlias.RemoveFixation(akSender)
+	EndIf
 EndEvent
 
 ; OnDeath / KillRewardAlias settle — credit a blade-hit kill if not already stamped.
@@ -590,13 +597,13 @@ EndFunction
 ; --- MCM CallFunction entry points only (MCM targets MainQuestScript by name) ---
 ; Everything else: call VoiceAlias.<fn> directly at the use site.
 
-Function DebugTestNoticeLine()
+Function DebugTestNoticeLine(Actor akTarget)
 	If !VoiceAlias
 		Debug.Notification("Pickman's Whisper: VoiceAlias unbound — rebuild esp")
 		Debug.Trace("PickmansWhisper: ERROR DebugTestNoticeLine — VoiceAlias unbound")
 		Return
 	EndIf
-	VoiceAlias.DebugTestNoticeLine()
+	VoiceAlias.DebugTestNoticeLine(akTarget)
 EndFunction
 
 Function DebugTestNoticeFiles()
@@ -617,6 +624,15 @@ Function DebugVoicePathDump()
 	VoiceAlias.DebugVoicePathDump()
 EndFunction
 
+Function LookingAtTarget(Actor WhoIsThat)
+	; Look-edge voice (1 silent / 2 stage / 3+ recognition) — every sample, not comment-cooldown.
+	If VoiceAlias
+		VoiceAlias.LookFixation(WhoIsThat)
+	Else
+		Debug.Trace("PickmansWhisper: ERROR TargetScan LookFixation — VoiceAlias unbound")
+		Debug.Notification("PW Error: VoiceAlias unbound — rebuild esp")
+	EndIf
+EndFunction
 
 ;----------------------- Utility -----------------------
 
@@ -1049,43 +1065,43 @@ EndFunction
 
 ; Ported from former Main timers — called via KillerScan NoWait each tick.
 Function OnKillerScanCadence()
-	Float now = Utility.GetCurrentRealTime()
-	If BootArmDeadlineReal > 0.0 && now >= BootArmDeadlineReal
-		BootArmDeadlineReal = 0.0
-		EnsurePlayerCombatQuest()
-		ArmRuntimeLoops()
-		Debug.Trace("PickmansWhisper: boot-arm deadline fired v" + MOD_VERSION)
-	EndIf
-	If PendingRenameAtReal > 0.0 && now >= PendingRenameAtReal
-		PendingRenameAtReal = 0.0
-		If PendingRenamePrompt
-			If VoiceAlias
-				VoiceAlias.ShowVoiceToast(PendingRenamePrompt)
-			EndIf
-			Debug.Trace("PickmansWhisper: name-her prompt (deadline) | " + PendingRenamePrompt)
-			PendingRenamePrompt = ""
-		Else
-			Debug.Trace("PickmansWhisper: rename deadline skip | empty prompt")
-		EndIf
-	EndIf
-	If now >= NextBondRealTime
-		NextBondRealTime = now + BOND_POLL_SECONDS
-		RunBondPoll()
-	EndIf
-	If now >= NextHungerRealTime
-		NextHungerRealTime = now + HUNGER_POLL_SECONDS
-		RunHungerTick()
-	EndIf
-	If now >= NextTrustRealTime
-		NextTrustRealTime = now + TRUST_VOICE_SECONDS
-		MaybeSpeakTrustLine()
-	EndIf
-	If now >= NextNoticeRealTime
-		NextNoticeRealTime = now + NOTICE_VOICE_SECONDS
-		If VoiceAlias
-			VoiceAlias.MaybeSpeakNoticeLine()
-		EndIf
-	EndIf
+	;Float now = Utility.GetCurrentRealTime()
+	;If BootArmDeadlineReal > 0.0 && now >= BootArmDeadlineReal
+	;	BootArmDeadlineReal = 0.0
+	;	EnsurePlayerCombatQuest()
+	;	ArmRuntimeLoops()
+	;	Debug.Trace("PickmansWhisper: boot-arm deadline fired v" + MOD_VERSION)
+	;EndIf
+	;If PendingRenameAtReal > 0.0 && now >= PendingRenameAtReal
+	;	PendingRenameAtReal = 0.0
+	;	If PendingRenamePrompt
+	;		If VoiceAlias
+	;			VoiceAlias.ShowVoiceToast(PendingRenamePrompt)
+	;		EndIf
+	;		Debug.Trace("PickmansWhisper: name-her prompt (deadline) | " + PendingRenamePrompt)
+	;		PendingRenamePrompt = ""
+	;	Else
+	;		Debug.Trace("PickmansWhisper: rename deadline skip | empty prompt")
+	;	EndIf
+	;EndIf
+	;If now >= NextBondRealTime
+	;	NextBondRealTime = now + BOND_POLL_SECONDS
+	;	RunBondPoll()
+	;EndIf
+	;If now >= NextHungerRealTime
+	;	NextHungerRealTime = now + HUNGER_POLL_SECONDS
+	;	RunHungerTick()
+	;EndIf
+	;If now >= NextTrustRealTime
+	;	NextTrustRealTime = now + TRUST_VOICE_SECONDS
+	;	MaybeSpeakTrustLine()
+	;EndIf
+	;If now >= NextNoticeRealTime
+	;	NextNoticeRealTime = now + NOTICE_VOICE_SECONDS
+	;	If VoiceAlias
+	;		VoiceAlias.MaybeSpeakNoticeLine()
+	;	EndIf
+	;EndIf
 EndFunction
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
@@ -2478,8 +2494,14 @@ Function NoteFacedDeadForVictimsAim(Actor[] dead, Int count)
 	If !PlayerRef || !dead || count <= 0
 		Return
 	EndIf
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	If !ts
+		Debug.Trace("PickmansWhisper: ERROR NoteFacedDeadForVictimsAim — TargetScan missing")
+		Return
+	EndIf
+	Float corpseR = ts.KILL_CORPSE_RADIUS
 	Actor best = None
-	Float bestDist = KILL_CORPSE_RADIUS + 1.0
+	Float bestDist = corpseR + 1.0
 	Int i = 0
 	Int n = count
 	If n > 16
@@ -2490,7 +2512,7 @@ Function NoteFacedDeadForVictimsAim(Actor[] dead, Int count)
 		If ak && ak != PlayerRef && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
 			If Math.abs(PlayerRef.GetHeadingAngle(ak)) <= BUTCHER_FACING_DEG
 				Float d = PlayerRef.GetDistance(ak)
-				If d <= KILL_CORPSE_RADIUS && d < bestDist
+				If d <= corpseR && d < bestDist
 					bestDist = d
 					best = ak
 				EndIf
@@ -2827,13 +2849,8 @@ PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
 EndFunction
 
-Function DebugForceCorpseDecayOverlays()
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If decay
-		decay.DebugForceCorpseDecayOverlays()
-	Else
-		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
-	EndIf
+PickmansWhisperTargetScanScript Function TargetScan()
+	Return (Self as Quest) as PickmansWhisperTargetScanScript
 EndFunction
 
 ; --- Slice H P5 — player buffs (façade) -----------------------------------------
@@ -3223,57 +3240,57 @@ String Function GetHungerBandLabel(Float level)
 EndFunction
 
 Function RunHungerTick()
-	If !IsHungerUnlocked()
-		LastHungerPollGameTime = Utility.GetCurrentGameTime()
-		HungerWasSated = False
-		SyncHungerAddictionSpell()
-		Return
-	EndIf
-	If Utility.IsInMenuMode()
-		Return
-	EndIf
+	;If !IsHungerUnlocked()
+	;	LastHungerPollGameTime = Utility.GetCurrentGameTime()
+	;	HungerWasSated = False
+	;	SyncHungerAddictionSpell()
+	;	Return
+	;EndIf
+	;If Utility.IsInMenuMode()
+	;	Return
+	;EndIf
 
-	Float now = Utility.GetCurrentGameTime()
-	If LastHungerPollGameTime <= 0.0
-		LastHungerPollGameTime = now
-	EndIf
-	Float last = LastHungerPollGameTime
+	;Float now = Utility.GetCurrentGameTime()
+	;If LastHungerPollGameTime <= 0.0
+	;	LastHungerPollGameTime = now
+	;EndIf
+	;Float last = LastHungerPollGameTime
 
-	Bool satedNow = IsHungerSated()
-	If HungerWasSated && !satedNow
-		If ModConfigAlias && ModConfigAlias.HungerWithdrawalToast != ""
-			ToastHungerLine(ModConfigAlias.HungerWithdrawalToast)
-		Else
-			Debug.Trace("PickmansWhisper: ERROR hunger withdrawal toast skipped — hungerWithdrawalToast missing/empty")
-		EndIf
-		ApplyHungerDelta(20.0, "withdrawal-onset")
-	EndIf
+	;Bool satedNow = IsHungerSated()
+	;If HungerWasSated && !satedNow
+	;	If ModConfigAlias && ModConfigAlias.HungerWithdrawalToast != ""
+	;		ToastHungerLine(ModConfigAlias.HungerWithdrawalToast)
+	;	Else
+	;		Debug.Trace("PickmansWhisper: ERROR hunger withdrawal toast skipped — hungerWithdrawalToast missing/empty")
+	;	EndIf
+	;	ApplyHungerDelta(20.0, "withdrawal-onset")
+	;EndIf
 
-	If !satedNow
-		; Unused knife-time: blade owned (or bond active) without recent activity.
-		; Slice A treats LastKnifeActivityGameTime as bond start until B updates it.
-		Float gainStart = last
-		If SatedUntilGameTime > gainStart
-			If now > SatedUntilGameTime
-				gainStart = SatedUntilGameTime
-			Else
-				gainStart = now
-			EndIf
-		EndIf
-		Float hours = (now - gainStart) * 24.0
-		If hours > 0.0
-			ApplyHungerDelta(hours * GetHungerTimeGainPerHour(), "unused-knife-time")
-		EndIf
-	EndIf
+	;If !satedNow
+	;	; Unused knife-time: blade owned (or bond active) without recent activity.
+	;	; Slice A treats LastKnifeActivityGameTime as bond start until B updates it.
+	;	Float gainStart = last
+	;	If SatedUntilGameTime > gainStart
+	;		If now > SatedUntilGameTime
+	;			gainStart = SatedUntilGameTime
+	;		Else
+	;			gainStart = now
+	;		EndIf
+	;	EndIf
+	;	Float hours = (now - gainStart) * 24.0
+	;	If hours > 0.0
+	;		ApplyHungerDelta(hours * GetHungerTimeGainPerHour(), "unused-knife-time")
+	;	EndIf
+	;EndIf
 
-	HungerWasSated = satedNow
-	LastHungerPollGameTime = now
-	SyncHungerAddictionSpell()
-	RefreshHungerPanel(False)
+	;HungerWasSated = satedNow
+	;LastHungerPollGameTime = now
+	;SyncHungerAddictionSpell()
+	;RefreshHungerPanel(False)
 	; Hunger timer is proven live — drive notice poll from here too
-	If VoiceAlias
-		VoiceAlias.MaybeSpeakNoticeLine()
-	EndIf
+	;If VoiceAlias
+	;	VoiceAlias.MaybeSpeakNoticeLine()
+	;EndIf
 EndFunction
 
 Function ApplyHungerDelta(Float amount, String reason)
@@ -3736,10 +3753,16 @@ Function ReconcileBladeTagged()
 	If BladeTaggedCount <= 0 || !PlayerRef
 		Return
 	EndIf
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	If !ts
+		Debug.Trace("PickmansWhisper: ERROR ReconcileBladeTagged — TargetScan missing")
+		Return
+	EndIf
+	Float watchR = ts.KILL_WATCH_RADIUS
 	Int i = BladeTaggedCount - 1
 	While i >= 0
 		Actor ak = BladeTagged[i]
-		If !ak || ak.IsDead() || !ak.Is3DLoaded() || PlayerRef.GetDistance(ak) > KILL_WATCH_RADIUS
+		If !ak || ak.IsDead() || !ak.Is3DLoaded() || PlayerRef.GetDistance(ak) > watchR
 			ForgetBladeTagged(ak)
 		EndIf
 		i -= 1
@@ -4759,7 +4782,10 @@ Function DebugScanNearbyNpcs()
 	VoiceAlias.NoticeCoolCount = 0
 	VoiceAlias.LastNoticeToastRealTime = 0.0
 	noticeDiag = VoiceAlias.LastNoticeDiag
-	Actor target = VoiceAlias.PickNoticeTarget()
+	
+	;Actor target = VoiceAlias.PickNoticeTarget()
+	Actor target
+
 	String body = "Manual scan (button)\n\n" + noticeDiag
 	If target
 		String nm = VoiceAlias.GetActorDisplayName(target)

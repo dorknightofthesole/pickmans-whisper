@@ -5,7 +5,7 @@ Locks:
   - SleepRecognitionLines.txt exists, files-only, enough nameless + {name} lines
   - LoadSleepRecognitionLines via LoadStageBank; LoadLineBanks calls it
   - IsActorSleeping uses GetSleepState() >= 3
-  - SpeakRecognitionLine picks sleep bank when asleep, awake bank otherwise
+  - SpeakRecognitionLine (2nd look) picks sleep bank when asleep, awake bank otherwise
   - Actor.psc stub declares real FO4 GetSleepState Native
   - No hard-coded mirror of sleep lines in PSC
   - MaybeSpeakNoticeLine stays free of sleep ownership

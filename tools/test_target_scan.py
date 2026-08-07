@@ -17,6 +17,8 @@ PACKAGE = ROOT / "tools" / "package_mo2_zip.py"
 ESP = ROOT / "Data" / "PickmansWhisper.esp"
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperTargetScanScript.psc"
 PEX = ROOT / "Data" / "Scripts" / "PickmansWhisperTargetScanScript.pex"
+MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+KILLER = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
 FID_QUEST = 0x01000800
 
 
@@ -78,22 +80,40 @@ def main() -> None:
     psc = PSC.read_text(encoding="utf-8", errors="replace")
     if "PickmansWhisperMainQuestScript Property MainQuest Auto Const Mandatory" not in psc:
         fail("TargetScan must declare MainQuest Auto Const Mandatory")
+    if "PickmansWhisperVoiceAliasScript Property VoiceAlias" in psc:
+        fail("TargetScan must not declare VoiceAlias — route via MainQuest.LookingAtTarget")
     if "Actor[] Property TrackedTargets Auto" not in psc:
         fail("TargetScan must declare TrackedTargets Auto")
-    if "LookCommentCooldownSeconds" not in psc or "LastLookCommentRealTime" not in psc:
-        fail("TargetScan look comment must use cooldown seconds + last-comment stamp")
-    if "GetCurrentRealTime" not in psc:
-        fail("TargetScan look comment cooldown must use Utility.GetCurrentRealTime")
     if 'CallFunctionNoWait("RegisterTarget"' not in psc:
         fail("TargetScan must CallFunctionNoWait RegisterTarget (fire-and-forget)")
     if "MainQuest.RegisterTarget(" in psc:
         fail("TargetScan must not call RegisterTarget synchronously")
+    if "Actor Function GetLookingAt()" not in psc:
+        fail("TargetScan must expose GetLookingAt()")
+    if "GardenOfEden3.GetCameraTargetReference()" not in psc:
+        fail("GetLookingAt must use GardenOfEden3.GetCameraTargetReference")
+    if "TODO do something with this in Main" in psc:
+        fail("TargetScan must not leave LookFixation TODO stub")
+    if "Float Property KILL_WATCH_RADIUS = 800.0 Auto Const" not in psc:
+        fail("TargetScan must own KILL_WATCH_RADIUS Property Auto Const (SSOT)")
+    if "Float Property KILL_CORPSE_RADIUS = 400.0 Auto Const" not in psc:
+        fail("TargetScan must own KILL_CORPSE_RADIUS Property Auto Const (SSOT)")
+    main = MAIN.read_text(encoding="utf-8", errors="replace")
+    killer = KILLER.read_text(encoding="utf-8", errors="replace")
+    if "KILL_WATCH_RADIUS = 800.0" in main or "KILL_CORPSE_RADIUS = 400.0" in main:
+        fail("Main must not redefine scan radii — TargetScan Properties are SSOT")
+    if "KILL_WATCH_RADIUS = 800.0" in killer or "KILL_CORPSE_RADIUS = 400.0" in killer:
+        fail("KillerScan must not redefine scan radii — TargetScan Properties are SSOT")
+    if "Function TargetScan()" not in main:
+        fail("Main must expose TargetScan() façade")
 
     builder = BUILDER.read_text(encoding="utf-8", errors="replace")
     if '"PickmansWhisperTargetScanScript"' not in builder:
         fail("ESP builder must attach PickmansWhisperTargetScanScript on Main")
     if "target_scan_main_prop" not in builder:
         fail("ESP builder must VMAD-bind TargetScan.MainQuest")
+    if "target_scan_voice_prop" in builder:
+        fail("ESP builder must not VMAD-bind TargetScan.VoiceAlias")
 
     deploy = DEPLOY.read_text(encoding="utf-8", errors="replace")
     if "$PscTargetScan" not in deploy or "PickmansWhisperTargetScanScript.psc" not in deploy:

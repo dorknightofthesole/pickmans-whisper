@@ -107,6 +107,15 @@ def main() -> None:
         # hard checklist must not be duplicated in notice body
         if "IsStoryEssential" in notice or "IsPlayerTeammate" in notice:
             fail("ExplainNoticeReject must not duplicate hard-checklist (teammate/essential)")
+    if "KillWatchRadius()" not in notice:
+        fail("ExplainNoticeReject distance must use KillWatchRadius() (TargetScan SSOT)")
+    if "Main().KILL_WATCH_RADIUS" in notice or "Main().KILL_WATCH_RADIUS" in voice:
+        fail("VoiceAlias must not read Main.KILL_WATCH_RADIUS — TargetScan owns range")
+    if "Float Function KillWatchRadius()" not in voice:
+        fail("VoiceAlias must expose KillWatchRadius() reading TargetScan.KILL_WATCH_RADIUS")
+    kill_r = extract_function(voice, "KillWatchRadius")
+    if "ts.KILL_WATCH_RADIUS" not in kill_r and ".KILL_WATCH_RADIUS" not in kill_r:
+        fail("KillWatchRadius must return TargetScan.KILL_WATCH_RADIUS")
     ok("ExplainNoticeReject: notice feature checks + IsValidTarget")
 
     print("test_target_eligible.py: all checks passed")

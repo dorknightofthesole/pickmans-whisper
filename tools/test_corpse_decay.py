@@ -6,8 +6,9 @@ Locks:
   - DecayWoundOverlays.txt is the template-id source; ids ⊆ ROF DeadOverlays JSON
   - CorpseDecay soft-checks LooksMenu + INVB_OverlayFramework_DeadOverlays.esp
   - No PlayImpactEffect / IPDS path; no ESP master on ROF
-  - BedGift present + MCM DebugForceCorpseDecayOverlays wired
+  - BedGift present + ApplyBedGiftDecayOverlays path
   - ESP/deploy compile CorpseDecay
+  - DebugForceCorpseDecayOverlays retired (no CorpseDecay impl)
 
 Usage:
   python tools/test_corpse_decay.py
@@ -281,9 +282,8 @@ def test_decay_script(decay: str) -> None:
         fail("CorpseDecay must BED_GIFT_DECAY_STAGE = 4 for Black Putrefaction")
     if "BED_GIFT_DECAY_STAGE = 4" not in decay:
         fail("CorpseDecay must BED_GIFT_DECAY_STAGE = 4")
-    debug_force = extract_function(decay, "DebugForceCorpseDecayOverlays")
-    if "ApplyBedGiftDecayOverlays" not in debug_force:
-        fail("DebugForceCorpseDecayOverlays must use ApplyBedGiftDecayOverlays (same path)")
+    if "DebugForceCorpseDecayOverlays" in decay:
+        fail("DebugForceCorpseDecayOverlays retired — must not return on CorpseDecay")
     ok("CorpseDecayScript ROF/LooksMenu tinted apply helper")
 
     # ReapplyDecayBodySkinsOnly (periodic body-skin self-heal) was tried and reverted —
@@ -357,8 +357,8 @@ def test_wiring(bed: str, main: str) -> None:
         fail("ClearBedCorpse must reset BedOverlaysApplied")
     if "Function CorpseDecay()" not in main:
         fail("Main must expose CorpseDecay() façade")
-    if "DebugForceCorpseDecayOverlays" not in main:
-        fail("Main must façade DebugForceCorpseDecayOverlays")
+    if "DebugForceCorpseDecayOverlays" in main:
+        fail("DebugForceCorpseDecayOverlays retired — must not remain on Main")
     if "PlayImpactEffect" in bed or "PlayImpactEffect" in main:
         fail("user scripts must not call PlayImpactEffect for Slice H")
     # TODO: review after ModConfigAlias move — bedGiftWoundAlpha may live on
@@ -394,8 +394,8 @@ def test_wound_config_vs_rof() -> None:
 
 def test_mcm_esp_deploy_docs() -> None:
     mcm = MCM.read_text(encoding="utf-8")
-    if "DebugForceCorpseDecayOverlays" not in mcm:
-        fail("MCM must have Force corpse decay overlays button")
+    if "DebugForceCorpseDecayOverlays" in mcm:
+        fail("MCM must not keep retired Force corpse decay overlays button")
     if "DebugForceCorpseDecayDecals" in mcm:
         fail("MCM must not keep retired Force corpse decay decals")
     esp = ESP_BUILDER.read_text(encoding="utf-8", errors="replace")

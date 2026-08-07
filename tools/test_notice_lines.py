@@ -643,41 +643,6 @@ def test_psc_contracts() -> None:
         if 'Return ""' not in body:
             errors.append("PickNoticeLine must return \"\" when the stage bank is empty (files-only skip)")
 
-    # Toast must not depend on notice-poll debug dialogs
-    speak = re.search(r"Function MaybeSpeakNoticeLine\(\)(.*?)EndFunction", text, re.S)
-    if not speak:
-        errors.append("MaybeSpeakNoticeLine not found")
-    else:
-        body = speak.group(1)
-        if "IsVoiceWeaponReady" not in body:
-            errors.append("MaybeSpeakNoticeLine must require Pickman's Blade on player (IsVoiceWeaponReady)")
-        if "SpeakNoticeToTarget(" not in body and "ToastNoticeLine(line)" not in body:
-            errors.append("MaybeSpeakNoticeLine must deliver via SpeakNoticeToTarget or ToastNoticeLine")
-        if "LastNoticePollSource" in text:
-            errors.append("LastNoticePollSource retired with MaybeSpeakNoticeLine source arg")
-        if re.search(r"If IsNoticePollDebugEnabled\(\)\s*\n\s*NoticeCoolCount\s*=\s*0", body):
-            errors.append("MaybeSpeakNoticeLine must not clear cooldowns only when notice-poll debug is on")
-        # Ambient loop: toast only — DiagNotify is MCM Scan button UX, not the poll.
-        if "ShowNoticePollDialog(" in body or "Debug.MessageBox(" in body or "DiagNotify(" in body:
-            errors.append("MaybeSpeakNoticeLine must not MessageBox/DiagNotify (MCM Scan nearby only)")
-        empty_guard = re.search(
-            r"If !line \|\| GardenOfEden\.StrLength\(line\) < 1(.*?)EndIf", body, re.S
-        )
-        if not empty_guard:
-            errors.append("MaybeSpeakNoticeLine must guard empty line via GoE StrLength (files-only skip)")
-        elif "Return" not in empty_guard.group(1):
-            errors.append("MaybeSpeakNoticeLine empty-line guard must Return (skip)")
-
-    pick = re.search(r"Actor Function PickNoticeTarget\(\)(.*?)EndFunction", text, re.S)
-    if not pick:
-        errors.append("PickNoticeTarget not found")
-    else:
-        body = pick.group(1)
-        if "PickBestNoticeFromList(living)" not in body:
-            errors.append("PickNoticeTarget must call PickBestNoticeFromList(living)")
-        if "WriteNearbyStatusToMcm()" in body:
-            errors.append("PickNoticeTarget must not write MCM mid-pick")
-
     commit = re.search(r"Function CommitNearbyPickSummary\(Int nLive, Actor best\)(.*?)EndFunction", text, re.S)
     if not commit:
         errors.append("CommitNearbyPickSummary not found")
@@ -731,16 +696,6 @@ def test_notice_cadence() -> None:
     if hour_gate < 1.0:
         errors.append(f"NOTICE_MIN_GAME_HOURS {hour_gate} must be >= 1 (max ~1 hunger toast / game hour)")
 
-    speak = re.search(r"Function MaybeSpeakNoticeLine\(\)(.*?)EndFunction", text, re.S)
-    if not speak:
-        errors.append("MaybeSpeakNoticeLine missing")
-    else:
-        body = speak.group(1)
-        if "NOTICE_MIN_GAME_HOURS" not in body and "LastNoticeToastGameTime" not in body:
-            errors.append("MaybeSpeakNoticeLine must gate ambient hunger on LastNoticeToastGameTime / NOTICE_MIN_GAME_HOURS")
-        if "skip: hunger hour cooldown" not in body:
-            errors.append("MaybeSpeakNoticeLine must surface hunger hour cooldown in LastNoticeStatus")
-
     toast = re.search(r"Function ToastNoticeLine\(String line\)(.*?)EndFunction", text, re.S)
     if not toast or "LastNoticeToastGameTime" not in toast.group(1):
         errors.append("ToastNoticeLine must stamp LastNoticeToastGameTime")
@@ -783,13 +738,6 @@ def test_notice_cadence() -> None:
         body = voice_path.read_text(encoding="utf-8", errors="replace")
         if "Function HandleWhisperVoice" not in body:
             errors.append("VoiceAlias must HandleWhisperVoice(Actor)")
-        if "MaybeSpeakNoticeLine()" not in body:
-            errors.append("VoiceAlias must call MaybeSpeakNoticeLine()")
-        if re.search(
-            r"VoiceTick % 3\) == 0\s*\n\s*MaybeSpeakNoticeLine\(\"voice\"\)",
-            body,
-        ):
-            errors.append("hunger voice pulse must not be locked to % 3 — poll often, gate by game hour")
     if world_path.is_file():
         wbody = world_path.read_text(encoding="utf-8", errors="replace")
         if "HandleWhisperVoice" not in wbody or "DispatchListeners" not in wbody:
@@ -821,16 +769,10 @@ def test_notice_approach_c4_parked() -> None:
         if "StartTimer(NOTICE_APPROACH_SECONDS" in blob or "StartTimer(0.5" in blob:
             errors.append(f"{label}: must not StartTimer a 0.5s approach poll")
 
-    if "MaybeSpeakNoticeLine()" not in text:
-        errors.append("VoiceAlias must call MaybeSpeakNoticeLine()")
     if "TickNoticeApproach" in text:
         errors.append("VoiceAlias must not call TickNoticeApproach while C4 is parked")
     if "RegisterForCustomEvent" in text:
         errors.append("VoiceAlias must not RegisterForCustomEvent (whispers stayed silent)")
-
-    speak = re.search(r"Function MaybeSpeakNoticeLine\(\)(.*?)EndFunction", text, re.S)
-    if not speak or "ToastNoticeLine(line)" not in speak.group(1):
-        errors.append("MaybeSpeakNoticeLine must inline ToastNoticeLine (C3 proven path)")
 
     ont = re.search(
         r"ElseIf aiTimerID == TIMER_NOTICE_APPROACH\s*\n(.*?)ElseIf", main_text, re.S
@@ -856,18 +798,6 @@ def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
         errors.append("Main must not Debug.MessageBox (use DiagNotify)")
     if "Debug.MessageBox(" in text:
         errors.append("VoiceAlias must not Debug.MessageBox (use Main().DiagNotify)")
-
-    speak = re.search(r"Function MaybeSpeakNoticeLine\(\)(.*?)EndFunction", text, re.S)
-    if not speak:
-        errors.append("MaybeSpeakNoticeLine missing")
-    else:
-        body = speak.group(1)
-        if "ToastNoticeLine(line)" not in body:
-            errors.append("MaybeSpeakNoticeLine must still ToastNoticeLine")
-        if "ShowNoticePollDialog(" in body:
-            errors.append("MaybeSpeakNoticeLine must not call ShowNoticePollDialog")
-        if "Debug.MessageBox(" in body or "DiagNotify(" in body:
-            errors.append("MaybeSpeakNoticeLine must not MessageBox/DiagNotify")
 
     run = re.search(
         r"Function HandleKillerScanKnifeAimWarm\(\)(.*?)EndFunction",

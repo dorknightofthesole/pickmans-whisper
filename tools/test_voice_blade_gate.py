@@ -77,7 +77,7 @@ def main() -> None:
         "ShowVoiceToast",
         "ToastNoticeLine",
         "MaybeSpeakNoticeLine",
-        "TickLookFixation",
+        "LookFixation",
         "PlayNoticeAudio",
         "PlayWhisperXwmByFile",
         "MaybeSpeakNamedIntimacyEvent",

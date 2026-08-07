@@ -7,6 +7,8 @@ Toast/float keys + decayStage0..4 live/pending arrays. Main keeps thin façades.
 String Property BondIntroGreeting = "" Auto
 String Property HungerWithdrawalToast = "" Auto
 String Property RenamePromptFemaleNPC = "" Auto
+String Property HitWhisper = "" Auto
+String Property NeedsBeatingWhisper = "" Auto
 String Property BedGiftWakeToast = "" Auto
 String Property DesperateNameSuffix = "" Auto
 Float Property BedGiftCooldownDays = -1.0 Auto
@@ -367,6 +369,8 @@ Function LoadModConfig()
 	String nextBondIntroGreeting = ""
 	String nextHungerWithdrawalToast = ""
 	String nextRenamePromptFemaleNPC = ""
+	String nextHitWhisper = ""
+	String nextNeedsBeatingWhisper = ""
 	String nextBedGiftWakeToast = ""
 	Float nextBedGiftCooldownDays = -1.0
 	Float nextBedGiftWoundAlpha = -1.0
@@ -422,6 +426,10 @@ Function LoadModConfig()
 					nextHungerWithdrawalToast = val
 				ElseIf key == "renamePromptFemaleNPC"
 					nextRenamePromptFemaleNPC = val
+				ElseIf key == "hitWhisper"
+					nextHitWhisper = val
+				ElseIf key == "needsBeatingWhisper"
+					nextNeedsBeatingWhisper = val
 				ElseIf key == "bedGiftWakeToast"
 					nextBedGiftWakeToast = val
 				ElseIf key == "desperateNameSuffix"
@@ -489,6 +497,8 @@ Function LoadModConfig()
 	BondIntroGreeting = nextBondIntroGreeting
 	HungerWithdrawalToast = nextHungerWithdrawalToast
 	RenamePromptFemaleNPC = nextRenamePromptFemaleNPC
+	HitWhisper = nextHitWhisper
+	NeedsBeatingWhisper = nextNeedsBeatingWhisper
 	BedGiftWakeToast = nextBedGiftWakeToast
 	BedGiftCooldownDays = nextBedGiftCooldownDays
 	BedGiftWoundAlpha = nextBedGiftWoundAlpha
@@ -551,6 +561,12 @@ Function LoadModConfig()
 	EndIf
 	If RenamePromptFemaleNPC
 		status += "rename "
+	EndIf
+	If HitWhisper
+		status += "hitWhisper "
+	EndIf
+	If NeedsBeatingWhisper
+		status += "needsBeating "
 	EndIf
 	If BedGiftWakeToast
 		status += "bedGift "

@@ -213,7 +213,7 @@ def test_main_arming_and_cadence() -> None:
     knife = extract_function(main, "HandleKillerScanKnifeAimWarm")
     if "ProcessKnifeCreditFromKillerScan" not in knife:
         fail("HandleKillerScanKnifeAimWarm must ProcessKnifeCreditFromKillerScan")
-    if "TickLookFixation" in knife or "MaybeSpeakNoticeLine" in knife:
+    if "LookFixation" in knife or "MaybeSpeakNoticeLine" in knife:
         fail("HandleKillerScanKnifeAimWarm must not own voice")
     ok("Main arming cadence + version banner")
 
@@ -223,15 +223,13 @@ def test_listeners() -> None:
     handle = extract_function(voice, "HandleWhisperVoice")
     if "FindActors" in handle:
         fail("HandleWhisperVoice must not FindActors (KillerScan owns TargetSnapshot)")
-    if "TickLookFixation()" not in handle:
-        fail("HandleWhisperVoice must TickLookFixation")
-    if "MaybeSpeakNoticeLine()" not in handle:
-        fail("HandleWhisperVoice must MaybeSpeakNoticeLine()")
+    if "MaybeSpeakNoticeLine(akTarget)" not in handle:
+        fail("HandleWhisperVoice must MaybeSpeakNoticeLine(akTarget)")
     if "voice-prebond" in handle or "VoiceTick" in handle:
         fail("HandleWhisperVoice must not keep prebond / VoiceTick throttle")
-    tick = extract_function(voice, "TickLookFixation")
+    tick = extract_function(voice, "LookFixation")
     if "FindActors" in tick:
-        fail("TickLookFixation must not FindActors")
+        fail("LookFixation must not FindActors")
     decay = DECAY.read_text(encoding="utf-8", errors="replace")
     if "FindActors" in extract_function(decay, "SyncOverlaysFromKillerScanSnapshot"):
         fail("SyncOverlaysFromKillerScanSnapshot must not FindActors")

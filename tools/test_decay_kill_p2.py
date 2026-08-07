@@ -84,8 +84,10 @@ def test_killscan_sync() -> None:
     if not voice_path.is_file():
         fail("VoiceScan script missing")
     voice = voice_path.read_text(encoding="utf-8", errors="replace")
-    if "MaybeSpeakNoticeLine()" not in voice or "TickLookFixation()" not in voice:
-        fail("VoiceAlias must TickLookFixation + MaybeSpeakNoticeLine()")
+    if "MaybeSpeakNoticeLine(akTarget)" not in voice:
+        fail("VoiceAlias must MaybeSpeakNoticeLine(akTarget)")
+    if "Function LookFixation(Actor akTarget)" not in voice:
+        fail("VoiceAlias must expose LookFixation(Actor akTarget)")
     if "SyncDecayForKnifeCorpse" in voice:
         fail("VoiceAlias must not SyncDecay")
     if "ProcessKnifeCreditFromKillerScan" in voice:
@@ -93,7 +95,7 @@ def test_killscan_sync() -> None:
     if "RegisterForCustomEvent" in voice:
         fail("VoiceAlias must not CustomEvent-listen (direct HandleWhisperVoice)")
     knife_fn = extract_function(main, "HandleKillerScanKnifeAimWarm")
-    if "TickLookFixation" in knife_fn or "MaybeSpeakNoticeLine" in knife_fn:
+    if "LookFixation" in knife_fn or "MaybeSpeakNoticeLine" in knife_fn:
         fail("HandleKillerScanKnifeAimWarm must not own voice (VoiceAlias does)")
     if "StartDecaySyncLoop" in main:
         fail("retire StartDecaySyncLoop — overlays via KillerScan CallFunctionNoWait")

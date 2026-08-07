@@ -5,6 +5,9 @@
 # bondIntroGreeting — once-ever toast when bond first starts (StartBond). Missing/empty = skip toast (Trace).
 # hungerWithdrawalToast — when satiation ends and hunger starts climbing again. Missing/empty = skip (Trace).
 # renamePromptFemaleNPC — toast after 3+ recognition looks while she is still unnamed.
+# hitWhisper — blade OnHit encouragement (VoiceAlias toast for now; may become audio later).
+# needsBeatingWhisper — living tracked NPC while Pickman's Blade is unequipped (RegisterTarget).
+#   {name} -> display / Victim override. Toast only (no blade gate — knife is not out).
 # bedGiftWakeToast — Slice G: optional wake toast after bed corpse present (voice + blade).
 # bedGiftCooldownDays — Slice G: game-days between bed gifts (0.5 ≈ 12h). Required; <=0 fails load.
 # bedGiftWoundAlpha — Slice H: LooksMenu opacity for DeathMarks wounds on bed gift (0–1).
@@ -41,6 +44,8 @@
 bondIntroGreeting=Something in the gallery leans closer... glad you came.
 hungerWithdrawalToast=The quiet ends. The knife remembers.
 renamePromptFemaleNPC=What's her name I wonder? ...I should name her. [see MCM menu]
+hitWhisper=Finish what you started!
+needsBeatingWhisper={name} needs a good beating.
 bedGiftWakeToast=A gift for when you close your eyes.
 bedGiftCooldownDays=0.5
 bedGiftWoundAlpha=0.40

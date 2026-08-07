@@ -151,10 +151,18 @@ def main() -> None:
         fail("ModConfigScript must expose BondIntroGreeting as Property")
     if "String Property HungerWithdrawalToast" not in mod:
         fail("ModConfigScript must expose HungerWithdrawalToast as Property")
+    if "String Property HitWhisper" not in mod:
+        fail("ModConfigScript must expose HitWhisper as Property")
+    if "String Property NeedsBeatingWhisper" not in mod:
+        fail("ModConfigScript must expose NeedsBeatingWhisper as Property")
     if 'key == "bondIntroGreeting"' not in mod:
         fail("LoadModConfig must parse bondIntroGreeting")
     if 'key == "hungerWithdrawalToast"' not in mod:
         fail("LoadModConfig must parse hungerWithdrawalToast")
+    if 'key == "hitWhisper"' not in mod:
+        fail("LoadModConfig must parse hitWhisper")
+    if 'key == "needsBeatingWhisper"' not in mod:
+        fail("LoadModConfig must parse needsBeatingWhisper")
     if "Int Property DECAY_STAGE_COUNT" not in mod:
         fail("ModConfigScript must expose DECAY_STAGE_COUNT as Property")
     ok("ModConfigScript: ReferenceAlias + OnAliasInit load + Properties")
@@ -166,6 +174,10 @@ def main() -> None:
         fail("ModConfig.txt must ship bondIntroGreeting default")
     if "hungerWithdrawalToast=The quiet ends. The knife remembers." not in mod_txt:
         fail("ModConfig.txt must ship hungerWithdrawalToast default")
+    if "hitWhisper=Finish what you started!" not in mod_txt:
+        fail("ModConfig.txt must ship hitWhisper default")
+    if "needsBeatingWhisper={name} needs a good beating." not in mod_txt:
+        fail("ModConfig.txt must ship needsBeatingWhisper default")
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     if "Something in the gallery leans closer" in psc:
         fail("Main must not hard-code bond intro (ModConfig BondIntroGreeting is source of truth)")

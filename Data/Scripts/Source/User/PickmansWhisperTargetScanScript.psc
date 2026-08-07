@@ -5,15 +5,14 @@ Scriptname PickmansWhisperTargetScanScript extends Quest
 Actor[] Property TrackedTargets Auto
 PickmansWhisperMainQuestScript Property MainQuest Auto Const Mandatory
 
-Float KILL_WATCH_RADIUS = 800.0 Const
-Float KILL_CORPSE_RADIUS = 400.0 Const
+; Scan / eligibility range — single source (other scripts read these Properties).
+Float Property KILL_WATCH_RADIUS = 800.0 Auto Const
+Float Property KILL_CORPSE_RADIUS = 400.0 Auto Const
 Float FIVE_FEET_IN_UNITS = 106.65 Const
 
 Actor PlayerRef
 Int TimerID_Scan = 100 Const
 Float ScanInterval = 8.0 Const ; Run every 8 seconds
-Float LookCommentCooldownSeconds = 30.0 Const
-Float LastLookCommentRealTime = 0.0
 
 ; --- Initialization ---
 Event OnInit()
@@ -79,13 +78,12 @@ Function ScanAndCleanTargets()
     ProcessTargets(DeadTargets, "dead")
 
     Actor WhoIsThat = GetLookingAt()
-    If WhoIsThat && MainQuest.IsValidTarget(WhoIsThat)
-        Float now = Utility.GetCurrentRealTime()
-        If LastLookCommentRealTime <= 0.0 || (now - LastLookCommentRealTime) >= LookCommentCooldownSeconds
-            LastLookCommentRealTime = now
-            ; TODO do something with this in Main
-            Debug.Notification("PW Debug: " + WhoIsThat.GetDisplayName() + ", they look interesting... ")
-        EndIf
+    If WhoIsThat && !WhoIsThat.IsDead() && MainQuest.IsValidTarget(WhoIsThat)
+        Var[] lookArgs = new Var[1]
+        lookArgs[0] = WhoIsThat
+        MainQuest.CallFunctionNoWait("LookingAtTarget", lookArgs)
+        ;MainQuest.LookingAtTarget(WhoIsThat)
+        ;Debug.Notification("PW Debug: " + WhoIsThat.GetDisplayName() + ", they look interesting... ")
     EndIf
 EndFunction
 

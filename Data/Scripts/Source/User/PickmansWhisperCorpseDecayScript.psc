@@ -1852,18 +1852,3 @@ Function ApplyBedGiftDecayOverlays(Actor akCorpse)
 	ApplyDecayWoundOverlays(akCorpse, BED_GIFT_WOUND_COUNT)
 	SetCorpseDecayStatus("bed gift wounds-only fallback | " + LastCorpseDecayStatus)
 EndFunction
-
-Function DebugForceCorpseDecayOverlays()
-	PickmansWhisperMainQuestScript m = Main()
-	If !m || !m.VoiceAlias
-		DiagNotify("Pickman's Whisper\n\nMain/VoiceAlias missing.")
-		Return
-	EndIf
-	Actor aimed = m.VoiceAlias.GetLookAimActor()
-	If !aimed || aimed == Game.GetPlayer()
-		DiagNotify("Pickman's Whisper\n\nAim / face a corpse (or look then open MCM), then retry.")
-		Return
-	EndIf
-	ApplyBedGiftDecayOverlays(aimed)
-	DiagNotify("Pickman's Whisper\n\nDecay overlays forced (bed gift path).\n" + LastCorpseDecayStatus)
-EndFunction

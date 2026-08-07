@@ -8,8 +8,6 @@ Float KILLER_SCAN_SECONDS = 2.0
 ; While TickBusy, skip RunKillerScanTick this many times; on the next busy
 ; pulse, force-clear and run (prior tick likely aborted without clearing).
 Int BUSY_MAX_SKIPS = 2
-Float KILL_WATCH_RADIUS = 800.0
-Float KILL_CORPSE_RADIUS = 400.0
 Float FACING_DEG = 75.0
 
 ; TargetSnapshot — listeners read these; KillerScan is the only FindActors producer.
@@ -40,6 +38,10 @@ EndFunction
 
 PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
+EndFunction
+
+PickmansWhisperTargetScanScript Function TargetScan()
+	Return (Self as Quest) as PickmansWhisperTargetScanScript
 EndFunction
 
 PickmansWhisperVictimsScript Function Victims()
@@ -150,7 +152,15 @@ Function BuildTargetSnapshot()
 		CameraActor = None
 	EndIf
 
-	Actor[] alive = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_WATCH_RADIUS, 1, -1, -1, -1, -1, -1, None, None, "", 0, 1, 0)
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	If !ts
+		Debug.Trace("PickmansWhisper: ERROR KillerScan BuildTargetSnapshot — TargetScan missing")
+		Return
+	EndIf
+	Float watchR = ts.KILL_WATCH_RADIUS
+	Float corpseR = ts.KILL_CORPSE_RADIUS
+
+	Actor[] alive = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, watchR, 1, -1, -1, -1, -1, -1, None, None, "", 0, 1, 0)
 	ScanAlive = alive
 	ScanAliveCount = 0
 	If alive
@@ -164,7 +174,7 @@ Function BuildTargetSnapshot()
 		ScanDetectCount = detecting.Length
 	EndIf
 
-	Actor[] dead = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, KILL_CORPSE_RADIUS, 0, 1, -1, -1, -1, -1, None, None, "", 0, 1, 1)
+	Actor[] dead = GardenOfEden.FindActors(None, None, -1, -1, PlayerRef, corpseR, 0, 1, -1, -1, -1, -1, None, None, "", 0, 1, 1)
 	ScanDead = dead
 	ScanDeadCount = 0
 	If dead
@@ -268,8 +278,13 @@ Actor Function ResolveFacedLiving()
 	If !PlayerRef || !ScanAlive || ScanAliveCount <= 0
 		Return None
 	EndIf
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	If !ts
+		Return None
+	EndIf
+	Float watchR = ts.KILL_WATCH_RADIUS
 	Actor best = None
-	Float bestDist = KILL_WATCH_RADIUS + 1.0
+	Float bestDist = watchR + 1.0
 	Int i = 0
 	Int n = ScanAliveCount
 	If n > 24
@@ -280,7 +295,7 @@ Actor Function ResolveFacedLiving()
 		If ak && ak != PlayerRef && !ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
 			If Math.abs(PlayerRef.GetHeadingAngle(ak)) <= FACING_DEG
 				Float d = PlayerRef.GetDistance(ak)
-				If d <= KILL_WATCH_RADIUS && d < bestDist
+				If d <= watchR && d < bestDist
 					bestDist = d
 					best = ak
 				EndIf
@@ -295,8 +310,13 @@ Actor Function ResolveFacedDead()
 	If !PlayerRef || !ScanDead || ScanDeadCount <= 0
 		Return None
 	EndIf
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	If !ts
+		Return None
+	EndIf
+	Float corpseR = ts.KILL_CORPSE_RADIUS
 	Actor best = None
-	Float bestDist = KILL_CORPSE_RADIUS + 1.0
+	Float bestDist = corpseR + 1.0
 	Int i = 0
 	Int n = ScanDeadCount
 	If n > 16
@@ -307,7 +327,7 @@ Actor Function ResolveFacedDead()
 		If ak && ak != PlayerRef && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
 			If Math.abs(PlayerRef.GetHeadingAngle(ak)) <= FACING_DEG
 				Float d = PlayerRef.GetDistance(ak)
-				If d <= KILL_CORPSE_RADIUS && d < bestDist
+				If d <= corpseR && d < bestDist
 					bestDist = d
 					best = ak
 				EndIf

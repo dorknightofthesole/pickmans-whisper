@@ -4,9 +4,9 @@
 Locks:
   - RecognitionLines.txt exists, files-only (no builtin mirror in PSC)
   - LoadRecognitionLines via LoadStageBank; LoadLineBanks calls it
-  - Voice by count: 1 silent / 2 SpeakFixationStageWhisper / 3+ SpeakRecognitionLine
+  - Voice by count: 1 silent / 2 SpeakRecognitionLine / 3+ SpeakFixationStageWhisper
   - Retire debug toast "PW fixation:"
-  - 2nd look uses ToastNoticeLine (stamps hour gate); 3rd+ does not
+  - 3rd+ hunger stage uses ToastNoticeLine (stamps hour gate); 2nd recognition does not
   - GetRecognitionBank(band) stub present for later multi-band
   - No rewrite of MaybeSpeakNoticeLine to own fixation
 
@@ -105,27 +105,31 @@ def test_psc(text: str) -> None:
         fail("PSC must not hard-code RecognitionLines.txt content")
     ok("files-only recognition load")
 
-    tick = extract_function(text, "TickLookFixation")
+    tick = extract_function(text, "LookFixation")
     if "PW fixation:" in tick:
-        fail('TickLookFixation must retire "PW fixation:" debug toast')
-    if "SpeakFixationStageWhisper" not in tick:
-        fail("TickLookFixation must call SpeakFixationStageWhisper on 2nd look")
+        fail('LookFixation must retire "PW fixation:" debug toast')
     if "SpeakRecognitionLine" not in tick:
-        fail("TickLookFixation must call SpeakRecognitionLine on 3rd+")
-    if "count == 1" not in tick and "count==1" not in tick:
-        fail("TickLookFixation must branch on count == 1 (silent)")
-    if "count == 2" not in tick and "count==2" not in tick:
-        fail("TickLookFixation must branch on count == 2 (stage whisper)")
+        fail("LookFixation must call SpeakRecognitionLine on 2nd look")
+    if "SpeakFixationStageWhisper" not in tick:
+        fail("LookFixation must call SpeakFixationStageWhisper on 3rd+")
+    if "LOOK_COUNT_SECOND_RECOGNITION" not in text:
+        fail("VoiceAlias must name LOOK_COUNT_SECOND_RECOGNITION (recognition look)")
+    if "count == LOOK_COUNT_SECOND_RECOGNITION" not in tick and "count==LOOK_COUNT_SECOND_RECOGNITION" not in tick.replace(" ", ""):
+        fail("LookFixation must branch on LOOK_COUNT_SECOND_RECOGNITION (recognition)")
+    i_recog = tick.find("SpeakRecognitionLine")
+    i_stage = tick.find("SpeakFixationStageWhisper")
+    if i_recog < 0 or i_stage < 0 or i_recog > i_stage:
+        fail("LookFixation must SpeakRecognitionLine (if), SpeakFixationStageWhisper (else)")
     if "MaybeSpeakNoticeLine" in tick:
-        fail("TickLookFixation must not call MaybeSpeakNoticeLine")
-    ok("TickLookFixation voice by count (silent / stage / recognition)")
+        fail("LookFixation must not call MaybeSpeakNoticeLine")
+    ok("LookFixation voice by count (recognition / hunger-stage)")
 
     stage = extract_function(text, "SpeakFixationStageWhisper")
     if "PickNoticeLine" not in stage:
         fail("SpeakFixationStageWhisper must use PickNoticeLine")
     if "ToastNoticeLine" not in stage:
         fail("SpeakFixationStageWhisper must ToastNoticeLine (stamps hour gate)")
-    ok("2nd look uses stage bank + ToastNoticeLine")
+    ok("3rd+ look uses hunger-stage bank + ToastNoticeLine")
 
     recog = extract_function(text, "SpeakRecognitionLine")
     if "PickRecognitionLine" not in recog:
@@ -153,7 +157,7 @@ def test_psc(text: str) -> None:
         load_awake,
     ):
         fail("LoadRecognitionLines must zero count before new String[64]")
-    ok("3rd+ recognition toast without hunger hour stamp")
+    ok("2nd look recognition toast without hunger hour stamp")
 
     if 'RECOGNITION_NAME_PROMPT_AT = 3' not in text and "RECOGNITION_NAME_PROMPT_AT=3" not in text:
         fail("RECOGNITION_NAME_PROMPT_AT must be 3")

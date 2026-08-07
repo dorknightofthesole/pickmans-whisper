@@ -174,6 +174,15 @@ def test_lab_script(lab: str) -> None:
         fail("Apply must read tint sliders")
     if "iWoundLabCount:WoundLab" not in apply:
         fail("Apply must read iWoundLabCount:WoundLab")
+    if "GetLookAimActor" in lab:
+        fail("DecayWoundLab must not use VoiceAlias.GetLookAimActor — use TargetScan.GetLookingAt")
+    if "Function TargetScan()" not in lab:
+        fail("DecayWoundLab must expose TargetScan() co-script cast")
+    resolve_aim = extract_function(lab, "ResolveLabApplyTarget")
+    if "GetLookingAt()" not in resolve_aim or "TargetScan()" not in resolve_aim:
+        fail("ResolveLabApplyTarget must aim via TargetScan().GetLookingAt()")
+    if "GetLookingAt()" not in apply or "TargetScan()" not in apply:
+        fail("DebugApplyWoundLabOverlays must aim via TargetScan().GetLookingAt() when LabCorpse unset")
     apply_all = extract_function(lab, "DebugApplyAllWoundLabOverlays")
     if "ApplyTintedAllWoundTemplates" not in apply_all:
         fail("DebugApplyAllWoundLabOverlays must call ApplyTintedAllWoundTemplates")

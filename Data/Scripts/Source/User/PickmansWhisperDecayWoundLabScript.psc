@@ -51,6 +51,10 @@ PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
 EndFunction
 
+PickmansWhisperTargetScanScript Function TargetScan()
+	Return (Self as Quest) as PickmansWhisperTargetScanScript
+EndFunction
+
 Function SetWoundLabStatus(String reason)
 	LastWoundLabStatus = reason
 	PickmansWhisperMainQuestScript m = Main()
@@ -470,9 +474,9 @@ Function DebugApplyWoundLabOverlays()
 	EndIf
 	Actor target = LabCorpse
 	If !target
-		PickmansWhisperMainQuestScript m = Main()
-		If m && m.VoiceAlias
-			target = m.VoiceAlias.GetLookAimActor()
+		PickmansWhisperTargetScanScript ts = TargetScan()
+		If ts
+			target = ts.GetLookingAt()
 		EndIf
 	EndIf
 	If !target || target == Game.GetPlayer()
@@ -495,9 +499,9 @@ EndFunction
 Actor Function ResolveLabApplyTarget()
 	Actor target = LabCorpse
 	If !target
-		PickmansWhisperMainQuestScript m = Main()
-		If m && m.VoiceAlias
-			target = m.VoiceAlias.GetLookAimActor()
+		PickmansWhisperTargetScanScript ts = TargetScan()
+		If ts
+			target = ts.GetLookingAt()
 		EndIf
 	EndIf
 	If !target || target == Game.GetPlayer()

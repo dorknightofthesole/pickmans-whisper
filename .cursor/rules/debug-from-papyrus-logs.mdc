@@ -22,21 +22,37 @@ When the user reports that something in-game is broken, missing, or "did nothing
 4. Also check in-mod diagnostics already written for this: MCM Debug fields
    (`sNotice`, `sVoiceDispatch`, `sFixation`, etc.) and **VOICE PATH DUMP**.
 
-## No silent Returns when the task failed
+## No silent Returns
 
-- If a function is supposed to perform work (speak, dispatch, apply overlay, load
-  a bank) and it **bails without doing that work**, it must leave evidence:
-  `Debug.Trace("PickmansWhisper: …")` and preferably MCM/status (`LastNoticeStatus`
-  or equivalent).
-- Expected idle skips that fire every tick (e.g. same fixation FormID, pre-bond)
-  may avoid spam, but **error / misconfig / missing script / blade gate / empty
-  bank / dispatch failure** must never be silent.
+Silent `Return` is a debug headache. If a function was invoked to do work (speak,
+dispatch, apply overlay, load a bank, count a look, etc.) and it **bails without
+doing that work**, leave evidence in the log.
+
+- Always `Debug.Trace("PickmansWhisper: …")` with a clear skip reason before
+  returning early — including **intentional** throttles / cooldowns / "same aim
+  poll N/M" / pre-bond / blade-not-drawn / empty bank.
+- Prefer also MCM/status when the feature has one (`LastNoticeStatus`,
+  `LastFixationStatus`, etc.).
+- **Do not** omit Trace to "avoid spam." Papyrus log volume is cheaper than a
+  feature that looks dead. If a path is truly hot, keep the Trace and make the
+  message short — never a bare `Return`.
 - Do not treat "compile green" or "contract tests green" as proof the in-game path
   ran. Logs and MCM heartbeats prove it.
 
 ## Example
 
 ```papyrus
+; BAD — silent; in-game looks broken with no Papyrus clue
+If SameAimPollCount < LOOK_SAME_AIM_POLLS
+	Return
+EndIf
+
+; GOOD — intentional skip still leaves a trail
+If SameAimPollCount < LOOK_SAME_AIM_POLLS
+	Debug.Trace("PickmansWhisper: fixation skip | same aim poll " + SameAimPollCount + "/" + LOOK_SAME_AIM_POLLS)
+	Return
+EndIf
+
 ; BAD — caller thinks voice ran; nothing did
 If !IsVoiceWeaponReady()
 	Return

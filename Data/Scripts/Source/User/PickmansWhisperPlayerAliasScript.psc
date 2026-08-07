@@ -26,6 +26,8 @@ Bool MagicEffectSniffRegistered = False
 Weapon Property CombatKnifeBase Auto Const
 Keyword Property PickmanModKeyword Auto Const
 Bool Property IsPickmansBladeEquipped = False Auto
+; True when the player has no weapon equipped (unarmed) — Slice Q beat-before-kill gate.
+Bool Property IsReadyToGiveBeating = False Auto
 
 Event OnAliasInit()
 	EnsurePlayerFill()
@@ -65,10 +67,12 @@ EndEvent
 Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
 	Debug.Notification("PW PlayerAlias: OnItemUnequipped")
 
-	if IsPickmansBlade(akSender, akBaseObject) || IsPickmansBladeEquipped
+	If IsPickmansBlade(akSender, akBaseObject) || IsPickmansBladeEquipped
 		Debug.Notification("PW PlayerAlias: Unequipping Pickman's Blade")
 		IsPickmansBladeEquipped = False
 	EndIf
+	; Re-evaluate unarmed / other weapon so IsReadyToGiveBeating stays accurate.
+	CheckIfBladeEquipped()
 EndEvent
 
 Function CheckIfBladeEquipped()
@@ -79,14 +83,28 @@ Function CheckIfBladeEquipped()
 EndFunction
 
 Function CheckAndHandleBladeReady(Actor PlayerRef, Form akBaseObject)
-	if IsPickmansBlade(PlayerRef, akBaseObject)
+	If !PlayerRef
+		Debug.Trace("PickmansWhisper: CheckAndHandleBladeReady skip | no player")
+		Return
+	EndIf
+
+	If IsPickmansBlade(PlayerRef, akBaseObject)
 		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
 		IsPickmansBladeEquipped = True
+		IsReadyToGiveBeating = False
 
 		PickmansWhisperMainQuestScript main = GetMain()
 		If main
 			main.StartBond("blade-equipped")
 		EndIf
+	ElseIf !PlayerRef.GetEquippedWeapon()
+		; Unarmed — no weapon in either hand.
+		IsPickmansBladeEquipped = False
+		IsReadyToGiveBeating = True
+		Debug.Trace("PickmansWhisper: PlayerAlias unarmed — IsReadyToGiveBeating=True")
+	Else
+		; Some other weapon equipped.
+		IsReadyToGiveBeating = False
 	EndIf
 EndFunction
 
