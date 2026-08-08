@@ -90,7 +90,7 @@ Function ToastEssentialChange(Actor ak, Bool abNowEssential)
 		verify = "\n\nWARNING: SetEssential did not take — IsEssential() reports " + ak.IsEssential()
 	EndIf
 	Debug.Trace("PickmansWhisper: beat-before-kill essential=" + abNowEssential + " id=0x" + GardenOfEden.GetHexFormID(ak) + " name=" + label)
-	Debug.MessageBox("Pickman's Whisper\n\n" + label + " is now " + stateWord + verify)
+	; Debug.MessageBox("Pickman's Whisper\n\n" + label + " is now " + stateWord + verify)
 EndFunction
 
 ; Shared apply — caller must already have verified eligibility + list capacity. No UI
