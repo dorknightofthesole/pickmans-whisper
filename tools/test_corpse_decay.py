@@ -334,8 +334,8 @@ def test_wiring(bed: str, main: str) -> None:
     maybe = extract_function(bed, "MaybeApplyBedGiftDecayOverlays")
     if "ApplyBedGiftDecayOverlays" not in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must call ApplyBedGiftDecayOverlays")
-    if "ParkWarmedBedCorpse" not in maybe:
-        fail("MaybeApplyBedGiftDecayOverlays must re-park after LooksMenu Enable when parked")
+    if "ParkWarmedBedCorpse" in maybe or "BedCorpseWarmed" in maybe:
+        fail("MaybeApplyBedGiftDecayOverlays must not re-park — warm-park path retired")
     if "BedOverlaysApplied = True" not in maybe and "BedOverlaysApplied=True" not in maybe.replace(" ", ""):
         fail("MaybeApplyBedGiftDecayOverlays must set BedOverlaysApplied")
     if "CreateBedCorpseAt" in maybe or "PlaceAtMe" in maybe:

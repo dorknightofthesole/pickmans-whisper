@@ -210,11 +210,11 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 
 ## Slice P — infamy
 
-- Whispers about a new serial killer in the commonwealth
-- References to past murders, could include the name of the victim that differs from the name the player gave them, but the player would realize it is "Cindy"
-- Whispers could increase after a murder
+Serial-killer reputation that builds as the player leaves a trail. Soft with **O** (witnesses / rumors) and **Q** (public performances). Honor direction: never urge or reward killing **essential** / protected story NPCs.
 
-
+- [ ] **P1 — Infamy on non-essential kill (named worth more)** — When the player kills a **non-essential** NPC (blade kill path / same gates as Slice B where applicable), increase an infamy score (or stage). **Named** victims raise it **more** than unnamed; essentials / story-protected never raise infamy. Persist across saves; MCM Debug readout optional.
+- [ ] **P2 — Infamy-staged whispers** — Line banks that escalate with infamy (new serial killer in the Commonwealth → references to past murders). Optional: world/rumor name that differs from a Potential Victim override so the player still recognizes “Cindy.”
+- [ ] **P3 — Whisper cadence after murder** — Ambient / notice pressure ramps shortly after an infamy-raising kill (cooldown so it does not spam).
 
 ## Slice Q — private cells + quests (stage, cult, shop, home)
 
@@ -242,4 +242,5 @@ Honor direction: no AAF/sex content here; never break essential/protected story 
 - Victim beat (K): FO4 `SetEssential` is often **ActorBase**-scoped (shared templates); must restore prior essential/protected state on K5 rearm; unarmed hit detection without false positives; don’t block later blade kill / satiation; never sticky-essential story NPCs.
 - Hunger pacing (L): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (O): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
+- Infamy (P): define “named” vs display-name / Potential Victim overrides for the higher weight; unnamed still awards a smaller bump; never award infamy for essentials; soft-stack with O rumors without double-counting every ambient toast.
 - Private cells / quests (Q): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs N overlap; Pickman house ownership without breaking Gallery bond trigger.

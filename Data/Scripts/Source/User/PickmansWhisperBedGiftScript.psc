@@ -21,7 +21,7 @@ Int TIMER_BED_DESPAWN = 22
 Int BED_POSE_MAX_TRIES = 20
 Float BED_POSE_POLL_SECONDS = 0.1
 Float BED_POSE_SETTLE_SECONDS = 0.5
-; ~former 2 KillerScan pulses; real-time oneshot after Present.
+; Real-time oneshot after overlays finish (MaybeApply arms ArmBedDespawnTimer).
 Float BED_DESPAWN_SECONDS = 4.0
 Float BED_DESPAWN_BUSY_RETRY_SECONDS = 0.5
 ; Desired sleep must be at least this many game hours (FO4 sleep times are days).
@@ -30,7 +30,6 @@ Float BED_MIN_SLEEP_HOURS = 3.0
 Actor BedCorpse = None
 ObjectReference BedAnchor = None
 Bool BedPresentedThisSleep = False
-Bool BedCorpseWarmed = False ; True only when parked under player (legacy park path)
 Bool BedSpawnBusy = False
 Bool BedOverlaysApplied = False ; True once Black Putrefaction path ran (pre-Enable when possible)
 Bool BedOverlaysBusy = False ; LooksMenu apply in flight — blocks re-entry
@@ -43,8 +42,6 @@ Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe before LooksMenu ones
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
 Float BED_SPAWN_OFFSET_Z = 36.0
-; -200 (≈2.9m) hides a parked body below floor/furniture while staying in the loaded bubble.
-Float BED_WARM_PARK_Z = -200.0
 String Property LastBedGiftStatus = "" Auto
 Int BedPoseTriesRemaining = -1 ; -1 = no pose sequence in flight
 Bool BedPoseAwaitingSettle = False
@@ -117,7 +114,7 @@ Event OnTimer(Int aiTimerID)
 	EndIf
 EndEvent
 
-; Arm despawn oneshot after Present. Cancelled by ClearBedCorpse.
+; Arm short despawn oneshot after paint. Cancelled by ClearBedCorpse.
 Function ArmBedDespawnTimer()
 	CancelTimer(TIMER_BED_DESPAWN)
 	Float d = BED_DESPAWN_SECONDS
@@ -141,7 +138,7 @@ Function OnBedDespawnTimer()
 		If busyElapsed > BED_OVERLAY_BUSY_TIMEOUT_SECONDS
 			Debug.Trace("PickmansWhisper: bed despawn busy watchdog — force clear after " + busyElapsed + "s busy")
 			BedOverlaysBusy = False
-			ClearBedCorpse(False)
+			ClearBedCorpse()
 			BedAnchor = None
 			BedPresentedThisSleep = False
 			SetBedGiftStatus("despawned (timer, busy watchdog)")
@@ -153,7 +150,7 @@ Function OnBedDespawnTimer()
 		Debug.Trace("PickmansWhisper: bed despawn hold | overlay apply in flight (" + busyElapsed + "s/" + BED_OVERLAY_BUSY_TIMEOUT_SECONDS + "s)")
 		Return
 	EndIf
-	ClearBedCorpse(False)
+	ClearBedCorpse()
 	BedAnchor = None
 	BedPresentedThisSleep = False
 	SetBedGiftStatus("despawned (timer " + BED_DESPAWN_SECONDS + "s)")
@@ -281,19 +278,6 @@ ObjectReference Function ResolveBedAnchor(ObjectReference akBed)
 		Return near
 	EndIf
 	Return None
-EndFunction
-
-Function ParkWarmedBedCorpse(Actor corpse)
-	Actor player = Game.GetPlayer()
-	If !corpse || !player
-		Return
-	EndIf
-	corpse.SetGhost(True)
-	GardenOfEden3.DisableCollision(corpse, True)
-	corpse.SetPosition(player.GetPositionX(), player.GetPositionY(), player.GetPositionZ() + BED_WARM_PARK_Z)
-	If !corpse.IsDisabled()
-		corpse.Disable(False)
-	EndIf
 EndFunction
 
 Function SnapBedCorpseToAnchor(Actor corpse, ObjectReference akAnchor)
@@ -430,7 +414,7 @@ Function RagdollBedPoseFallback(String reason)
 	FinishBedPresentTail()
 EndFunction
 
-Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer)
+Bool Function CreateBedCorpseAt(ObjectReference akAnchor)
 	If !akAnchor
 		Return False
 	EndIf
@@ -464,20 +448,14 @@ Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer
 		Debug.Notification("Pickman's Whisper: bed gift PlaceAtMe failed")
 		Return False
 	EndIf
-	; Assign before park/pose so kill-credit ignore sees this body.
+	; Assign before snap so kill-credit ignore sees this body.
 	BedCorpse = corpse
 	BedOverlaysApplied = False
-	; Never Pose/Wait here — SleepStart must stay snappy. Present poses on wake.
-	If abParkUnderPlayer
-		ParkWarmedBedCorpse(corpse)
-		BedCorpseWarmed = True
-	Else
-		SnapBedCorpseToAnchor(corpse, akAnchor)
-		corpse.SetGhost(True)
-		If !corpse.IsDisabled()
-			corpse.Disable(False)
-		EndIf
-		BedCorpseWarmed = False
+	; Never Pose/Wait here — SleepStart must stay snappy. Present poses next.
+	SnapBedCorpseToAnchor(corpse, akAnchor)
+	corpse.SetGhost(True)
+	If !corpse.IsDisabled()
+		corpse.Disable(False)
 	EndIf
 	BedSpawnBusy = False
 	Return True
@@ -511,7 +489,7 @@ Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
 			Return False
 		EndIf
 	EndIf
-	If !CreateBedCorpseAt(akAnchor, False)
+	If !CreateBedCorpseAt(akAnchor)
 		Return False
 	EndIf
 	BedAnchor = akAnchor
@@ -525,14 +503,13 @@ Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
 	Return True
 EndFunction
 
-Function ClearBedCorpse(Bool abStampCooldown = False)
+Function ClearBedCorpse()
 	CancelTimer(TIMER_BED_OVERLAYS)
 	CancelTimer(TIMER_BED_POSE)
 	CancelTimer(TIMER_BED_DESPAWN)
 	BedPoseTriesRemaining = -1
 	BedPoseAwaitingSettle = False
 	BedPoseAnchor = None
-	BedCorpseWarmed = False
 	BedSpawnBusy = False
 	BedOverlaysBusy = False
 	BedOverlaysApplied = False
@@ -549,9 +526,6 @@ Function ClearBedCorpse(Bool abStampCooldown = False)
 		Debug.Trace("PickmansWhisper: bed corpse cleared")
 	EndIf
 	BedCorpse = None
-	If abStampCooldown
-		LastBedGiftGameTime = Utility.GetCurrentGameTime()
-	EndIf
 EndFunction
 
 Function PresentBedCorpseOnWake()
@@ -562,7 +536,6 @@ Function PresentBedCorpseOnWake()
 		Return
 	EndIf
 	BedPresentedThisSleep = True
-	BedCorpseWarmed = False
 	; Cancel pending pre-present paint; FinishBedPresentTail re-arms after pose.
 	CancelTimer(TIMER_BED_OVERLAYS)
 	If BedCorpse.IsDisabled()
@@ -625,17 +598,9 @@ Function MaybeApplyBedGiftDecayOverlays()
 	EndIf
 	BedOverlaysBusy = True
 	BedOverlaysBusySinceReal = Utility.GetCurrentRealTime()
-	; LooksMenu Prepare may Enable — restore park/disable so the player never sees a fresh body.
-	Bool keepParked = BedCorpseWarmed && !BedPresentedThisSleep
-	Bool keepDisabled = BedCorpse.IsDisabled() && !BedPresentedThisSleep
 	decay.ApplyBedGiftDecayOverlays(BedCorpse)
 	BedOverlaysApplied = True
 	BedOverlaysBusy = False
-	If keepParked
-		ParkWarmedBedCorpse(BedCorpse)
-	ElseIf keepDisabled && BedCorpse && !BedCorpse.IsDisabled()
-		BedCorpse.Disable(False)
-	EndIf
 	; Visibility window starts after paint returns — not from Present.
 	ArmBedDespawnTimer()
 	SetBedGiftStatus("decay applied; despawn in " + BED_DESPAWN_SECONDS + "s | " + decay.LastCorpseDecayStatus)
@@ -654,7 +619,7 @@ Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndT
 	BedAnchor = anchor
 	; Drop leftover from a prior race so we never Present a stale dead body.
 	If HasLiveBedCorpse()
-		ClearBedCorpse(False)
+		ClearBedCorpse()
 	EndIf
 	; Spawn then Present on this stack (Create finishes before TrySpawn returns).
 	; Player may still occupy the bed — SnapIntoInteraction can fail → ragdoll fallback.
@@ -675,7 +640,7 @@ Function DebugForceBedGift()
 		Return
 	EndIf
 	BedPresentedThisSleep = False
-	ClearBedCorpse(False)
+	ClearBedCorpse()
 	ObjectReference anchor = ResolveBedAnchor(None)
 	If !anchor
 		anchor = player
@@ -692,7 +657,7 @@ Function DebugForceBedGift()
 EndFunction
 
 Function DebugClearBedGift()
-	ClearBedCorpse(False)
+	ClearBedCorpse()
 	BedAnchor = None
 	BedPresentedThisSleep = False
 	SetBedGiftStatus("cleared (debug)")

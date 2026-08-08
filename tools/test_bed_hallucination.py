@@ -288,20 +288,21 @@ def test_bed_script(bed: str) -> None:
     create = extract_function(bed, "CreateBedCorpseAt")
     if "FID_BED_SPAWN_NPC" not in create or "PlaceAtMe" not in create:
         fail("CreateBedCorpseAt must PlaceAtMe DiamondCityResidentF01NoodleMarket")
-    # Warm path must not kill inline; death happens in PoseBedCorpseInFurniture (wake/debug).
+    # Must not kill inline; death happens in PoseBedCorpseInFurniture (Present/debug).
     if re.search(r"\bKillSilent\s*\(", create) or re.search(r"\bKillBedCorpse\s*\(", create):
-        fail("CreateBedCorpseAt warm path must keep NPC alive until Present pose")
-    if "ParkWarmedBedCorpse" not in create or "SnapBedCorpseToAnchor" not in create:
-        fail("CreateBedCorpseAt must park (warm) or SnapBedCorpseToAnchor (bed place; pose deferred)")
+        fail("CreateBedCorpseAt must keep NPC alive until Present pose")
+    if "ParkWarmedBedCorpse" in create or "BedCorpseWarmed" in bed or "BED_WARM_PARK" in bed:
+        fail("KillerScan warm-park path retired — CreateBedCorpseAt snaps to bed only")
+    if "SnapBedCorpseToAnchor" not in create:
+        fail("CreateBedCorpseAt must SnapBedCorpseToAnchor (pose deferred to Present)")
     if "PoseBedCorpseInFurniture" in create:
         fail("CreateBedCorpseAt must not Pose/Wait — Present poses on wake (SleepStart must stay snappy)")
     if not re.search(r"PlaceAtMe\([^)]*False\s*\)", create):
         fail("CreateBedCorpseAt PlaceAtMe should use InitiallyDisabled=False")
     assign_at = create.find("BedCorpse = corpse")
-    park_at = create.find("ParkWarmedBedCorpse")
     snap_at = create.find("SnapBedCorpseToAnchor")
-    if assign_at < 0 or (park_at >= 0 and assign_at > park_at) or (snap_at >= 0 and assign_at > snap_at):
-        fail("CreateBedCorpseAt must assign BedCorpse before park/snap")
+    if assign_at < 0 or snap_at < 0 or assign_at > snap_at:
+        fail("CreateBedCorpseAt must assign BedCorpse before snap")
     if re.search(r"\bSetSilent\s*\(", bed):
         fail("PSC must not call SetSilent — not a FO4 native")
     if "MuteBedCorpseVoice" in bed or "SetOverrideVoiceType" in bed:
