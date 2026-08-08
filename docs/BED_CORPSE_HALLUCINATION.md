@@ -43,10 +43,11 @@ OnPlayerSleepStart (desired sleep >= 3h)
   → goal: already posed when player wakes (snap may fail if bed occupied)
 
 OnPlayerSleepStop
-  → interrupt → ClearBedCorpse; else ignore (already presented)
+  → no-op (must not touch BedCorpse — races SleepStart)
 
-TIMER_BED_DESPAWN (~4s after Present)
-  → ClearBedCorpse
+TIMER_BED_OVERLAYS → paint → ArmBedDespawnTimer (~4s after paint)
+  FinishBedPresentTail also arms a long safety despawn if paint never runs
+TIMER_BED_DESPAWN → ClearBedCorpse
 ```
 
 After deploy: quit FO4 to desktop so old suspended stacks die.

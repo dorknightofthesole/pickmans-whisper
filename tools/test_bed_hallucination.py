@@ -7,7 +7,7 @@ Locks:
   - Self-contained BedGiftScript (no KillerScan); Main shared callbacks only
   - Sole gameplay PlaceAtMe: SleepStart → TrySpawnBedCorpse → Present (experiment)
   - Own timers: TIMER_BED_OVERLAYS / TIMER_BED_POSE / TIMER_BED_DESPAWN
-  - SleepStop: interrupt cleanup only (no Present)
+  - SleepStop: empty no-op (no Clear/Present — avoids Start/Stop race)
   - FID_BED_SPAWN_NPC matches Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
   - ESP attaches both Main + BedGift scripts; Caprica/deploy compile BedGift
 
@@ -158,8 +158,10 @@ def test_bed_sleep_registration(bed: str) -> None:
     # Gate must Return before spawn path when short — status/trace, no silent skip.
     if "sleep start skip" not in start and "SetBedGiftStatus" not in start:
         fail("OnPlayerSleepStart short-sleep gate must SetBedGiftStatus / not silent")
-    if "HandlePlayerSleepStop" not in stop:
-        fail("BedGift OnPlayerSleepStop must call HandlePlayerSleepStop")
+    if "ClearBedCorpse" in stop or "PresentBedCorpseOnWake" in stop or "TrySpawnBedCorpse" in stop:
+        fail("OnPlayerSleepStop must be a no-op — no Clear/Present/spawn (Start/Stop race)")
+    if "HandlePlayerSleepStop" in bed:
+        fail("HandlePlayerSleepStop retired — SleepStop is empty")
     ok("BedGift owns bed gift sleep registration")
 
 
@@ -189,7 +191,6 @@ def test_main_shared_only(main: str) -> None:
         "MaybeWarmBedGiftBody",
         "RegisterBedGiftSleep",
         "HandlePlayerSleepStart",
-        "HandlePlayerSleepStop",
         "DebugForceBedGift",
         "DebugClearBedGift",
         "OnKillerScanDeadlines",
@@ -394,13 +395,6 @@ def test_bed_script(bed: str) -> None:
         fail("HandlePlayerSleepStart must spawn via TrySpawnBedCorpse (not raw PlaceAtMe)")
     if "MaybeApplyBedGiftDecayOverlays" in start:
         fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay")
-    stop = extract_function(bed, "HandlePlayerSleepStop")
-    if "PresentBedCorpseOnWake" in stop:
-        fail("HandlePlayerSleepStop must not Present — Present moved to SleepStart")
-    if "TrySpawnBedCorpse" in stop or "CreateBedCorpseAt" in stop or "PlaceAtMe" in stop:
-        fail("HandlePlayerSleepStop must not spawn")
-    if "sleep interrupted" not in stop:
-        fail("HandlePlayerSleepStop must still clear on interrupt")
     if "TIMER_BED_PRESENT" in bed:
         fail("TIMER_BED_PRESENT retired — no wake retries")
     strip = extract_function(bed, "StripBedCorpse")
@@ -422,8 +416,12 @@ def test_bed_script(bed: str) -> None:
         fail("PresentBedCorpseOnWake must FinishBedPresentTail on the no-pose-needed paths")
 
     tail = extract_function(bed, "FinishBedPresentTail")
-    if "ArmBedDespawnTimer" not in tail:
-        fail("FinishBedPresentTail must ArmBedDespawnTimer")
+    if "ArmBedDespawnTimer" in tail:
+        fail("FinishBedPresentTail must not ArmBedDespawnTimer — short despawn arms after overlays")
+    if "TIMER_BED_DESPAWN" not in tail or "StartTimer" not in tail:
+        fail("FinishBedPresentTail must arm long despawn safety (overlay oneshot can miss)")
+    if "BED_OVERLAY_BUSY_TIMEOUT_SECONDS" not in tail:
+        fail("FinishBedPresentTail safety delay must include BED_OVERLAY_BUSY_TIMEOUT_SECONDS")
     if "BedOverlaysBusy" not in bed:
         fail("BedGift must track BedOverlaysBusy against overlay re-entry")
     if "BedOverlaysApplied = False" not in tail:
@@ -434,10 +432,13 @@ def test_bed_script(bed: str) -> None:
         fail("FinishBedPresentTail must not CallFunctionNoWait MaybeApply")
     if "MaybeApplyBedGiftDecayOverlays()" in tail:
         fail("FinishBedPresentTail must not sync-apply decay overlays")
-    if "BedWakeHandledThisSleep" not in bed:
-        fail("BedGift must track BedWakeHandledThisSleep to ignore late duplicate SleepStop")
+    if "BedWakeHandledThisSleep" in bed:
+        fail("BedWakeHandledThisSleep retired with SleepStop handling")
     if "MaybeSpeakBedGiftWakeToast" not in tail:
         fail("FinishBedPresentTail must MaybeSpeakBedGiftWakeToast")
+    apply = extract_function(bed, "MaybeApplyBedGiftDecayOverlays")
+    if "ArmBedDespawnTimer" not in apply:
+        fail("MaybeApplyBedGiftDecayOverlays must ArmBedDespawnTimer after paint (or skip)")
     wake = extract_function(bed, "MaybeSpeakBedGiftWakeToast")
     if "ModConfigAlias.GetBedGiftWakeToast" not in wake:
         fail("MaybeSpeakBedGiftWakeToast must use ModConfig via ModConfigAlias")
