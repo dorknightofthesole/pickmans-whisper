@@ -103,16 +103,42 @@ Function CheckAndHandleBladeReady(Actor PlayerRef, Form akBaseObject)
 		PickmansWhisperMainQuestScript main = GetMain()
 		If main
 			main.StartBond("blade-equipped")
+			main.SyncBladeDrawnDebugLatch()
 		EndIf
 	ElseIf !PlayerRef.GetEquippedWeapon()
 		; Unarmed — no weapon in either hand.
 		IsPickmansBladeEquipped = False
 		IsReadyToGiveBeating = True
 		Debug.Trace("PickmansWhisper: PlayerAlias unarmed — IsReadyToGiveBeating=True")
+		PickmansWhisperMainQuestScript mainUnarmed = GetMain()
+		If mainUnarmed
+			mainUnarmed.SyncBladeDrawnDebugLatch()
+		EndIf
 	Else
 		; Some other weapon equipped.
+		IsPickmansBladeEquipped = False
 		IsReadyToGiveBeating = False
+		PickmansWhisperMainQuestScript mainOther = GetMain()
+		If mainOther
+			mainOther.SyncBladeDrawnDebugLatch()
+		EndIf
 	EndIf
+
+	; Slice K5 — any weapon (blade or other) ends beat-before-kill temp essential.
+	If !IsReadyToGiveBeating
+		PickmansWhisperBeatBeforeKillScript beat = GetBeatBeforeKill()
+		If beat
+			beat.ClearAllEssentialOnWeaponEquip()
+		EndIf
+	EndIf
+EndFunction
+
+PickmansWhisperBeatBeforeKillScript Function GetBeatBeforeKill()
+	Quest q = Game.GetFormFromFile(FID_MAIN_QUEST, "PickmansWhisper.esp") as Quest
+	If !q
+		Return None
+	EndIf
+	Return q as PickmansWhisperBeatBeforeKillScript
 EndFunction
 
 Bool Function IsPickmansBlade(Actor PlayerRef, Form akBaseObject)

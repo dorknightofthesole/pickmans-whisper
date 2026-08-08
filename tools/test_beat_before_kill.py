@@ -14,25 +14,18 @@ Design:
     tracked list — since IsValidTarget already refuses anyone currently essential,
     nothing not set by this script can ever appear there, so removal never touches an
     NPC essential for any other reason.
-  - J2 auto trigger reuses the EXISTING Actor.OnCombatStateChanged remote handler on
-    MainQuestScript (already registered on the player for TrackLivingNear) rather than
-    adding new registration. aeCombatState: 0=not in combat, 1=in combat (verified
-    against the real FO4 Actor.psc doc comment). State 1 -> apply (if unarmed + blade
-    owned + eligible).
+  - Gameplay entry is HandleBeatBeforeKill(Actor) on BeatBeforeKillScript, using a
+    wired PlayerAlias (blade equipped → clear her if tracked; IsReadyToGiveBeating →
+    apply). Main OnCombatStateChanged + RegisterTarget (unarmed branch) call it.
   - REMOVED — "out of combat -> clear" (both the direct aeCombatState==0 handler and
-    TickEssentialReconcile's !IsInCombat() check): confirmed live in the Papyrus log
-    that the reconcile poll stripped essential ~3s after an MCM toggle, before combat
-    even started, because "not currently fighting" raced with the exact moment an
-    essential actor "survives" lethal damage and collapses (combat state can flip to
-    not-in-combat as PART of that same moment). Weapon-equip is the only reversal now.
-  - J5 weapon-equip reversal hooks the EXISTING Actor.OnItemEquipped handler, clearing
-    ALL tracked actors (not just one) on ANY weapon equip, Pickman's Blade included.
+    TickEssentialReconcile's !IsInCombat() check): confirmed live in the Papyrus log.
+    Weapon-equip is the only full reversal now.
+  - J5 weapon-equip clear-all lives on PlayerAlias CheckAndHandleBladeReady (any weapon
+    → !IsReadyToGiveBeating → ClearAllEssentialOnWeaponEquip). Not on Main OnItemEquipped.
   - The debug dialog (Debug.MessageBox) is scoped to the AUTOMATIC path only —
-    OnPlayerEnterCombatWith and ClearAllEssentialOnWeaponEquip call it explicitly.
-    AddEssentialTracked/RemoveEssentialTracked stay UI-free so J1's MCM toggle (which
-    has its own status-row feedback) never triggers a dialog.
-  - TickEssentialReconcile is an ambient KillerScan-dispatched safety net (no StartTimer
-    of its own) that ONLY re-checks player weapon state — not combat state.
+    HandleBeatBeforeKill and ClearAllEssentialOnWeaponEquip call it explicitly.
+  - TickEssentialReconcile is an ambient KillerScan-dispatched safety net that re-checks
+    alias armed state (or GetEquippedWeapon fallback) — not combat state.
   - MCM button/status row lives on the Victims page (targets PickmansWhisperVictimsScript,
     matching every other Victims MCM action).
 
@@ -147,6 +140,9 @@ def test_manual_toggle() -> None:
 def test_auto_trigger() -> None:
     text = BEAT.read_text(encoding="utf-8", errors="replace")
 
+    if "PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const" not in text:
+        fail("BeatBeforeKillScript must declare PlayerAlias Auto Const (CK/VMAD bind)")
+
     # The two shared helpers must stay UI-free — J1's MCM path relies on that (its own
     # status row is its feedback); only the automatic path shows a dialog, and only by
     # calling ToastEssentialChange explicitly itself.
@@ -155,25 +151,31 @@ def test_auto_trigger() -> None:
         if "ToastEssentialChange" in fn:
             fail(f"{fn_name} must NOT call ToastEssentialChange — it must stay UI-free so J1's MCM toggle doesn't get a dialog")
 
-    enter = extract_function(text, "OnPlayerEnterCombatWith")
-    if "FindEssentialSlot(target)" not in enter:
-        fail("OnPlayerEnterCombatWith must skip if already tracked")
-    if "player.GetEquippedWeapon(0)" not in enter:
-        fail("OnPlayerEnterCombatWith must check the player is unarmed (fists only)")
-    if "m.PlayerHasBlade()" not in enter:
-        fail("OnPlayerEnterCombatWith must hard-require PlayerHasBlade() (no blade owned = no beat-before-kill fantasy)")
-    if "m.IsValidTarget(target)" not in enter:
-        fail("OnPlayerEnterCombatWith must gate on IsValidTarget(target)")
-    if "target.IsDead()" not in enter:
-        fail("OnPlayerEnterCombatWith must require living (feature: !IsDead)")
-    if "WasFriendlySeen(target)" not in enter:
-        fail("OnPlayerEnterCombatWith must require WasFriendlySeen (knife feature)")
-    if "AddEssentialTracked(target)" not in enter:
-        fail("OnPlayerEnterCombatWith must call AddEssentialTracked(target) on success")
-    if "EssentialCount >= ESSENTIAL_MAX" not in enter:
-        fail("OnPlayerEnterCombatWith must respect the tracked-list cap")
-    if "ToastEssentialChange(target, True)" not in enter:
-        fail("OnPlayerEnterCombatWith must explicitly call ToastEssentialChange(target, True) after applying (auto path shows the dialog)")
+    handle = extract_function(text, "HandleBeatBeforeKill")
+    if "PlayerAlias.IsPickmansBladeEquipped" not in handle:
+        fail("HandleBeatBeforeKill must check PlayerAlias.IsPickmansBladeEquipped (clear path)")
+    if "PlayerAlias.IsReadyToGiveBeating" not in handle:
+        fail("HandleBeatBeforeKill must check PlayerAlias.IsReadyToGiveBeating (apply path)")
+    if "m.PlayerHasBlade()" not in handle:
+        fail("HandleBeatBeforeKill must hard-require PlayerHasBlade() (no blade owned = no beat-before-kill fantasy)")
+    if "m.IsValidTarget(akTarget)" not in handle:
+        fail("HandleBeatBeforeKill must gate on IsValidTarget(akTarget)")
+    if "akTarget.IsDead()" not in handle:
+        fail("HandleBeatBeforeKill must require living (feature: !IsDead)")
+    if "WasFriendlySeen(akTarget)" not in handle:
+        fail("HandleBeatBeforeKill must require WasFriendlySeen (knife feature)")
+    if "AddEssentialTracked(akTarget)" not in handle:
+        fail("HandleBeatBeforeKill must call AddEssentialTracked(akTarget) on success")
+    if "EssentialCount >= ESSENTIAL_MAX" not in handle:
+        fail("HandleBeatBeforeKill must respect the tracked-list cap")
+    if "ToastEssentialChange(akTarget, True)" not in handle:
+        fail("HandleBeatBeforeKill must explicitly call ToastEssentialChange(akTarget, True) after applying")
+    if "RemoveEssentialTracked(akTarget)" not in handle:
+        fail("HandleBeatBeforeKill blade path must RemoveEssentialTracked(akTarget) when tracked")
+
+    wrap = extract_function(text, "OnPlayerEnterCombatWith")
+    if "HandleBeatBeforeKill(target)" not in wrap:
+        fail("OnPlayerEnterCombatWith must forward to HandleBeatBeforeKill")
 
     if "Function OnPlayerExitCombatWith" in text:
         fail("OnPlayerExitCombatWith must be removed — 'out of combat' reversal raced with an essential actor's own protected-collapse moment (confirmed live) and is gone for good, not just unused")
@@ -197,44 +199,62 @@ def test_auto_trigger() -> None:
     reconcile = extract_function(text, "TickEssentialReconcile")
     if "EssentialCount <= 0" not in reconcile:
         fail("TickEssentialReconcile must no-op cheaply when nothing is tracked")
-    if "GetEquippedWeapon(0)" not in reconcile:
-        fail("TickEssentialReconcile must re-check player weapon state (safety net for a missed OnItemEquipped)")
+    if "IsReadyToGiveBeating" not in reconcile and "GetEquippedWeapon(0)" not in reconcile:
+        fail("TickEssentialReconcile must re-check player armed state (alias or GetEquippedWeapon)")
     if "IsInCombat()" in reconcile:
         fail("TickEssentialReconcile must NOT re-check combat state — confirmed live this stripped essential within ~3s of an MCM toggle, before combat even started, because 'not currently fighting' raced with the essential-collapse moment it's supposed to protect")
 
-    ok("BeatBeforeKillScript auto trigger (J2), weapon-equip-only reversal (J5), dialog scoped to the auto path only")
+    ok("BeatBeforeKillScript HandleBeatBeforeKill + weapon-equip clear-all + dialog scoped to auto path")
 
 
 def test_main_wiring() -> None:
     text = MAIN.read_text(encoding="utf-8", errors="replace")
+    alias = (
+        ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
+    ).read_text(encoding="utf-8", errors="replace")
 
     combat_evt = extract_event(
         text, "Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatState)"
     )
-    if "OnPlayerEnterCombatWith(akTarget)" not in combat_evt:
-        fail("Actor.OnCombatStateChanged must call BeatBeforeKill().OnPlayerEnterCombatWith on aeCombatState==1")
+    if "HandleBeatBeforeKill(akTarget)" not in combat_evt:
+        fail("Actor.OnCombatStateChanged must call BeatBeforeKill().HandleBeatBeforeKill on aeCombatState==1")
     if "aeCombatState == 1" not in combat_evt:
         fail("Actor.OnCombatStateChanged must branch on aeCombatState==1 (verified against real FO4 Actor.psc: 0=not in combat, 1=in combat, 2=searching)")
     if "OnPlayerExitCombatWith" in combat_evt or "aeCombatState == 0" in combat_evt:
         fail("Actor.OnCombatStateChanged must NOT handle aeCombatState==0 for Slice K — confirmed live this raced with an essential actor's own protected-collapse moment and broke the feature; weapon-equip is the only reversal now")
 
-    item_evt = extract_event(
-        text, "Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)"
-    )
-    if "ClearAllEssentialOnWeaponEquip()" not in item_evt:
-        fail("Actor.OnItemEquipped must call BeatBeforeKill().ClearAllEssentialOnWeaponEquip() on any weapon equip")
-    # Must be in the "it's a weapon" branch (after the Weapon cast), not the non-weapon
-    # early-return branch above it.
-    weapon_cast_idx = item_evt.find("Weapon asW = akBaseObject as Weapon")
-    clear_call_idx = item_evt.find("ClearAllEssentialOnWeaponEquip()")
-    if weapon_cast_idx < 0 or clear_call_idx < weapon_cast_idx:
-        fail("ClearAllEssentialOnWeaponEquip() must be called in the confirmed-weapon branch, not before the Weapon cast")
+    reg = extract_function(text, "RegisterTarget")
+    if "HandleBeatBeforeKill(akTarget)" not in reg:
+        fail("RegisterTarget must call HandleBeatBeforeKill(akTarget) for living targets")
+    blade_flag = reg.find("isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped")
+    beat_call = reg.find("HandleBeatBeforeKill(akTarget)")
+    if blade_flag < 0 or beat_call < 0 or beat_call < blade_flag:
+        fail("RegisterTarget must call HandleBeatBeforeKill after reading IsPickmansBladeEquipped (blade clear + unarmed apply)")
+    # Must not be buried only inside the IsReadyToGiveBeating branch.
+    ready_idx = reg.find("IsReadyToGiveBeating")
+    if ready_idx >= 0 and beat_call > ready_idx:
+        fail("RegisterTarget HandleBeatBeforeKill must run before the IsReadyToGiveBeating branch so blade-equipped clears temp essential")
+
+    if "Event Actor.OnItemEquipped" in text or "Event Actor.OnItemUnequipped" in text:
+        fail("Main must not own OnItemEquipped/Unequipped — PlayerAlias owns drawn/K5; ownership is OnItemAdded/Removed")
+    if "RegisterForRemoteEvent(PlayerRef, \"OnItemEquipped\")" in text or "RegisterForRemoteEvent(PlayerRef, \"OnItemUnequipped\")" in text:
+        fail("Main must not RegisterForRemoteEvent OnItemEquipped/Unequipped")
+
+    ready = extract_function(alias, "CheckAndHandleBladeReady")
+    if "ClearAllEssentialOnWeaponEquip" not in ready:
+        fail("PlayerAlias CheckAndHandleBladeReady must ClearAllEssentialOnWeaponEquip when armed")
+    if "SyncBladeDrawnDebugLatch" not in ready:
+        fail("PlayerAlias CheckAndHandleBladeReady must SyncBladeDrawnDebugLatch on Main")
+
+    sync = extract_function(text, "SyncBladeDrawnDebugLatch")
+    if "PlayerAlias.IsPickmansBladeEquipped" not in sync:
+        fail("SyncBladeDrawnDebugLatch must mirror PlayerAlias.IsPickmansBladeEquipped")
 
     facade = extract_function(text, "BeatBeforeKill")
     if "PickmansWhisperBeatBeforeKillScript" not in facade:
         fail("MainQuestScript.BeatBeforeKill() facade must cast to PickmansWhisperBeatBeforeKillScript")
 
-    ok("MainQuestScript wiring: OnCombatStateChanged (enter only) + OnItemEquipped (any weapon) -> BeatBeforeKillScript")
+    ok("Main/Alias wiring: HandleBeatBeforeKill + Alias K5 clear + SyncBladeDrawnDebugLatch")
 
 
 def test_killer_scan_dispatch() -> None:
@@ -318,7 +338,21 @@ def test_esp_builder() -> None:
     text = ESP_BUILDER.read_text(encoding="utf-8", errors="replace")
     if '"PickmansWhisperBeatBeforeKillScript"' not in text:
         fail("build_hunger_spell_esp.py must attach PickmansWhisperBeatBeforeKillScript to the Main quest VMAD")
-    ok("ESP builder attaches BeatBeforeKillScript to Main quest")
+    if '"PickmansWhisperBeatBeforeKillScript": [' not in text and '"PickmansWhisperBeatBeforeKillScript":[' not in text:
+        # script_properties dict entry
+        if "PickmansWhisperBeatBeforeKillScript" not in text or "player_alias_prop" not in text:
+            fail("ESP builder must wire PlayerAlias onto BeatBeforeKillScript VMAD")
+    beat_props = text.find("PickmansWhisperBeatBeforeKillScript")
+    window = text[beat_props : beat_props + 200]
+    if "player_alias_prop" not in window and "PlayerAlias" not in window:
+        # look in script_properties block for Beat
+        idx = text.find('"PickmansWhisperBeatBeforeKillScript"')
+        if idx < 0:
+            fail("ESP builder must list BeatBeforeKillScript in script_properties with PlayerAlias")
+        chunk = text[idx : idx + 180]
+        if "player_alias_prop" not in chunk:
+            fail("ESP builder must bind player_alias_prop on BeatBeforeKillScript")
+    ok("ESP builder attaches BeatBeforeKillScript + PlayerAlias property")
 
 
 def test_deploy_gate() -> None:

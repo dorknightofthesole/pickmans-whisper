@@ -22,6 +22,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **O** | Witness support: flee/scream or attack; rumors of the "killer"                                 | Planned                                                                                                                                              |
 | **P** | Infamy / serial-killer whispers                                                                | Planned                                                                                                                                              |
 | **Q** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned                                                                                                                                              |
+| **R** | First blade acquire (inventory) — quest beat when the knife enters the player’s hands          | Planned                                                                                                                                              |
 
 
 
@@ -227,6 +228,18 @@ Large stretch: custom (or heavily edited) **private cells** and quests that turn
 
 Honor direction: no AAF/sex content here; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
 
+## Slice R — first blade acquire
+
+Today `OnItemAdded` / `OnItemRemoved` on **MainQuestScript** only flip ownership / bond flags. Drawn-weapon detection stays on PlayerAlias; **inventory ownership belongs on Main** (quest-level “you have the knife” state), not the alias.
+
+Design a real first-acquire beat when Pickman’s Blade first enters the player inventory.
+
+- [ ] **R1 — First acquire moment** — On first `OnItemAdded` that resolves as Pickman’s Blade (once per playthrough / save-persisted), deliver a dedicated toast / audio / quest stage (editable banks). Distinct from Gallery enter and from later re-equips. Soft with **A** bond intro; may eventually replace or subsume parts of `StartBond("added")` / **J3** bond deprecate.
+- [ ] **R2 — Re-acquire vs first** — Later adds (lost and found, console, stash) must not replay the first-acquire beat; optional quieter “knife returned” line TBD.
+- [ ] **R3 — Stop carrying (open)** — Unclear what should happen if the player drops, stores, or otherwise stops carrying the blade: mute voice only, freeze hunger, full “quest paused,” keep ownership forever once claimed, etc. Decide before coding removal side effects beyond today’s `OwnedPickmansBlade` clear.
+
+Honor direction: editable lines; no essential-NPC pressure; blade still gates kills / satiation when drawn.
+
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
@@ -244,3 +257,4 @@ Honor direction: no AAF/sex content here; never break essential/protected story 
 - Witnesses (O): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 - Infamy (P): define “named” vs display-name / Potential Victim overrides for the higher weight; unnamed still awards a smaller bump; never award infamy for essentials; soft-stack with O rumors without double-counting every ambient toast.
 - Private cells / quests (Q): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs N overlap; Pickman house ownership without breaking Gallery bond trigger.
+- First blade (R): one-shot first-acquire vs inventory churn / legendary instance FormIDs; don’t double-fire with Gallery bond; policy when they stop carrying still undecided.

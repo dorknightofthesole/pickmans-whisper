@@ -92,7 +92,7 @@ String Property DEBUG_BUILD = "C2-stable" Auto ; detection = C2-pipe filters; Se
 Bool RefreshDebugBusy = False
 Int Property KillScanTickCount = 0 Auto
 Bool KillScanArmAnnounced = False
-; Drawn latch — refreshed by GoE scan + OnItemEquipped
+; Drawn latch — mirrored from PlayerAlias via SyncBladeDrawnDebugLatch (+ GoE resync)
 Bool BladeCurrentlyDrawn = False
 Bool DrawnWeaponStateValid = False
 
@@ -301,8 +301,6 @@ Event OnQuestInit()
 	ResolveVanillaForms()
 	EnsureHungerSpell()
 	RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
-	RegisterForRemoteEvent(PlayerRef, "OnItemEquipped")
-	RegisterForRemoteEvent(PlayerRef, "OnItemUnequipped")
 	RegisterForRemoteEvent(PlayerRef, "OnItemAdded")
 	RegisterForRemoteEvent(PlayerRef, "OnItemRemoved")
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
@@ -362,8 +360,6 @@ Function HandleGameResume(String reason)
 	ResolveVanillaForms()
 	EnsureHungerSpell()
 	RegisterForRemoteEvent(PlayerRef, "OnPlayerLoadGame")
-	RegisterForRemoteEvent(PlayerRef, "OnItemEquipped")
-	RegisterForRemoteEvent(PlayerRef, "OnItemUnequipped")
 	RegisterForRemoteEvent(PlayerRef, "OnItemAdded")
 	RegisterForRemoteEvent(PlayerRef, "OnItemRemoved")
 	RegisterForRemoteEvent(PlayerRef, "OnCombatStateChanged")
@@ -447,6 +443,14 @@ Function RegisterTarget(Actor akTarget)
 
 	Bool isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped
 
+	; Slice K — blade: clear temp essential on her; unarmed: may apply. Gates itself.
+	If !IsTargetDead
+		PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+		If beat
+			beat.HandleBeatBeforeKill(akTarget)
+		EndIf
+	EndIf
+
 	If !IsTargetDead && isPickmansBladeEquipped
 		; Register for the events on this specific NPC
 		RegisterForRemoteEvent(akTarget, "OnDeath")
@@ -473,14 +477,12 @@ Function RegisterTarget(Actor akTarget)
 		;     Slice F
 
 	ElseIf !IsTargetDead && PlayerAlias.IsReadyToGiveBeating
-		; Not dead and currently tracked — blade away nudge (ModConfig needsBeatingWhisper).
+		; Not dead — blade away nudge (ModConfig needsBeatingWhisper).
 		If VoiceAlias
 			VoiceAlias.MaybeSpeakNeedsBeatingWhisper(akTarget)
 		Else
 			Debug.Trace("PickmansWhisper: RegisterTarget skip | VoiceAlias unbound (needsBeating)")
 		EndIf
-		; TODO handle beating use case
-		;     Slice K — victim beat-before-kill
 		Return
 	EndIf
 
@@ -668,7 +670,7 @@ function UnRegisterTarget(Actor akTarget)
 	UnregisterForRemoteEvent(akTarget, "OnDeath")
 	UnregisterForHitEvent(akTarget, PlayerRef)
 
-	Debug.Notification("PicknmansWhisper Debug: No longer tracking " + akTarget.GetDisplayName())
+	; Debug.Notification("PicknmansWhisper Debug: No longer tracking " + akTarget.GetDisplayName())
 EndFunction
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1101,47 +1103,7 @@ Function OnKillerScanCadence()
 	;EndIf
 EndFunction
 
-Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
-	Weapon asW = akBaseObject as Weapon
-	If !asW
-		If FormLooksLikePickmansBlade(akBaseObject, akReference)
-			RuntimeBladeForm = akBaseObject
-			MarkOwnedBlade("equipped")
-		EndIf
-		Return
-	EndIf
-	DrawnWeaponStateValid = True
-	
-	; Slice K5 — any weapon equip (Pickman's Blade included) ends the beat-before-kill
-	; scuffle; her death is meant to come from the blade normally, not while essential.
-	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
-	
-	If beat
-		beat.ClearAllEssentialOnWeaponEquip()
-	EndIf
-	
-	Bool isPickmans = FormLooksLikePickmansBlade(akBaseObject, akReference)
-	If !isPickmans && FormIsCombatKnife(akBaseObject)
-		; akReference often None — GoE sees the real equipped instance name/mods
-		isPickmans = (FindEquippedPickmansBladeIndex() >= 0)
-	EndIf
-
-	If isPickmans
-		BladeCurrentlyDrawn = True
-		RuntimeBladeForm = akBaseObject
-		MarkOwnedBlade("equipped")
-		
-		; Add Cloak
-	Else
-		BladeCurrentlyDrawn = False
-		ToastDebug("PW debug: other weapon DRAWN — " + akBaseObject.GetName())
-	EndIf
-EndEvent
-
-Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
-	; Drawn state cleared only when another weapon is equipped (FO4 unequip/re-equip flicker).
-EndEvent
-
+; Ownership: inventory add/remove. Drawn + bond-on-equip live on PlayerAlias.
 Event Actor.OnItemAdded(Actor akSender, Form akBaseItem, Int aiItemCount, ObjectReference akItemReference, ObjectReference akSourceContainer)
 	If FormLooksLikePickmansBlade(akBaseItem, akItemReference)
 		If akBaseItem as Weapon
@@ -1169,13 +1131,11 @@ Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatSta
 		TrackLivingNear(akTarget)
 		PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
 		If beat
-			beat.OnPlayerEnterCombatWith(akTarget)
+			beat.HandleBeatBeforeKill(akTarget)
 		EndIf
 	EndIf
-	; No aeCombatState==0 handling here — Slice J's essential reversal is weapon-equip
-	; only now (see PickmansWhisperBeatBeforeKillScript's top-of-file note: an "out of
-	; combat" reversal raced with an essential actor's own protected-collapse moment and
-	; actively broke the feature).
+	; No aeCombatState==0 handling here — Slice K essential reversal is weapon-equip
+	; only (PlayerAlias → ClearAllEssentialOnWeaponEquip).
 EndEvent
 
 Function ResolveVanillaForms()
@@ -1728,11 +1688,21 @@ EndFunction
 
 Bool Function IsBladeEquipped()
 	If !PlayerAlias
-		Debug.Trace("PickmansWhisper Error: RegisterTarget — PlayerAlias unbound")
+		Debug.Trace("PickmansWhisper Error: IsBladeEquipped — PlayerAlias unbound")
+		Return False
+	EndIf
+	Return PlayerAlias.IsPickmansBladeEquipped
+EndFunction
+
+; PlayerAlias owns drawn detection — keep Main debug latch in sync for GetDrawnWeaponDebugName.
+Function SyncBladeDrawnDebugLatch()
+	If !PlayerAlias
+		BladeCurrentlyDrawn = False
+		DrawnWeaponStateValid = False
 		Return
 	EndIf
-
-	return PlayerAlias.IsPickmansBladeEquipped
+	DrawnWeaponStateValid = True
+	BladeCurrentlyDrawn = PlayerAlias.IsPickmansBladeEquipped
 EndFunction
 
 ; Alias for kill checks — no sheath / empty-hand grace. Gun or fists = not ready.

@@ -384,6 +384,9 @@ def build_main_quest_payload() -> bytes:
                     mod_config_prop,
                     voice_alias_prop,
                 ],
+                "PickmansWhisperBeatBeforeKillScript": [
+                    player_alias_prop,
+                ],
                 "PickmansWhisperTargetScanScript": [
                     target_scan_main_prop,
                 ],

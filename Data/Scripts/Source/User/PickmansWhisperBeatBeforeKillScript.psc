@@ -1,22 +1,15 @@
 Scriptname PickmansWhisperBeatBeforeKillScript extends Quest
 {Slice K — victim beat-before-kill (temp essential; was roadmap Q / earlier J).
 K1: manual MCM Victims toggle (dialog-free — MCM's own status row is its feedback).
-K2-K5: automatic trigger when the player enters combat unarmed against an eligible NPC;
-cleared ONLY on weapon-equip (see the removed "out of combat" reversal note below).
-Dispatched from KillerScanScript as an ambient reconciliation safety net (weapon-state
-only) alongside the direct native-event triggers (OnCombatStateChanged / OnItemEquipped
-on MainQuestScript).
+K2–K5: Apply / clear via HandleBeatBeforeKill(Actor) using wired PlayerAlias blade/unarmed flags.
+Weapon-equip clear-all also from PlayerAlias (any weapon) + KillerScan TickEssentialReconcile safety net.
 
 REMOVED — "out of combat -> clear essential" (both the direct OnCombatStateChanged(0)
 handler and the reconcile poll's !IsInCombat() check): confirmed via live log evidence
-this actively broke the feature. The reconcile poll fired within ~3 seconds of an MCM
-K1 toggle and stripped essential from an NPC who was never even in combat yet, because
-"not currently fighting" was treated as "safe to clear" — which is also true the instant
-an essential actor "survives" lethal damage and collapses into the protected knockdown
-state, since combat state can flip to not-in-combat AS PART of that same moment. That
-race meant our own cleanup code could undo the protection at exactly the moment it was
-supposed to matter. Weapon-equip is the only reversal now: a deliberate, player-initiated
-action that can't fire mid-combat-resolution the way a combat-state transition can.}
+this actively broke the feature. Weapon-equip is the only reversal now.}
+
+; CK/VMAD: bound to PickmansWhisperPlayerCombat ALST 0 (same as Main.PlayerAlias).
+PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const
 
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
@@ -73,15 +66,8 @@ EndFunction
 ; Debug/UX visibility for the AUTOMATIC (J2/J5) path ONLY — deliberately NOT called from
 ; the shared Add/RemoveEssentialTracked helpers, so J1's MCM manual toggle stays silent
 ; (it already has its own feedback: the MCM status row + sBeatEssential checkbox). Callers
-; that want this dialog call it explicitly themselves: OnPlayerEnterCombatWith (apply) and
+; that want this dialog call it explicitly themselves: HandleBeatBeforeKill (apply) and
 ; ClearAllEssentialOnWeaponEquip (the only reversal left — see the top-of-file note).
-; Debug.MessageBox (pauses, requires an OK click) rather than a toast: a Debug.Notification
-; here was confirmed firing correctly in the log but easy to lose amid everything else
-; toasting during combat. NOTE: MessageBox pauses like any menu, so this WILL freeze the
-; fight the instant the auto trigger flips her essential mid-combat — a deliberate
-; tradeoff for debugging visibility right now, not the long-term answer (this codebase
-; otherwise reserves MessageBox for MCM Debug buttons only, never ambient gameplay
-; events, for exactly this reason).
 Function ToastEssentialChange(Actor ak, Bool abNowEssential)
 	If !ak
 		Return
@@ -164,34 +150,44 @@ Bool Function ToggleEssentialForAimed(Actor ak)
 	Return True
 EndFunction
 
-; J2 — auto trigger. Called from MainQuestScript's Actor.OnCombatStateChanged handler
-; when the PLAYER enters combat (aeCombatState==1) with `target`. Fists only (no weapon
-; equipped — that IS the beat-before-kill fantasy), blade owned (hard requirement — no
-; point starting this if there's no knife to finish her with later), same eligibility as
-; a valid knife-kill target (human, adult female, not essential/child/teammate, seen
-; non-hostile, alive).
-Function OnPlayerEnterCombatWith(Actor target)
+; Single gameplay entry — akTarget is the NPC. Uses wired PlayerAlias for blade/unarmed:
+;   blade equipped → clear essential on her if WE tracked her
+;   unarmed (IsReadyToGiveBeating) → apply temp essential (K2) when eligible
+Function HandleBeatBeforeKill(Actor akTarget)
+	If !akTarget
+		Return
+	EndIf
+	If !PlayerAlias
+		Debug.Trace("PickmansWhisper: ERROR HandleBeatBeforeKill — PlayerAlias unbound")
+		Return
+	EndIf
 	PickmansWhisperMainQuestScript m = Main()
-	If !m || !target
+	If !m
+		Debug.Trace("PickmansWhisper: ERROR HandleBeatBeforeKill — Main missing")
 		Return
 	EndIf
-	If FindEssentialSlot(target) >= 0
+
+	If PlayerAlias.IsPickmansBladeEquipped
+		If FindEssentialSlot(akTarget) >= 0
+			RemoveEssentialTracked(akTarget)
+			ToastEssentialChange(akTarget, False)
+			Debug.Trace("PickmansWhisper: beat-before-kill essential OFF (blade equipped) id=0x" + GardenOfEden.GetHexFormID(akTarget))
+		EndIf
+		Return
+	EndIf
+
+	If !PlayerAlias.IsReadyToGiveBeating
+		Return
+	EndIf
+	If FindEssentialSlot(akTarget) >= 0
 		Return ; already tracked (e.g. via J1) — nothing to do
-	EndIf
-	Actor player = Game.GetPlayer()
-	If !player
-		Return
-	EndIf
-	If player.GetEquippedWeapon(0)
-		Debug.Trace("PickmansWhisper: beat-before-kill skip | player has a weapon equipped")
-		Return
 	EndIf
 	If !m.PlayerHasBlade()
 		Debug.Trace("PickmansWhisper: beat-before-kill skip | player does not own Pickman's Blade")
 		Return
 	EndIf
-	If target.IsDead() || !m.IsValidTarget(target) || !m.WasFriendlySeen(target)
-		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target id=" + target.GetFormID())
+	If akTarget.IsDead() || !m.IsValidTarget(akTarget) || !m.WasFriendlySeen(akTarget)
+		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target id=" + akTarget.GetFormID())
 		Return
 	EndIf
 	EnsureEssentialList()
@@ -199,21 +195,20 @@ Function OnPlayerEnterCombatWith(Actor target)
 		Debug.Trace("PickmansWhisper: ERROR beat-before-kill — tracking list full (" + ESSENTIAL_MAX + ")")
 		Return
 	EndIf
-	AddEssentialTracked(target)
-	Debug.Trace("PickmansWhisper: beat-before-kill essential ON (auto, unarmed combat) id=0x" + GardenOfEden.GetHexFormID(target))
-	ToastEssentialChange(target, True)
+	AddEssentialTracked(akTarget)
+	Debug.Trace("PickmansWhisper: beat-before-kill essential ON (auto, unarmed) id=0x" + GardenOfEden.GetHexFormID(akTarget))
+	ToastEssentialChange(akTarget, True)
 EndFunction
 
-; J5 reversal — player equipped ANY weapon. Called from MainQuestScript's
-; Actor.OnItemEquipped handler. Clears every currently-tracked actor (not scoped to one
-; scuffle partner) — matches "if the player arms a weapon" without qualification. This is
-; now the ONLY reversal trigger — see the top-of-file note on why "out of combat" was
-; removed.
+; Compat wrapper — combat enter / older call sites.
+Function OnPlayerEnterCombatWith(Actor target)
+	HandleBeatBeforeKill(target)
+EndFunction
+
+; J5 reversal — player equipped ANY weapon. Called from PlayerAlias after blade/unarmed
+; flags update. Clears every currently-tracked actor.
 Function ClearAllEssentialOnWeaponEquip()
 	EnsureEssentialList()
-	; Iterate from the end and remove via the shared helper — safe because RemoveEssentialAt
-	; always swaps the current LAST element into the removed slot, which never disturbs any
-	; index at or before the one we're currently on.
 	Int i = EssentialCount - 1
 	While i >= 0
 		Actor ak = EssentialActors[i]
@@ -228,12 +223,17 @@ Function ClearAllEssentialOnWeaponEquip()
 	EndWhile
 EndFunction
 
-; Ambient safety net — dispatched from KillerScanScript every tick (Killer Orchestrator;
-; no StartTimer here). Cheap no-op unless the list is non-empty AND the player is armed.
-; Catches only "player re-armed but OnItemEquipped somehow didn't fire cleanly" — does
-; NOT re-check combat state (see the top-of-file note on why that was actively dangerous).
+; Ambient safety net — KillerScan every tick. Cheap no-op unless list non-empty AND armed.
 Function TickEssentialReconcile()
 	If EssentialCount <= 0
+		Return
+	EndIf
+	If PlayerAlias
+		If PlayerAlias.IsReadyToGiveBeating
+			Return
+		EndIf
+		Debug.Trace("PickmansWhisper: beat-before-kill reconcile — player armed (alias), clearing all")
+		ClearAllEssentialOnWeaponEquip()
 		Return
 	EndIf
 	Actor player = Game.GetPlayer()
