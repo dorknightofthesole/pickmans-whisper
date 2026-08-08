@@ -17,8 +17,8 @@ Ephemeral vignette — `DiamondCityResidentF01NoodleMarket` (unnamed female Resi
 | Despawn | BedGift oneshot `TIMER_BED_DESPAWN` (`BED_DESPAWN_SECONDS = 4.0`) after present |
 | Beat | Pure vignette: `BondStarted` + blade equipped + MCM `bBedGift` + `ModConfig.txt` `bedGiftCooldownDays` (default `0.5` ≈ 12h; Debug **Bed gift every sleep** bypasses; default ON) |
 | Hunger | No gate, no satiation (`KillSilent` credit suppressed; body never enters kill-watch) |
-| One body | **Primary spawn**: SleepStart `TrySpawnBedCorpse` place+disable (no Pose/LooksMenu on sleep stack). Present poses on wake. |
-| Overlay timer | BedGift one-shot `TIMER_BED_OVERLAYS` (does not reschedule from OnTimer). SleepStart / Present **arm** it via `KickBedOverlayOnesHot`. |
+| One body | **EXPERIMENT**: SleepStart `TrySpawnBedCorpse` then `PresentBedCorpseOnWake` (posed before wake). SleepStop = interrupt cleanup only. Snap may fail while player occupies bed → ragdoll. |
+| Overlay timer | BedGift one-shot `TIMER_BED_OVERLAYS` (does not reschedule from OnTimer). Spawn / Present **arm** it via `KickBedOverlayOnesHot`. |
 | Spawn form | `Fallout4.esm` `DiamondCityResidentF01NoodleMarket` (`0x4DEC`, unnamed Resident; kill via `KillSilent(player)`) |
 | Placement | Prefer `Enable` → wait `Is3DLoaded` → `SnapIntoInteraction(bed)` → settle → `KillSilent` → strip. Fallback if no 3D / snap fails: `KillSilent` + `SetPosition` + ragdoll (never call Snap without 3D). |
 | Gear | `UnequipAll` + `RemoveAllItems` (before snap + after kill) |
@@ -36,17 +36,17 @@ Slice H: decay prefers apply while disabled — SleepStart arms `TIMER_BED_OVERL
 ## When to spawn (G1)
 
 ```text
-OnPlayerSleepStart
-  → save BedAnchor
-  → TrySpawnBedCorpse (PlaceAtMe + disable) when blade/bond/MCM/cooldown ok
-  → KickBedOverlayOnesHot (no LooksMenu on sleep stack)
+OnPlayerSleepStart (desired sleep >= 3h)
+  → clear stale BedCorpse
+  → TrySpawnBedCorpse (PlaceAtMe + disable)
+  → PresentBedCorpseOnWake (Enable → TIMER_BED_POSE snap/kill → despawn arm + toast)
+  → goal: already posed when player wakes (snap may fail if bed occupied)
 
 OnPlayerSleepStop
-  → if BedCorpse: Enable → TIMER_BED_POSE (Is3DLoaded / Snap / settle) → KillSilent → strip
-  → FinishBedPresentTail: ArmBedDespawnTimer + KickBedOverlayOnesHot + toast
+  → interrupt → ClearBedCorpse; else ignore (already presented)
 
-TIMER_BED_DESPAWN (~4s)
-  → ClearBedCorpse (hold/retry if overlay busy; watchdog force-clear)
+TIMER_BED_DESPAWN (~4s after Present)
+  → ClearBedCorpse
 ```
 
 After deploy: quit FO4 to desktop so old suspended stacks die.

@@ -2,8 +2,9 @@ Scriptname PickmansWhisperBedGiftScript extends Quest
 {Slice G — bed corpse hallucination. Attached to PickmansWhisperMain alongside MainQuestScript.}
 
 ; Self-contained Slice G — sleep events + own timers. No KillerScan coupling.
-; SleepStart: PlaceAtMe (blade/bond/MCM/cooldown gates via Main). SleepStop: Present.
-; Overlay / pose / despawn: TIMER_BED_* oneshots (LooksMenu never on sleep stack).
+; EXPERIMENT: full pipeline on SleepStart (spawn + Present) so she is posed before wake.
+; SleepStop: interrupt cleanup only (Present moved off wake — may undo if snap-in-bed fails).
+; Overlay / pose / despawn: TIMER_BED_* oneshots.
 ; Main helpers only: OnBedGiftStatus, SetKnifeKillCreditSuppressed, NoteBackgroundDead,
 ; BondStarted / IsBladeEquipped / ModConfigAlias / VoiceAlias.
 
@@ -22,6 +23,8 @@ Float BED_POSE_SETTLE_SECONDS = 0.5
 ; ~former 2 KillerScan pulses; real-time oneshot after Present.
 Float BED_DESPAWN_SECONDS = 4.0
 Float BED_DESPAWN_BUSY_RETRY_SECONDS = 0.5
+; Desired sleep must be at least this many game hours (FO4 sleep times are days).
+Float BED_MIN_SLEEP_HOURS = 3.0
 
 Actor BedCorpse = None
 ObjectReference BedAnchor = None
@@ -35,7 +38,7 @@ Float BedOverlaysBusySinceReal = 0.0 ; real-time BedOverlaysBusy went True; desp
 Float LastBedGiftGameTime = -999.0
 ; BedOverlaysBusy can get stuck True if a save loads mid-apply. Short watchdog so a
 ; stuck busy flag cannot block every later sleep from spawning a fresh body.
-Float BED_OVERLAY_BUSY_TIMEOUT_SECONDS = 8.0
+Float BED_OVERLAY_BUSY_TIMEOUT_SECONDS = 12.0
 Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe before LooksMenu oneshot
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
@@ -64,6 +67,13 @@ Function RegisterBedGiftSleep()
 EndFunction
 
 Event OnPlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
+	; af* times are game days (same units as GetCurrentGameTime).
+	Float plannedDays = afDesiredSleepEndTime - afSleepStartTime
+	If plannedDays < (BED_MIN_SLEEP_HOURS / 24.0)
+		SetBedGiftStatus("sleep start skip: need >= " + (BED_MIN_SLEEP_HOURS as Int) + " game hours")
+		Debug.Trace("PickmansWhisper: bed gift sleep start skip | plannedHours=" + (plannedDays * 24.0))
+		Return
+	EndIf
 	HandlePlayerSleepStart(afSleepStartTime, afDesiredSleepEndTime, akBed)
 EndEvent
 
@@ -627,38 +637,38 @@ Function MaybeApplyBedGiftDecayOverlays()
 EndFunction
 
 Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
-	Debug.Notification("HandlePlayerSleepStart")
-	Debug.Trace("HandlePlayerSleepStart")
+	Debug.Trace("PickmansWhisper Debug: HandlePlayerSleepStart")
 
 	BedPresentedThisSleep = False
 	BedWakeHandledThisSleep = False
 	ObjectReference anchor = ResolveBedAnchor(akBed)
-	If anchor
-		BedAnchor = anchor
-		If !HasLiveBedCorpse()
-			; Sole gameplay spawn — place+disable only; no Pose/Wait/LooksMenu here.
-			If TrySpawnBedCorpse(anchor, False)
-				Debug.Trace("PickmansWhisper: bed gift spawned at SleepStart")
-			EndIf
-		ElseIf !BedOverlaysApplied
-			KickBedOverlayOnesHot(BED_OVERLAY_DELAY)
-		EndIf
-		If HasLiveBedCorpse()
-			SetBedGiftStatus("sleep start — bed saved; overlays=" + BedOverlaysApplied + " | " + LastBedGiftStatus)
-		Else
-			SetBedGiftStatus("sleep start — no body | " + LastBedGiftStatus)
-		EndIf
-	Else
+	If !anchor
 		SetBedGiftStatus("sleep start: no bed anchor")
+		Return
+	EndIf
+	BedAnchor = anchor
+	; Drop leftover from a prior race so we never Present a stale dead body.
+	If HasLiveBedCorpse()
+		ClearBedCorpse(False)
+	EndIf
+	; Spawn then Present on this stack (Create finishes before TrySpawn returns).
+	; Player may still occupy the bed — SnapIntoInteraction can fail → ragdoll fallback.
+	If TrySpawnBedCorpse(anchor, False)
+		Debug.Trace("PickmansWhisper: bed gift spawned at SleepStart")
+	EndIf
+	If HasLiveBedCorpse()
+		PresentBedCorpseOnWake()
+	Else
+		SetBedGiftStatus("sleep start — no body | " + LastBedGiftStatus)
 	EndIf
 EndFunction
 
 Function HandlePlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
-	Debug.Notification("HandlePlayerSleepStop")
-	Debug.Trace("HandlePlayerSleepStop")
+	Debug.Trace("PickmansWhisper Debug: HandlePlayerSleepStop")
 
+	; Present runs on SleepStart now — wake only cleans up interrupted sleeps.
 	If abInterrupted
-		If BedPresentedThisSleep
+		If BedPresentedThisSleep || HasLiveBedCorpse()
 			ClearBedCorpse(False)
 		EndIf
 		BedAnchor = None
@@ -667,17 +677,8 @@ Function HandlePlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
 		SetBedGiftStatus("sleep interrupted")
 		Return
 	EndIf
-	ObjectReference anchor = ResolveBedAnchor(akBed)
-	If anchor
-		BedAnchor = anchor
-	EndIf
-	If HasLiveBedCorpse()
-		PresentBedCorpseOnWake()
-		Return
-	EndIf
-	; FO4 can fire a late second SleepStop after Present/despawn — don't clobber status.
-	If BedWakeHandledThisSleep
-		Debug.Trace("PickmansWhisper: bed gift | wake stop ignored (already handled this sleep)")
+	If BedWakeHandledThisSleep || BedPresentedThisSleep
+		Debug.Trace("PickmansWhisper: bed gift | wake stop ignored (presented on SleepStart)")
 		Return
 	EndIf
 	SetBedGiftStatus("wake: no body — skip")

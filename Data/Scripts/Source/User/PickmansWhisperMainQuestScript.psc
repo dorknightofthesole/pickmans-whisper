@@ -441,7 +441,6 @@ Function RegisterTarget(Actor akTarget)
 
 	; Hard gate + knife feature: must have been seen non-hostile while alive.
 	If !IsValidTarget(akTarget) || !WasFriendlySeen(akTarget)
-		; Debug.Notification("PW RegisterTarget: " + akTarget.GetDisplayName() + " is not a valid target. Their kind holds no interest.")
 		Debug.Trace("PickmansWhisper: RegisterTarget reject | " + akTarget.GetDisplayName() + " id=" + akTarget.GetFormID())
 		Return
 	EndIf
@@ -3921,38 +3920,38 @@ EndFunction
 Bool Function IsValidTarget(Actor ak)
 	If !ak || ak == PlayerRef
 		Debug.Trace("PickmansWhisper: target reject | no actor")
-		Debug.Notification("PickmansWhisper: target reject | no actor")
+		; Debug.Notification("PickmansWhisper: target reject | no actor")
 		Return False
 	EndIf
 	Int id = ak.GetFormID()
 	If ak.IsDisabled()
 		Debug.Trace("PickmansWhisper: target reject | disabled id=" + id)
-		Debug.Notification("PickmansWhisper: target reject | disabled id=" + id)
+		; Debug.Notification("PickmansWhisper: target reject | disabled id=" + id)
 		Return False
 	EndIf
 	If IsChildNpc(ak) && !IsChildTargetAllowed()
 		Debug.Trace("PickmansWhisper: target reject | child id=" + id)
-		Debug.Notification("PickmansWhisper: target reject | child id=" + id)
+		; Debug.Notification("PickmansWhisper: target reject | child id=" + id)
 		Return False
 	EndIf
 	If ak.IsPlayerTeammate()
 		Debug.Trace("PickmansWhisper: target reject | teammate id=" + id)
-		Debug.Notification("PickmansWhisper: target reject | teammate id=" + id)
+		; Debug.Notification("PickmansWhisper: target reject | teammate id=" + id)
 		Return False
 	EndIf
 	If IsStoryEssential(ak)
 		Debug.Trace("PickmansWhisper: target reject | essential (story NPC) id=" + id)
-		Debug.Notification("PickmansWhisper: target reject | essential (story NPC) id=" + id)
+		; Debug.Notification("PickmansWhisper: target reject | essential (story NPC) id=" + id)
 		Return False
 	EndIf
 	If !IsHumanNpc(ak)
 		Debug.Trace("PickmansWhisper: target reject | not human NPC id=" + id)
-		Debug.Notification("PickmansWhisper: target reject | not human NPC id=" + id)
+		; Debug.Notification("PickmansWhisper: target reject | not human NPC id=" + id)
 		Return False
 	EndIf
 	If !IsAdultFemale(ak)
 		Debug.Trace("PickmansWhisper: target reject | not adult female id=" + id)
-		Debug.Notification("PickmansWhisper: target reject | not adult female id=" + id)
+		; Debug.Notification("PickmansWhisper: target reject | not adult female id=" + id)
 		Return False
 	EndIf
 	Return True

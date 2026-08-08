@@ -70,15 +70,12 @@ Event OnPlayerLoadGame()
 EndEvent
 
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
-    Debug.Notification("PW PlayerAlias: OnItemEquipped")
-	CheckAndHandleBladeReady(akSender, akBaseObject)
+    CheckAndHandleBladeReady(akSender, akBaseObject)
 EndEvent
 
 Event Actor.OnItemUnequipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
-	Debug.Notification("PW PlayerAlias: OnItemUnequipped")
-
 	If IsPickmansBlade(akSender, akBaseObject) || IsPickmansBladeEquipped
-		Debug.Notification("PW PlayerAlias: Unequipping Pickman's Blade")
+		Debug.Trace("PW PlayerAlias: Unequipping Pickman's Blade")
 		IsPickmansBladeEquipped = False
 	EndIf
 	; Re-evaluate unarmed / other weapon so IsReadyToGiveBeating stays accurate.
@@ -99,7 +96,7 @@ Function CheckAndHandleBladeReady(Actor PlayerRef, Form akBaseObject)
 	EndIf
 
 	If IsPickmansBlade(PlayerRef, akBaseObject)
-		Debug.Notification("PW PlayerAlias: Pickman's Blade is Equipped")
+		Debug.Trace("PW PlayerAlias: Pickman's Blade is Equipped")
 		IsPickmansBladeEquipped = True
 		IsReadyToGiveBeating = False
 
@@ -125,7 +122,7 @@ Bool Function IsPickmansBlade(Actor PlayerRef, Form akBaseObject)
         
         ; WornHasKeyword checks the player's actively equipped gear for the injected keyword
         If PlayerRef.WornHasKeyword(PickmanModKeyword)
-            Debug.Notification("Pickman's Blade Mod Detected!")
+            Debug.Trace("Pickman's Blade Mod Detected!")
             return true
         EndIf
     EndIf

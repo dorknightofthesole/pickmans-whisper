@@ -5,9 +5,9 @@ Locks:
   - FO4 sleep stubs; BedGift owns RegisterForPlayerSleep + OnPlayerSleep*
   - PlayerAlias re-arms via GetBedGift().RegisterBedGiftSleep every load
   - Self-contained BedGiftScript (no KillerScan); Main shared callbacks only
-  - Sole gameplay PlaceAtMe: SleepStart → TrySpawnBedCorpse → DiamondCityResidentF01NoodleMarket
+  - Sole gameplay PlaceAtMe: SleepStart → TrySpawnBedCorpse → Present (experiment)
   - Own timers: TIMER_BED_OVERLAYS / TIMER_BED_POSE / TIMER_BED_DESPAWN
-  - SnapIntoInteraction + KillSilent; SleepStop never spawn
+  - SleepStop: interrupt cleanup only (no Present)
   - FID_BED_SPAWN_NPC matches Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
   - ESP attaches both Main + BedGift scripts; Caprica/deploy compile BedGift
 
@@ -147,6 +147,17 @@ def test_bed_sleep_registration(bed: str) -> None:
     stop = extract_function(bed, "OnPlayerSleepStop")
     if "HandlePlayerSleepStart" not in start:
         fail("BedGift OnPlayerSleepStart must call HandlePlayerSleepStart")
+    if "BED_MIN_SLEEP_HOURS" not in start and "BED_MIN_SLEEP_HOURS" not in bed:
+        fail("BedGift must declare BED_MIN_SLEEP_HOURS")
+    if "BED_MIN_SLEEP_HOURS = 3.0" not in bed and "BED_MIN_SLEEP_HOURS=3.0" not in bed:
+        fail("BED_MIN_SLEEP_HOURS must be 3.0")
+    if "/ 24.0" not in start and "/24.0" not in start:
+        fail("OnPlayerSleepStart must compare planned sleep in game days (hours/24)")
+    if "HandlePlayerSleepStart" not in start:
+        fail("OnPlayerSleepStart must still call HandlePlayerSleepStart when duration ok")
+    # Gate must Return before spawn path when short — status/trace, no silent skip.
+    if "sleep start skip" not in start and "SetBedGiftStatus" not in start:
+        fail("OnPlayerSleepStart short-sleep gate must SetBedGiftStatus / not silent")
     if "HandlePlayerSleepStop" not in stop:
         fail("BedGift OnPlayerSleepStop must call HandlePlayerSleepStop")
     ok("BedGift owns bed gift sleep registration")
@@ -377,17 +388,19 @@ def test_bed_script(bed: str) -> None:
     start = extract_function(bed, "HandlePlayerSleepStart")
     if "TrySpawnBedCorpse" not in start:
         fail("HandlePlayerSleepStart must TrySpawnBedCorpse (sole gameplay spawn)")
+    if "PresentBedCorpseOnWake" not in start:
+        fail("HandlePlayerSleepStart must PresentBedCorpseOnWake (SleepStart-present experiment)")
     if "PlaceAtMe" in start:
         fail("HandlePlayerSleepStart must spawn via TrySpawnBedCorpse (not raw PlaceAtMe)")
     if "MaybeApplyBedGiftDecayOverlays" in start:
         fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay")
     stop = extract_function(bed, "HandlePlayerSleepStop")
-    if "PresentBedCorpseOnWake" not in stop:
-        fail("HandlePlayerSleepStop must PresentBedCorpseOnWake when corpse ready")
+    if "PresentBedCorpseOnWake" in stop:
+        fail("HandlePlayerSleepStop must not Present — Present moved to SleepStart")
     if "TrySpawnBedCorpse" in stop or "CreateBedCorpseAt" in stop or "PlaceAtMe" in stop:
         fail("HandlePlayerSleepStop must not spawn")
-    if "BedWakeHandledThisSleep" not in stop:
-        fail("HandlePlayerSleepStop must ignore late stop after Present")
+    if "sleep interrupted" not in stop:
+        fail("HandlePlayerSleepStop must still clear on interrupt")
     if "TIMER_BED_PRESENT" in bed:
         fail("TIMER_BED_PRESENT retired — no wake retries")
     strip = extract_function(bed, "StripBedCorpse")
