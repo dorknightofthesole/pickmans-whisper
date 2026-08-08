@@ -1,76 +1,75 @@
 Scriptname PickmansWhisperBedGiftScript extends Quest
 {Slice G — bed corpse hallucination. Attached to PickmansWhisperMain alongside MainQuestScript.}
 
-; Former Debug.MessageBox — no pause; full text in Papyrus.0.log (filter PickmansWhisper).
-Function DiagNotify(String msg)
-	If msg == ""
-		Return
-	EndIf
-	Debug.Trace("PickmansWhisper: DIAG " + msg)
-	Debug.Notification(msg)
-EndFunction
-
-; Sleep events register on PlayerAlias; alias → Main façades → this script.
-; ONE PlaceAtMe site for gameplay: MaybeWarmBedGiftBody (KillerScan NoWait while awake).
-; SleepStart/Stop never spawn — Start saves bed, Stop Presents or skips. No retries.
-; Despawn pulses on KillerScan. Overlay LooksMenu: experimental one-shot StartTimer
-; (does not reschedule) so KillerScan TickBusy never waits on paint.
+; Self-contained Slice G — sleep events + own timers. No KillerScan coupling.
+; SleepStart: PlaceAtMe (blade/bond/MCM/cooldown gates via Main). SleepStop: Present.
+; Overlay / pose / despawn: TIMER_BED_* oneshots (LooksMenu never on sleep stack).
+; Main helpers only: OnBedGiftStatus, SetKnifeKillCreditSuppressed, NoteBackgroundDead,
+; BondStarted / IsBladeEquipped / ModConfigAlias / VoiceAlias.
 
 Int FID_BED_SPAWN_NPC = 0x00004DEC ; Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
 Int FID_KYWD_ANIM_FURN_BED = 0x000BC262 ; AnimFurnBedAnims
 Int FID_KYWD_ANIM_FURN_FLOOR_BED = 0x0003ADA2 ; AnimFurnFloorBedAnims
 String MOD_NAME = "PickmansWhisper"
-; One-shot overlay timer — not KillerScan's TIMER_KILLER_SCAN (16).
 Int TIMER_BED_OVERLAYS = 20
 ; One-shot re-arming pose timer — polls Is3DLoaded / settles after Snap without
 ; ever blocking the SleepStop wake stack (Utility.Wait does not re-arm itself).
 Int TIMER_BED_POSE = 21
+Int TIMER_BED_DESPAWN = 22
 Int BED_POSE_MAX_TRIES = 20
 Float BED_POSE_POLL_SECONDS = 0.1
 Float BED_POSE_SETTLE_SECONDS = 0.5
+; ~former 2 KillerScan pulses; real-time oneshot after Present.
+Float BED_DESPAWN_SECONDS = 4.0
+Float BED_DESPAWN_BUSY_RETRY_SECONDS = 0.5
 
 Actor BedCorpse = None
 ObjectReference BedAnchor = None
 Bool BedPresentedThisSleep = False
 Bool BedWakeHandledThisSleep = False ; Present ran (or interrupted) — ignore late duplicate SleepStop
-Bool BedCorpseWarmed = False
+Bool BedCorpseWarmed = False ; True only when parked under player (legacy park path)
 Bool BedSpawnBusy = False
 Bool BedOverlaysApplied = False ; True once Black Putrefaction path ran (pre-Enable when possible)
 Bool BedOverlaysBusy = False ; LooksMenu apply in flight — blocks re-entry
 Float BedOverlaysBusySinceReal = 0.0 ; real-time BedOverlaysBusy went True; despawn timeout basis
 Float LastBedGiftGameTime = -999.0
-; Despawn after this many KillerScan deadline pulses once presented (2nd pulse clears).
-Int BED_DESPAWN_SCANS = 2
-Int BedDespawnScanCount = -1 ; -1 = not armed; 0+ counting KillerScan iterations after present
-; BedOverlaysBusy can get stuck True if a save loads mid-apply (the in-flight call that
-; would clear it is gone), or the apply can just be slow under load. While any corpse
-; is "live" (even dead-but-uncleared), MaybeWarmBedGiftBody/TrySpawnBedCorpse refuse to
-; make a new one — so a long timeout here doesn't just delay despawn, it blocks every
-; subsequent sleep from spawning ANY corpse until this one finally clears. Tried 45s:
-; textures got more time to finish, but spawn reliability (the higher priority) broke —
-; every sleep attempt just re-presented the same stuck corpse instead of a fresh one.
-; Reliable spawn/despawn matters more than textures finishing, so keep this short.
+; BedOverlaysBusy can get stuck True if a save loads mid-apply. Short watchdog so a
+; stuck busy flag cannot block every later sleep from spawning a fresh body.
 Float BED_OVERLAY_BUSY_TIMEOUT_SECONDS = 8.0
-Int BedDespawnBusyHoldCount = 0 ; diagnostic only now — gating is by BedOverlaysBusySinceReal
-Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe; keeps KillerScan snappy
-Float BedOverlaysAtReal = 0.0
+Float BED_OVERLAY_DELAY = 0.25 ; real-time after PlaceAtMe before LooksMenu oneshot
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
 Float BED_SPAWN_OFFSET_Z = 36.0
-; -2000 (≈28m) reliably clipped the parked corpse outside the cell's loaded 3D bounds,
-; causing Is3DLoaded() to time out on wake (ragdoll fallback instead of the sleeping
-; pose). -200 (≈2.9m) still hides her below any normal floor/furniture while ghosted +
-; disabled, but stays well inside the same loaded bubble so 3D resolves reliably.
+; -200 (≈2.9m) hides a parked body below floor/furniture while staying in the loaded bubble.
 Float BED_WARM_PARK_Z = -200.0
 String Property LastBedGiftStatus = "" Auto
 Int BedPoseTriesRemaining = -1 ; -1 = no pose sequence in flight
 Bool BedPoseAwaitingSettle = False
 ObjectReference BedPoseAnchor = None
+Bool BedSleepRegistered = False
 
 PickmansWhisperMainQuestScript Function Main()
 	; Caprica forbids Self-as-sibling; Quest intermediate is the FO4 co-script cast.
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
+
+; Re-register every load (alias OnAliasInit / OnPlayerLoadGame → GetBedGift).
+Function RegisterBedGiftSleep()
+	If BedSleepRegistered
+		UnregisterForPlayerSleep()
+	EndIf
+	RegisterForPlayerSleep()
+	BedSleepRegistered = True
+	Debug.Trace("PickmansWhisper: BedGift registered PlayerSleep")
+EndFunction
+
+Event OnPlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
+	HandlePlayerSleepStart(afSleepStartTime, afDesiredSleepEndTime, akBed)
+EndEvent
+
+Event OnPlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
+	HandlePlayerSleepStop(abInterrupted, akBed)
+EndEvent
 
 ; Arm one-shot overlay timer. Does not reschedule from OnTimer.
 Function KickBedOverlayOnesHot(Float afDelay)
@@ -101,76 +100,59 @@ Event OnTimer(Int aiTimerID)
 		AdvanceBedPoseSequence()
 		Return
 	EndIf
+	If aiTimerID == TIMER_BED_DESPAWN
+		OnBedDespawnTimer()
+		Return
+	EndIf
 EndEvent
 
-; KillerScan cadence — despawn count sync/cheap. Overlay: arm one-shot (not LooksMenu here).
-Function OnKillerScanDeadlines()
+; Arm despawn oneshot after Present. Cancelled by ClearBedCorpse.
+Function ArmBedDespawnTimer()
+	CancelTimer(TIMER_BED_DESPAWN)
+	Float d = BED_DESPAWN_SECONDS
+	If d < 0.1
+		d = 0.1
+	EndIf
+	StartTimer(d, TIMER_BED_DESPAWN)
+	Debug.Trace("PickmansWhisper: bed despawn armed delay=" + d)
+EndFunction
+
+Function OnBedDespawnTimer()
+	If !HasLiveBedCorpse()
+		Return
+	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	; Real-time resets to ~0 on every new game process, but this is a saved field — a
-	; stale value from a longer previous session would make busyElapsed negative and
-	; never exceed the timeout, deadlocking despawn again exactly like before the fix.
 	If BedOverlaysBusySinceReal > now
 		BedOverlaysBusySinceReal = 0.0
 	EndIf
-	If BedOverlaysAtReal > 0.0 && now >= BedOverlaysAtReal
-		BedOverlaysAtReal = 0.0
-		If HasLiveBedCorpse() && !BedOverlaysApplied && !BedOverlaysBusy
-			KickBedOverlayOnesHot(0.05)
-		ElseIf !HasLiveBedCorpse()
-			Debug.Trace("PickmansWhisper: bed overlay deadline skip | no live corpse")
+	If BedOverlaysBusy
+		Float busyElapsed = now - BedOverlaysBusySinceReal
+		If busyElapsed > BED_OVERLAY_BUSY_TIMEOUT_SECONDS
+			Debug.Trace("PickmansWhisper: bed despawn busy watchdog — force clear after " + busyElapsed + "s busy")
+			BedOverlaysBusy = False
+			ClearBedCorpse(False)
+			BedAnchor = None
+			BedPresentedThisSleep = False
+			SetBedGiftStatus("despawned (timer, busy watchdog)")
+			Return
 		EndIf
+		; LooksMenu still in flight — retry shortly instead of yanking the actor.
+		CancelTimer(TIMER_BED_DESPAWN)
+		StartTimer(BED_DESPAWN_BUSY_RETRY_SECONDS, TIMER_BED_DESPAWN)
+		Debug.Trace("PickmansWhisper: bed despawn hold | overlay apply in flight (" + busyElapsed + "s/" + BED_OVERLAY_BUSY_TIMEOUT_SECONDS + "s)")
+		Return
 	EndIf
-	; Count completed KillerScan pulses after Present; clear on the Nth (default 2).
-	If BedDespawnScanCount >= 0
-		If !HasLiveBedCorpse()
-			BedDespawnScanCount = -1
-			BedDespawnBusyHoldCount = 0
-		Else
-			BedDespawnScanCount += 1
-			Debug.Trace("PickmansWhisper: bed despawn scan " + BedDespawnScanCount + "/" + BED_DESPAWN_SCANS)
-			If BedDespawnScanCount >= BED_DESPAWN_SCANS
-				If BedOverlaysBusy
-					BedDespawnBusyHoldCount += 1
-					Float busyElapsed = now - BedOverlaysBusySinceReal
-					If busyElapsed > BED_OVERLAY_BUSY_TIMEOUT_SECONDS
-						; BedOverlaysBusy has been stuck true too long — most likely a save
-						; loaded mid-apply and the in-flight call that would clear it is
-						; gone. Force-clear and despawn anyway rather than deadlock forever.
-						Debug.Trace("PickmansWhisper: bed despawn busy watchdog — force clear after " + busyElapsed + "s busy")
-						BedOverlaysBusy = False
-						BedDespawnBusyHoldCount = 0
-						ClearBedCorpse(False)
-						BedAnchor = None
-						BedPresentedThisSleep = False
-						SetBedGiftStatus("despawned (KillerScan pulse " + BED_DESPAWN_SCANS + ", busy watchdog)")
-					Else
-						; LooksMenu apply is still in flight — deleting now yanks the actor
-						; out from under it. Hold at threshold and retry next pulse instead.
-						BedDespawnScanCount = BED_DESPAWN_SCANS
-						Debug.Trace("PickmansWhisper: bed despawn hold | overlay apply in flight (" + busyElapsed + "s/" + BED_OVERLAY_BUSY_TIMEOUT_SECONDS + "s)")
-					EndIf
-				Else
-					BedDespawnBusyHoldCount = 0
-					ClearBedCorpse(False)
-					BedAnchor = None
-					BedPresentedThisSleep = False
-					SetBedGiftStatus("despawned (KillerScan pulse " + BED_DESPAWN_SCANS + ")")
-				EndIf
-			EndIf
-		EndIf
-	EndIf
-EndFunction
-
-Function ScheduleBedGiftDecayOverlays()
-	BedOverlaysAtReal = Utility.GetCurrentRealTime() + BED_OVERLAY_DELAY
+	ClearBedCorpse(False)
+	BedAnchor = None
+	BedPresentedThisSleep = False
+	SetBedGiftStatus("despawned (timer " + BED_DESPAWN_SECONDS + "s)")
 EndFunction
 
 Function SetBedGiftStatus(String reason)
 	LastBedGiftStatus = reason
 	PickmansWhisperMainQuestScript m = Main()
 	If m
-		m.LastBedGiftStatus = reason
-		m.ToastDebug("PW bed: " + reason)
+		m.OnBedGiftStatus(reason)
 	EndIf
 	Debug.Trace("PickmansWhisper: bed gift | " + reason)
 EndFunction
@@ -471,76 +453,23 @@ Bool Function CreateBedCorpseAt(ObjectReference akAnchor, Bool abParkUnderPlayer
 		Debug.Notification("Pickman's Whisper: bed gift PlaceAtMe failed")
 		Return False
 	EndIf
-	; Assign before park/pose so killscan never tracks or satiates on this body.
+	; Assign before park/pose so kill-credit ignore sees this body.
 	BedCorpse = corpse
 	BedOverlaysApplied = False
-	; Never Pose/Wait here — SleepStart and warm must stay snappy. Present poses on wake.
+	; Never Pose/Wait here — SleepStart must stay snappy. Present poses on wake.
 	If abParkUnderPlayer
 		ParkWarmedBedCorpse(corpse)
+		BedCorpseWarmed = True
 	Else
 		SnapBedCorpseToAnchor(corpse, akAnchor)
 		corpse.SetGhost(True)
 		If !corpse.IsDisabled()
 			corpse.Disable(False)
 		EndIf
+		BedCorpseWarmed = False
 	EndIf
-	BedCorpseWarmed = True
 	BedSpawnBusy = False
 	Return True
-EndFunction
-
-Function MaybeWarmBedGiftBody()
-	If BedSpawnBusy
-		SetBedGiftStatus("warm skip: spawn busy")
-		Return
-	EndIf
-	If HasLiveBedCorpse()
-		Return
-	EndIf
-	If BedPresentedThisSleep
-		SetBedGiftStatus("warm skip: already presented this sleep")
-		Return
-	EndIf
-	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetBedGiftStatus("warm skip: Main missing")
-		Return
-	EndIf
-	If !m.BondStarted
-		SetBedGiftStatus("warm skip: not bonded")
-		Return
-	EndIf
-	If !m.IsBladeEquipped()
-		SetBedGiftStatus("warm skip: Pickman's Blade not equipped")
-		Return
-	EndIf
-	If !IsBedGiftEnabled()
-		SetBedGiftStatus("warm skip: MCM bed gift off")
-		Return
-	EndIf
-	If !BedGiftCooldownReady()
-		Float cd = -1.0
-		If m.ModConfigAlias
-			cd = m.ModConfigAlias.GetBedGiftCooldownDays()
-		EndIf
-		If cd <= 0.0
-			SetBedGiftStatus("warm skip: bedGiftCooldownDays missing/invalid — check ModConfig.txt")
-		Else
-			SetBedGiftStatus("warm skip: cooldown (~" + ((cd * 24.0) as Int) + "h game time)")
-		EndIf
-		Return
-	EndIf
-	Actor player = Game.GetPlayer()
-	If !player
-		SetBedGiftStatus("warm skip: no player")
-		Return
-	EndIf
-	If CreateBedCorpseAt(player, True)
-		; Decay while parked/disabled so Enable on wake is already Black Putrefaction.
-		ScheduleBedGiftDecayOverlays()
-		SetBedGiftStatus("warmed (awaiting sleep); decay scheduled")
-		Debug.Trace("PickmansWhisper: bed gift body pre-warmed while awake")
-	EndIf
 EndFunction
 
 Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
@@ -575,12 +504,12 @@ Bool Function TrySpawnBedCorpse(ObjectReference akAnchor, Bool abForce = False)
 		Return False
 	EndIf
 	BedAnchor = akAnchor
-	; Disabled after pose — schedule decay before Present Enable when possible.
-	ScheduleBedGiftDecayOverlays()
+	; Arm LooksMenu oneshot — never sync-apply on sleep stack.
+	KickBedOverlayOnesHot(BED_OVERLAY_DELAY)
 	If abForce
-		SetBedGiftStatus("spawned (debug force); decay scheduled")
+		SetBedGiftStatus("spawned (debug force); decay armed")
 	Else
-		SetBedGiftStatus("spawned (sleep-start fallback); decay scheduled")
+		SetBedGiftStatus("spawned (sleep start); decay armed")
 	EndIf
 	Return True
 EndFunction
@@ -588,12 +517,10 @@ EndFunction
 Function ClearBedCorpse(Bool abStampCooldown = False)
 	CancelTimer(TIMER_BED_OVERLAYS)
 	CancelTimer(TIMER_BED_POSE)
+	CancelTimer(TIMER_BED_DESPAWN)
 	BedPoseTriesRemaining = -1
 	BedPoseAwaitingSettle = False
 	BedPoseAnchor = None
-	BedDespawnScanCount = -1
-	BedDespawnBusyHoldCount = 0
-	BedOverlaysAtReal = 0.0
 	BedCorpseWarmed = False
 	BedSpawnBusy = False
 	BedOverlaysBusy = False
@@ -626,8 +553,8 @@ Function PresentBedCorpseOnWake()
 	BedPresentedThisSleep = True
 	BedWakeHandledThisSleep = True
 	BedCorpseWarmed = False
-	; Prefer decay already applied while disabled (warm / SleepStart). Clear pending overlay deadline.
-	BedOverlaysAtReal = 0.0
+	; Cancel pending pre-present paint; FinishBedPresentTail re-arms after pose.
+	CancelTimer(TIMER_BED_OVERLAYS)
 	If BedCorpse.IsDisabled()
 		BedCorpse.Enable(False)
 	EndIf
@@ -659,8 +586,7 @@ Function FinishBedPresentTail()
 	; and the deferred continuation can starve for minutes until something resets the
 	; VM's stack queue, e.g. a save load) — seen in logs as overlay-kick tracing fine
 	; but despawn never arming. Whatever else in this tail stalls, despawn must not.
-	BedDespawnScanCount = 0 ; next KillerScan pulses count 1..BED_DESPAWN_SCANS then clear
-	BedDespawnBusyHoldCount = 0
+	ArmBedDespawnTimer()
 	LastBedGiftGameTime = Utility.GetCurrentGameTime()
 	; Pose/Kill/Strip can wipe LooksMenu — do not trust pre-present paint.
 	BedOverlaysApplied = False
@@ -668,11 +594,11 @@ Function FinishBedPresentTail()
 	; Slightly after pose settle / 3D wait so LooksMenu is not racing Enable.
 	KickBedOverlayOnesHot(0.35)
 	MaybeSpeakBedGiftWakeToast()
-	SetBedGiftStatus("presented; despawn after " + BED_DESPAWN_SCANS + " KillerScan pulses | " + LastBedGiftStatus)
+	SetBedGiftStatus("presented; despawn in " + BED_DESPAWN_SECONDS + "s | " + LastBedGiftStatus)
 EndFunction
 
 ; Slice H — DeathMarks + Black Putrefaction. Prefer while disabled (pre-Enable).
-; Runs from TIMER_BED_OVERLAYS OnTimer only — never on KillerScan / SleepStop stack.
+; Runs from TIMER_BED_OVERLAYS OnTimer only — never on SleepStart/Stop stack.
 Function MaybeApplyBedGiftDecayOverlays()
 	If !BedCorpse || BedOverlaysApplied || BedOverlaysBusy
 		Return
@@ -701,23 +627,23 @@ Function MaybeApplyBedGiftDecayOverlays()
 EndFunction
 
 Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
+	Debug.Notification("HandlePlayerSleepStart")
+	Debug.Trace("HandlePlayerSleepStart")
+
 	BedPresentedThisSleep = False
 	BedWakeHandledThisSleep = False
 	ObjectReference anchor = ResolveBedAnchor(akBed)
 	If anchor
 		BedAnchor = anchor
 		If !HasLiveBedCorpse()
-			; Fallback when awake warm missed (KillerScan busy / quick sleep after load).
-			; Place+disable only — no Pose/Wait/LooksMenu on the sleep stack.
+			; Sole gameplay spawn — place+disable only; no Pose/Wait/LooksMenu here.
 			If TrySpawnBedCorpse(anchor, False)
-				Debug.Trace("PickmansWhisper: bed gift spawned at SleepStart (warm fallback)")
+				Debug.Trace("PickmansWhisper: bed gift spawned at SleepStart")
 			EndIf
+		ElseIf !BedOverlaysApplied
+			KickBedOverlayOnesHot(BED_OVERLAY_DELAY)
 		EndIf
 		If HasLiveBedCorpse()
-			; Schedule decay on KillerScan — never sync-apply LooksMenu during SleepStart.
-			If !BedOverlaysApplied
-				ScheduleBedGiftDecayOverlays()
-			EndIf
 			SetBedGiftStatus("sleep start — bed saved; overlays=" + BedOverlaysApplied + " | " + LastBedGiftStatus)
 		Else
 			SetBedGiftStatus("sleep start — no body | " + LastBedGiftStatus)
@@ -728,6 +654,9 @@ Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndT
 EndFunction
 
 Function HandlePlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
+	Debug.Notification("HandlePlayerSleepStop")
+	Debug.Trace("HandlePlayerSleepStop")
+
 	If abInterrupted
 		If BedPresentedThisSleep
 			ClearBedCorpse(False)
@@ -751,7 +680,7 @@ Function HandlePlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
 		Debug.Trace("PickmansWhisper: bed gift | wake stop ignored (already handled this sleep)")
 		Return
 	EndIf
-	SetBedGiftStatus("wake: no warmed body — skip")
+	SetBedGiftStatus("wake: no body — skip")
 EndFunction
 
 Function DebugForceBedGift()
@@ -783,4 +712,13 @@ Function DebugClearBedGift()
 	BedPresentedThisSleep = False
 	SetBedGiftStatus("cleared (debug)")
 	DiagNotify("Pickman's Whisper\n\nBed gift cleared.\n" + LastBedGiftStatus)
+EndFunction
+
+; Former Debug.MessageBox — no pause; full text in Papyrus.0.log (filter PickmansWhisper).
+Function DiagNotify(String msg)
+	If msg == ""
+		Return
+	EndIf
+	Debug.Trace("PickmansWhisper: DIAG " + msg)
+	Debug.Notification(msg)
 EndFunction

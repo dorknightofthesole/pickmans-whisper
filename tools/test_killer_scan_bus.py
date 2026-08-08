@@ -112,10 +112,10 @@ def test_killer_scan_producer() -> None:
         fail("DispatchListeners must actively CallFunctionNoWait SyncOverlaysFromKillerScanSnapshot (ambient decay re-enabled)")
     if "NoteFromKillerScanSnapshot" not in dispatch:
         fail("DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
-    if "OnKillerScanDeadlines" not in dispatch:
-        fail("DispatchListeners must call BedGift OnKillerScanDeadlines")
-    if 'CallFunctionNoWait("SyncFromKillerScanSnapshot"' not in dispatch:
-        fail("DispatchListeners must CallFunctionNoWait DesperateRename SyncFromKillerScanSnapshot")
+    if "OnKillerScanDeadlines" in dispatch or "MaybeWarmBedGiftBody" in dispatch:
+        fail("DispatchListeners must not touch BedGift (self-contained sleep/timers)")
+    if "SyncFromKillerScanSnapshot" in dispatch:
+        fail("DispatchListeners must not SyncFromKillerScanSnapshot — Slice I rename is aim-driven")
     if not (i_voice < i_knife):
         fail("voice HandleWhisperVoice must run BEFORE knife NoWait")
     on_timer = extract_function(text, "OnTimer")
@@ -172,17 +172,22 @@ def test_starttimer_inventory() -> None:
         fail(f"KillerScan StartTimer must only use TIMER_KILLER_SCAN, got {killer}")
     bed_overlays = [s for s in bed if "TIMER_BED_OVERLAYS" in s]
     bed_pose = [s for s in bed if "TIMER_BED_POSE" in s]
+    bed_despawn = [s for s in bed if "TIMER_BED_DESPAWN" in s]
     if len(bed_overlays) != 1:
         fail(f"expected exactly 1 BedGift StartTimer(TIMER_BED_OVERLAYS) oneshot, got {bed_overlays}")
     if len(bed_pose) < 1:
         fail(f"expected BedGift StartTimer(TIMER_BED_POSE) re-arming poll, got {bed_pose}")
-    if len(bed_overlays) + len(bed_pose) != len(bed):
-        fail(f"unexpected BedGift StartTimer beyond TIMER_BED_OVERLAYS/TIMER_BED_POSE, got {bed}")
+    if len(bed_despawn) < 1:
+        fail(f"expected BedGift StartTimer(TIMER_BED_DESPAWN), got {bed_despawn}")
+    if len(bed_overlays) + len(bed_pose) + len(bed_despawn) != len(bed):
+        fail(
+            f"unexpected BedGift StartTimer beyond overlays/pose/despawn, got {bed}"
+        )
     if other:
         fail(f"no other feature StartTimer allowed, got {other}")
     ok(
         f"StartTimer inventory: KillerScan parked-or-TIMER_KILLER_SCAN ({len(killer)}); "
-        "BedGift overlays/pose"
+        "BedGift overlays/pose/despawn"
     )
 
 
@@ -237,15 +242,19 @@ def test_listeners() -> None:
     if "StartTimer(" in victims:
         fail("VictimsScript must not StartTimer (decay nudge parked)")
     bed = BED.read_text(encoding="utf-8", errors="replace")
-    if "OnKillerScanDeadlines" not in bed:
-        fail("BedGift must OnKillerScanDeadlines")
+    if "OnKillerScanDeadlines" in bed or "MaybeWarmBedGiftBody" in bed:
+        fail("BedGift must not use KillerScan warm/deadlines")
     if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
-        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot (oneshot experiment)")
+        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot")
+    if "TIMER_BED_DESPAWN" not in bed or "ArmBedDespawnTimer" not in bed:
+        fail("BedGift must TIMER_BED_DESPAWN + ArmBedDespawnTimer")
     on_timer = extract_function(bed, "OnTimer")
     if "MaybeApplyBedGiftDecayOverlays" not in on_timer:
         fail("BedGift OnTimer must MaybeApplyBedGiftDecayOverlays")
+    if "OnBedDespawnTimer" not in on_timer:
+        fail("BedGift OnTimer must dispatch OnBedDespawnTimer")
     if "StartTimer(" in on_timer:
-        fail("BedGift OnTimer must not re-arm StartTimer (oneshot only)")
+        fail("BedGift OnTimer must not StartTimer inline (dispatch only)")
     kick = extract_function(bed, "KickBedOverlayOnesHot")
     if "StartTimer(" not in kick or "TIMER_BED_OVERLAYS" not in kick:
         fail("KickBedOverlayOnesHot must StartTimer(TIMER_BED_OVERLAYS)")

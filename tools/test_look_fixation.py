@@ -330,7 +330,9 @@ def test_psc_contracts(text: str) -> None:
     looking = extract_function(main, "LookingAtTarget")
     if "VoiceAlias.LookFixation(WhoIsThat)" not in looking:
         fail("Main.LookingAtTarget must call VoiceAlias.LookFixation")
-    ok("TargetScan -> Main.LookingAtTarget -> VoiceAlias.LookFixation")
+    if "DesperateRename()" not in looking or "rename.DesperateRename(WhoIsThat)" not in looking:
+        fail("LookingAtTarget must DesperateRename() façade then rename.DesperateRename(WhoIsThat)")
+    ok("TargetScan -> Main.LookingAtTarget -> VoiceAlias.LookFixation + DesperateRename")
 
     fix_el = extract_function(text, "IsFixationEligible")
     if "ExplainNoticeReject(ak, True)" not in fix_el and "ExplainNoticeReject(ak,True)" not in fix_el:

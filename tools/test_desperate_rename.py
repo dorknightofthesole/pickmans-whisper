@@ -54,11 +54,16 @@ def main() -> None:
 
     if "Scriptname PickmansWhisperDesperateRenameScript extends Quest" not in rename:
         fail("DesperateRename must extend Quest")
-    sync = extract_function(rename, "SyncFromKillerScanSnapshot")
-    if "GetNoticeStage()" not in sync and "GetNoticeStage()" not in rename:
+    aim = extract_function(rename, "DesperateRename")
+    # Feature method is DesperateRename(Actor) — extract_function may hit façade on Main; body is on rename.
+    if "Function DesperateRename(Actor akTarget)" not in rename:
+        fail("DesperateRenameScript must expose DesperateRename(Actor akTarget)")
+    if "GetNoticeStage()" not in aim and "GetNoticeStage()" not in rename:
         fail("DesperateRename must gate on GetNoticeStage")
-    if "ScanAlive" not in sync:
-        fail("SyncFromKillerScanSnapshot must consume KillerScan.ScanAlive")
+    if "ApplySuffixToActor(akTarget" not in aim and "ApplySuffixToActor(akTarget, suffix)" not in rename:
+        fail("DesperateRename(Actor) must ApplySuffixToActor(akTarget, …) when desperate")
+    if "StripSuffixFromActor(akTarget" not in rename:
+        fail("DesperateRename(Actor) must StripSuffixFromActor(akTarget, …) when not desperate")
     if re.search(r"^\s*[^;]*\bFindActors\b", rename, re.M):
         fail("DesperateRename must not call FindActors")
     if "SetDisplayName" not in rename or "GardenOfEden2" not in rename:
@@ -87,8 +92,15 @@ def main() -> None:
     gad = extract_function(voice_txt, "GetActorDisplayName")
     if "MaybeSuffixDisplayName" not in gad:
         fail("GetActorDisplayName must MaybeSuffixDisplayName (toast matches HUD)")
-    if "Function DesperateRename()" not in main_txt:
-        fail("Main must DesperateRename() façade")
+    if "PickmansWhisperDesperateRenameScript Function DesperateRename()" not in main_txt:
+        fail("Main must DesperateRename() façade (returns sibling script)")
+    looking = extract_function(main_txt, "LookingAtTarget")
+    if "DesperateRename()" not in looking:
+        fail("LookingAtTarget must resolve DesperateRename() façade like VoiceAlias")
+    if "rename.DesperateRename(WhoIsThat)" not in looking:
+        fail("LookingAtTarget must rename.DesperateRename(WhoIsThat) (VoiceAlias-style unbound check)")
+    if re.search(r"^\s*DesperateRename\s*\(\s*WhoIsThat\s*\)", looking, re.M):
+        fail("LookingAtTarget must not call DesperateRename(WhoIsThat) on Main — use façade then method")
     if "ModConfigAlias Auto" not in main_txt:
         fail("Main must expose ModConfigAlias")
     # Leading space preserved — must not ConfigFieldTrim the suffix value.
@@ -103,8 +115,8 @@ def main() -> None:
         fail("desperateNameSuffix must not ConfigFieldTrim(val) — keeps leading space")
 
     dispatch = extract_function(killer, "DispatchListeners")
-    if 'CallFunctionNoWait("SyncFromKillerScanSnapshot"' not in dispatch:
-        fail("KillerScan must NoWait DesperateRename SyncFromKillerScanSnapshot")
+    if "SyncFromKillerScanSnapshot" in dispatch:
+        fail("KillerScan must not SyncFromKillerScanSnapshot — rename is aim-driven via LookingAtTarget")
     if "StartTimer(" in rename:
         fail("DesperateRename must not StartTimer")
 
@@ -128,10 +140,12 @@ def main() -> None:
         fail("ROADMAP must link Slice I desperate rename")
     if "| **I** | Slow hunger" in road:
         fail("ROADMAP must have shifted old Slice I (slow hunger) off letter I")
-    if "Slow hunger stages" not in road or "| **K** | Slow hunger" not in road:
-        fail("ROADMAP must keep slow hunger as Slice K")
-    if "| **Q** | Victim" not in road:
-        fail("ROADMAP must keep victim beat-before-kill as Slice Q")
+    if "Slow hunger stages" not in road or "| **L** | Slow hunger" not in road:
+        fail("ROADMAP must keep slow hunger as Slice L")
+    if "| **K** | Victim" not in road:
+        fail("ROADMAP must keep victim beat-before-kill as Slice K (after J)")
+    if "| **Q** | Private cells" not in road:
+        fail("ROADMAP must keep private cells + quests as Slice Q")
     if "| **J** | Retire KillerScan" not in road:
         fail("ROADMAP must list Slice J as retire KillerScan + Alias refactor")
 

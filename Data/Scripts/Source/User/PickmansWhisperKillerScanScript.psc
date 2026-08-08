@@ -56,10 +56,6 @@ PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
 	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
 EndFunction
 
-PickmansWhisperBedGiftScript Function BedGift()
-	Return (Self as Quest) as PickmansWhisperBedGiftScript
-EndFunction
-
 PickmansWhisperDesperateRenameScript Function DesperateRename()
 	Return (Self as Quest) as PickmansWhisperDesperateRenameScript
 EndFunction
@@ -247,7 +243,7 @@ Function DispatchListeners()
 		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — BuffTracker missing")
 	EndIf
 
-	; Slice J2-J5 — beat-before-kill ambient safety net: re-checks player weapon
+	; Slice K2-K5 — beat-before-kill ambient safety net: re-checks player weapon
 	; state only (clears all if re-armed but OnItemEquipped somehow missed it). Does NOT
 	; re-check combat state — that raced with an essential actor's own protected-
 	; collapse moment and actively broke the feature (see BeatBeforeKillScript header).
@@ -258,17 +254,9 @@ Function DispatchListeners()
 		Debug.Trace("PickmansWhisper: ERROR KillerScan Dispatch — BeatBeforeKill missing")
 	EndIf
 
-	; Sync — deadlines are cheap; NoWait piled up and double-counted despawn scans.
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.OnKillerScanDeadlines()
-	EndIf
+	; BedGift is sleep/timer self-contained — no KillerScan dispatch.
 
-	; Slice I — desperate display-name suffix (GoE2). Additive NoWait; never FindActors.
-	PickmansWhisperDesperateRenameScript rename = DesperateRename()
-	If rename
-		rename.CallFunctionNoWait("SyncFromKillerScanSnapshot", None)
-	EndIf
+	; Slice I desperate rename is aim-driven: Main.LookingAtTarget → DesperateRename(ak).
 EndFunction
 
 Actor Function ResolveFacedLiving()

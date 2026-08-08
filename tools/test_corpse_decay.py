@@ -315,44 +315,34 @@ def test_wiring(bed: str, main: str) -> None:
         fail("FinishBedPresentTail must KickBedOverlayOnesHot after pose")
     if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in tail:
         fail("FinishBedPresentTail must not CallFunctionNoWait MaybeApply")
-    warm = extract_function(bed, "MaybeWarmBedGiftBody")
-    if "ScheduleBedGiftDecayOverlays" not in warm:
-        fail("MaybeWarmBedGiftBody must ScheduleBedGiftDecayOverlays after PlaceAtMe (pre-Enable)")
+    spawn = extract_function(bed, "TrySpawnBedCorpse")
+    if "KickBedOverlayOnesHot" not in spawn:
+        fail("TrySpawnBedCorpse must KickBedOverlayOnesHot after PlaceAtMe (pre-Enable)")
     sleep_start = extract_function(bed, "HandlePlayerSleepStart")
     if "MaybeApplyBedGiftDecayOverlays" in sleep_start:
-        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay (blocks KillerScan)")
-    if "ScheduleBedGiftDecayOverlays" not in sleep_start:
-        fail("HandlePlayerSleepStart must ScheduleBedGiftDecayOverlays for KillerScan deadline")
+        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay")
+    if "TrySpawnBedCorpse" not in sleep_start:
+        fail("HandlePlayerSleepStart must TrySpawnBedCorpse (sole gameplay spawn)")
     if "MaybeApplyBedGiftDecayOverlays" not in bed:
         fail("BedGift must still MaybeApplyBedGiftDecayOverlays (from TIMER_BED_OVERLAYS OnTimer)")
-    deadlines = extract_function(bed, "OnKillerScanDeadlines")
-    if "KickBedOverlayOnesHot" not in deadlines:
-        fail("OnKillerScanDeadlines must KickBedOverlayOnesHot when overlay deadline due")
-    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in deadlines:
-        fail("OnKillerScanDeadlines must not CallFunctionNoWait MaybeApply")
-    if "MaybeApplyBedGiftDecayOverlays()" in deadlines:
-        fail("OnKillerScanDeadlines must not sync-call MaybeApplyBedGiftDecayOverlays")
+    if "OnKillerScanDeadlines" in bed or "ScheduleBedGiftDecayOverlays" in bed:
+        fail("BedGift must not use KillerScan overlay deadlines")
     if "BedOverlaysBusy" not in bed:
         fail("BedGift must BedOverlaysBusy against overlay re-entry")
     if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
         fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot")
-    if "OnKillerScanDeadlines" not in bed or "BedOverlaysAtReal" not in bed:
-        fail("BedGift must OnKillerScanDeadlines + BedOverlaysAtReal (Killer Orchestrator)")
-    sched = extract_function(bed, "ScheduleBedGiftDecayOverlays")
-    if "BedOverlaysAtReal" not in sched or "StartTimer" in sched:
-        fail("ScheduleBedGiftDecayOverlays must set BedOverlaysAtReal deadline (no StartTimer)")
     maybe = extract_function(bed, "MaybeApplyBedGiftDecayOverlays")
     if "ApplyBedGiftDecayOverlays" not in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must call ApplyBedGiftDecayOverlays")
     if "ParkWarmedBedCorpse" not in maybe:
-        fail("MaybeApplyBedGiftDecayOverlays must re-park after LooksMenu Enable during warm")
+        fail("MaybeApplyBedGiftDecayOverlays must re-park after LooksMenu Enable when parked")
     if "BedOverlaysApplied = True" not in maybe and "BedOverlaysApplied=True" not in maybe.replace(" ", ""):
         fail("MaybeApplyBedGiftDecayOverlays must set BedOverlaysApplied")
     if "CreateBedCorpseAt" in maybe or "PlaceAtMe" in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must not touch spawn")
     clear = extract_function(bed, "ClearBedCorpse")
-    if "BedOverlaysAtReal" not in clear:
-        fail("ClearBedCorpse must clear BedOverlaysAtReal")
+    if "CancelTimer(TIMER_BED_OVERLAYS)" not in clear:
+        fail("ClearBedCorpse must CancelTimer(TIMER_BED_OVERLAYS)")
     if "BedOverlaysApplied = False" not in clear and "BedOverlaysApplied=False" not in clear.replace(" ", ""):
         fail("ClearBedCorpse must reset BedOverlaysApplied")
     if "Function CorpseDecay()" not in main:

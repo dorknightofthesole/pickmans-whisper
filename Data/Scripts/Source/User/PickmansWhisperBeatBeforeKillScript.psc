@@ -1,7 +1,7 @@
 Scriptname PickmansWhisperBeatBeforeKillScript extends Quest
-{Slice J — victim beat-before-kill (temp essential).
-J1: manual MCM Victims toggle (dialog-free — MCM's own status row is its feedback).
-J2-J5: automatic trigger when the player enters combat unarmed against an eligible NPC;
+{Slice K — victim beat-before-kill (temp essential; was roadmap Q / earlier J).
+K1: manual MCM Victims toggle (dialog-free — MCM's own status row is its feedback).
+K2-K5: automatic trigger when the player enters combat unarmed against an eligible NPC;
 cleared ONLY on weapon-equip (see the removed "out of combat" reversal note below).
 Dispatched from KillerScanScript as an ambient reconciliation safety net (weapon-state
 only) alongside the direct native-event triggers (OnCombatStateChanged / OnItemEquipped
@@ -10,7 +10,7 @@ on MainQuestScript).
 REMOVED — "out of combat -> clear essential" (both the direct OnCombatStateChanged(0)
 handler and the reconcile poll's !IsInCombat() check): confirmed via live log evidence
 this actively broke the feature. The reconcile poll fired within ~3 seconds of an MCM
-J1 toggle and stripped essential from an NPC who was never even in combat yet, because
+K1 toggle and stripped essential from an NPC who was never even in combat yet, because
 "not currently fighting" was treated as "safe to clear" — which is also true the instant
 an essential actor "survives" lethal damage and collapses into the protected knockdown
 state, since combat state can flip to not-in-combat AS PART of that same moment. That

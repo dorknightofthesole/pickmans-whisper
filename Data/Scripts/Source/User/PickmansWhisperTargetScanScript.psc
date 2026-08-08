@@ -82,7 +82,6 @@ Function ScanAndCleanTargets()
         Var[] lookArgs = new Var[1]
         lookArgs[0] = WhoIsThat
         MainQuest.CallFunctionNoWait("LookingAtTarget", lookArgs)
-        ;MainQuest.LookingAtTarget(WhoIsThat)
         ;Debug.Notification("PW Debug: " + WhoIsThat.GetDisplayName() + ", they look interesting... ")
     EndIf
 EndFunction

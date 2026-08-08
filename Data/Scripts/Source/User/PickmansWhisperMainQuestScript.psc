@@ -192,8 +192,6 @@ NecromanticMainQuestScript NecroQuestRef
 Bool NecroEventsRegistered = False
 Bool NecroSceneActive = False
 
-; Slice G — logic on PickmansWhisperBedGiftScript (same quest). Façade syncs status here.
-String Property LastBedGiftStatus = "" Auto ; MCM / Trace — mirrored from BedGiftScript
 ; Slice H — mirrored from CorpseDecayScript (ROF DeadOverlays / LooksMenu).
 String Property LastCorpseDecayStatus = "" Auto
 ; Slice H P0.1 — mirrored from DecayWoundLabScript.
@@ -483,7 +481,7 @@ Function RegisterTarget(Actor akTarget)
 			Debug.Trace("PickmansWhisper: RegisterTarget skip | VoiceAlias unbound (needsBeating)")
 		EndIf
 		; TODO handle beating use case
-		;     Slice Q — victim beat-before-kill
+		;     Slice K — victim beat-before-kill
 		Return
 	EndIf
 
@@ -510,7 +508,7 @@ Event OnHit(ObjectReference akTarget, ObjectReference akAggressor, Form akSource
 EndEvent
 
 Event Actor.OnDeath(Actor akSender, Actor akKiller)
-	Debug.Notification("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
+	Debug.Trace("PW Manager: OnDeath Event for " + akSender.GetDisplayName())
 	RewardKill(akSender)
 	If VoiceAlias
 		VoiceAlias.RemoveFixation(akSender)
@@ -631,6 +629,14 @@ Function LookingAtTarget(Actor WhoIsThat)
 	Else
 		Debug.Trace("PickmansWhisper: ERROR TargetScan LookFixation — VoiceAlias unbound")
 		Debug.Notification("PW Error: VoiceAlias unbound — rebuild esp")
+	EndIf
+	; Slice I — desperate display-name suffix on the aimed NPC (same Quest, sibling script).
+	PickmansWhisperDesperateRenameScript rename = DesperateRename()
+	If rename
+		rename.DesperateRename(WhoIsThat)
+	Else
+		Debug.Trace("PickmansWhisper: ERROR TargetScan DesperateRename — script unbound (rebuild esp)")
+		Debug.Notification("PW Error: DesperateRename unbound — rebuild esp")
 	EndIf
 EndFunction
 
@@ -918,7 +924,7 @@ Function NoteKillerScanCounts(Int tick, Int aliveCount, Int deadCount, Int detec
 	LastDetectCount = detectCount
 EndFunction
 
-; KillerScan CallFunctionNoWait — knife credit + Victims aim + bed warm.
+; KillerScan CallFunctionNoWait — knife credit + Victims aim.
 ; Voice runs sync on VoiceScan before this is kicked (must not Wait / LooksMenu).
 Function HandleKillerScanKnifeAimWarm()
 	PickmansWhisperKillerScanScript scan = KillerScan()
@@ -928,14 +934,6 @@ Function HandleKillerScanKnifeAimWarm()
 	EndIf
 	ProcessKnifeCreditFromKillerScan(scan)
 	OnKillerScanVictimsAim(scan)
-	; Every completed tick while bonded — warm is cheap once BedCorpse exists.
-	; Throttling to %5 missed warm when KillerScan busy-skipped those ticks (sleep → no body).
-	If BondStarted
-		PickmansWhisperBedGiftScript bed = BedGift()
-		If bed
-			bed.CallFunctionNoWait("MaybeWarmBedGiftBody", None)
-		EndIf
-	EndIf
 	If KillScanTickCount == 1 || (KillScanTickCount % 3) == 0
 		String bladeBit = "blade=NO"
 		If IsBladeEquipped()
@@ -1115,7 +1113,7 @@ Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference ak
 	EndIf
 	DrawnWeaponStateValid = True
 	
-	; Slice J5 — any weapon equip (Pickman's Blade included) ends the beat-before-kill
+	; Slice K5 — any weapon equip (Pickman's Blade included) ends the beat-before-kill
 	; scuffle; her death is meant to come from the blade normally, not while essential.
 	PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
 	
@@ -2795,52 +2793,11 @@ PickmansWhisperDesperateRenameScript Function DesperateRename()
 	Return (Self as Quest) as PickmansWhisperDesperateRenameScript
 EndFunction
 
-; --- Slice G — bed corpse hallucination (façade) ------------------------------
-; Logic lives on PickmansWhisperBedGiftScript (same QUST). Alias/MCM/killscan
-; keep calling these Main names so external APIs do not change.
+; --- Slice G — bed gift callbacks (shared Main APIs only; orchestration on BedGift)
 
-PickmansWhisperBedGiftScript Function BedGift()
-	; Caprica forbids Self-as-sibling; Quest intermediate is the FO4 co-script cast.
-	Return (Self as Quest) as PickmansWhisperBedGiftScript
-EndFunction
-
-Function MaybeWarmBedGiftBody()
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.MaybeWarmBedGiftBody()
-	EndIf
-EndFunction
-
-Function HandlePlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.HandlePlayerSleepStart(afSleepStartTime, afDesiredSleepEndTime, akBed)
-	EndIf
-EndFunction
-
-Function HandlePlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.HandlePlayerSleepStop(abInterrupted, akBed)
-	EndIf
-EndFunction
-
-Function DebugForceBedGift()
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.DebugForceBedGift()
-	Else
-		DiagNotify("Pickman's Whisper\n\nBedGift script missing on Main quest.\nReinstall / rebuild PickmansWhisper.esp")
-	EndIf
-EndFunction
-
-Function DebugClearBedGift()
-	PickmansWhisperBedGiftScript bed = BedGift()
-	If bed
-		bed.DebugClearBedGift()
-	Else
-		DiagNotify("Pickman's Whisper\n\nBedGift script missing on Main quest.")
-	EndIf
+; BedGift status → shared debug toast path (status string owned by BedGiftScript).
+Function OnBedGiftStatus(String reason)
+	ToastDebug("PW bed: " + reason)
 EndFunction
 
 ; --- Slice H — corpse decay overlays (façade) ----------------------------------
@@ -4010,11 +3967,12 @@ Function SetKnifeKillCreditSuppressed(Bool abSuppressed)
 EndFunction
 
 ; True for bed-hallucination / wound-lab actors (after they are assigned).
+; Multi-feature gate — queries each feature script; no BedGift façade on Main.
 Bool Function IsNonGameplayCorpse(Actor ak)
 	If !ak
 		Return False
 	EndIf
-	PickmansWhisperBedGiftScript bed = BedGift()
+	PickmansWhisperBedGiftScript bed = (Self as Quest) as PickmansWhisperBedGiftScript
 	If bed && bed.IsBedGiftCorpse(ak)
 		Return True
 	EndIf

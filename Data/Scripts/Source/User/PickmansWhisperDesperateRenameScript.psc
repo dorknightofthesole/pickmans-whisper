@@ -13,8 +13,51 @@ Function SetStatus(String reason)
 	Debug.Trace("PickmansWhisper: desperate rename | " + reason)
 EndFunction
 
+; Aim-driven (Main.LookingAtTarget → DesperateRename() façade → here).
+Function DesperateRename(Actor akTarget)
+	If !akTarget
+		Debug.Trace("PickmansWhisper: DesperateRename skip | no actor")
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		SetStatus("ERROR: Main missing")
+		Return
+	EndIf
+	If !m.VoiceAlias
+		SetStatus("ERROR: VoiceAlias unbound")
+		Return
+	EndIf
+	If !m.ModConfigAlias
+		SetStatus("ERROR: ModConfigAlias unbound")
+		Return
+	EndIf
+
+	String suffix = m.ModConfigAlias.GetDesperateNameSuffix()
+	If !suffix
+		If !SuffixMissingToasted
+			SuffixMissingToasted = True
+			Debug.Trace("PickmansWhisper: desperateNameSuffix missing/empty — rename idle (edit ModConfig.txt)")
+		EndIf
+		SetStatus("idle: no desperateNameSuffix")
+		Return
+	EndIf
+
+	SuffixMissingToasted = False
+
+	Bool desperate = (m.VoiceAlias.GetNoticeStage() == 4)
+	If desperate
+		ApplySuffixToActor(akTarget, suffix)
+		SetStatus("applied stage=desperate aim='" + akTarget.GetDisplayName() + "' suffix='" + suffix + "'")
+	Else
+		StripSuffixFromActor(akTarget, suffix)
+		SetStatus("stripped (not desperate) aim='" + akTarget.GetDisplayName() + "'")
+	EndIf
+EndFunction
+
 ; Toast / GetActorDisplayName — append while desperate if not already present.
 String Function MaybeSuffixDisplayName(Actor ak, String baseName)
+	Debug.Notification("PW Debug: MaybeSuffixDisplayName " + baseName)
 	If !baseName
 		Return ""
 	EndIf
@@ -131,58 +174,4 @@ Function StripSuffixFromActor(Actor ak, String suffix)
 		Return
 	EndIf
 	GardenOfEden2.SetDisplayName(ak, restored)
-EndFunction
-
-; KillerScan NoWait — consume TargetSnapshot only (no FindActors).
-Function SyncFromKillerScanSnapshot()
-	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		SetStatus("ERROR: Main missing")
-		Return
-	EndIf
-	If !m.VoiceAlias
-		SetStatus("ERROR: VoiceAlias unbound")
-		Return
-	EndIf
-	If !m.ModConfigAlias
-		SetStatus("ERROR: ModConfigAlias unbound")
-		Return
-	EndIf
-	String suffix = m.ModConfigAlias.GetDesperateNameSuffix()
-	If !suffix
-		If !SuffixMissingToasted
-			SuffixMissingToasted = True
-			Debug.Trace("PickmansWhisper: desperateNameSuffix missing/empty — rename idle (edit ModConfig.txt)")
-		EndIf
-		SetStatus("idle: no desperateNameSuffix")
-		Return
-	EndIf
-	SuffixMissingToasted = False
-	Bool desperate = (m.VoiceAlias.GetNoticeStage() == 4)
-	; KillerScan snapshot deprecated — VoiceAlias stubs until rename bus is rewired.
-	Actor[] alive = m.VoiceAlias.StubScanAlive()
-	Int n = m.VoiceAlias.StubScanAliveCount()
-	If !alive || n <= 0
-		SetStatus("idle: no ScanAlive (stub)")
-		Return
-	EndIf
-	Int i = 0
-	Int touched = 0
-	While i < n && i < alive.Length
-		Actor ak = alive[i]
-		i += 1
-		If ak
-			If desperate
-				ApplySuffixToActor(ak, suffix)
-				touched += 1
-			Else
-				StripSuffixFromActor(ak, suffix)
-			EndIf
-		EndIf
-	EndWhile
-	If desperate
-		SetStatus("applied stage=desperate near=" + touched + " suffix='" + suffix + "'")
-	Else
-		SetStatus("stripped (not desperate) near=" + touched)
-	EndIf
 EndFunction

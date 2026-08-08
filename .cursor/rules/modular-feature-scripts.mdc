@@ -25,4 +25,4 @@ Do **not** keep dumping large new features into `PickmansWhisperMainQuestScript.
 ## Do not break
 
 - Frozen arming / notice / hunger-whisper core rules still apply.
-- Alias owns `RegisterForPlayerSleep` / `RegisterForKey`; Main (or feature via Main façade) owns logic.
+- Alias owns `RegisterForKey` (Quest key registration is unreliable). BedGift owns `RegisterForPlayerSleep` + `OnPlayerSleep*` and its own MCM CallFunctions; Alias re-arms sleep via `GetBedGift()` every load. Main keeps only multi-feature callbacks (e.g. `OnBedGiftStatus`, `IsNonGameplayCorpse`).

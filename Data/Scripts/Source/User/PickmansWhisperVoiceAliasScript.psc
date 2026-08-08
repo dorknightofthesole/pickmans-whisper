@@ -562,7 +562,6 @@ Function LookFixation(Actor akTarget)
 		SpeakFixationStageWhisper(akTarget, displayName)
 	EndIf
 
-	Debug.Notification("PW Debug: Spoke Fixation Line")
 	Debug.Trace("PW Debug: Spoke Fixation Line")
 EndFunction
 
@@ -662,6 +661,7 @@ EndFunction
 ; Whisper / fixation / notice label for an actor.
 ; P3+P4 Potential Victims: override + GoE2.SetDisplayName so {name} matches aim/HUD.
 String Function GetActorDisplayName(Actor ak)
+	Debug.Notification("PW Debug: GetActorDisplayName")
 	If !ak
 		Return ""
 	EndIf

@@ -9,9 +9,7 @@ Locks:
   - IsBladeKillWeaponReady still aliases IsBladeEquipped (kill path untouched)
   - Toast / notice / fixation / audio entry points gate via IsVoiceWeaponReady
   - Kill-scan praise / blade detect still call IsBladeEquipped directly
-  - BedGiftScript's two real spawn triggers (MaybeWarmBedGiftBody, TrySpawnBedCorpse's
-    non-force path) now also require IsBladeEquipped() — previously had NO blade
-    requirement at all beyond gating the wake TOAST text, not the spawn itself
+  - BedGiftScript SleepStart spawn (TrySpawnBedCorpse non-force) requires IsBladeEquipped()
 
 Usage:
   python tools/test_voice_blade_gate.py
@@ -133,12 +131,8 @@ def main() -> None:
     ok("notice skip copy unchanged (gate logic is what changed, not the message)")
 
     bed = BED_PSC.read_text(encoding="utf-8", errors="replace")
-    warm = extract_function(bed, "MaybeWarmBedGiftBody")
-    if "m.IsBladeEquipped()" not in warm:
-        fail(
-            "MaybeWarmBedGiftBody must require m.IsBladeEquipped() — previously had "
-            "NO blade requirement on the spawn itself"
-        )
+    if "MaybeWarmBedGiftBody" in bed:
+        fail("MaybeWarmBedGiftBody retired — SleepStart TrySpawnBedCorpse is sole gameplay spawn")
     spawn = extract_function(bed, "TrySpawnBedCorpse")
     if "m.IsBladeEquipped()" not in spawn:
         fail(
@@ -153,10 +147,10 @@ def main() -> None:
             "TrySpawnBedCorpse's blade check must live inside the !abForce block, "
             "not before it (force path must still bypass everything)"
         )
-    ok(
-        "Bed Gift spawn triggers (MaybeWarmBedGiftBody, TrySpawnBedCorpse non-force) "
-        "require IsBladeEquipped"
-    )
+    sleep_start = extract_function(bed, "HandlePlayerSleepStart")
+    if "TrySpawnBedCorpse" not in sleep_start:
+        fail("HandlePlayerSleepStart must call TrySpawnBedCorpse (blade-gated spawn)")
+    ok("Bed Gift SleepStart TrySpawnBedCorpse non-force requires IsBladeEquipped")
 
     print("All voice-blade-gate contracts passed.")
 

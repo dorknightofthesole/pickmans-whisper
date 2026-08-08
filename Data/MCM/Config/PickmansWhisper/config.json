@@ -821,7 +821,7 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugForceBedGift",
-						"scriptName": "PickmansWhisperMainQuestScript"
+						"scriptName": "PickmansWhisperBedGiftScript"
 					}
 				},
 				{
@@ -832,7 +832,7 @@
 						"type": "CallFunction",
 						"form": "PickmansWhisper.esp|800",
 						"function": "DebugClearBedGift",
-						"scriptName": "PickmansWhisperMainQuestScript"
+						"scriptName": "PickmansWhisperBedGiftScript"
 					}
 				},
 				{

@@ -63,13 +63,13 @@ See docs/ROADMAP.md Slice J. Do not start until event-driven kill/notice path is
 
 - [ ] **bedGiftWoundAlpha Main expose** — `tools/test_corpse_decay.py` assertion that Main must load/expose `bedGiftWoundAlpha` / `GetBedGiftWoundAlpha` is commented out. Review after ModConfigAlias move: confirm opacity is read from ModConfigAlias (or CorpseDecay) only, then either restore a correct contract or delete the dead Main-facing assert. Related: `test_bed_hallucination.py`, `test_decay_stage_modconfig.py`.
 - [ ] **Prune unused Caprica stubs** — after the FO4/F4SE/GoE honesty audit, `tools/stubs/` still keeps every type Caprica may need (inheritance, param types, soft deps). Do a **compile-driven** orphan pass later: remove only stubs proven unnecessary (not a text-scan guess). Keep the live `test_stub_natives.py` source check; never reintroduce fake/Skyrim natives to silence Caprica.
-- [ ] **K** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
-- [ ] **L** Corpse hold / preserve sync with Necromantic
-- [ ] **M** Lady Killer / Black Widow soft gates; Cannibal stretch
-- [ ] **N** Witnesses / killer rumors
-- [ ] **O** Infamy whispers
-- [ ] **P** Private cells + quests (Combat Zone, Culte des Ghouls, butcher shop, Pickman house)
-- [ ] **Q** Victim beat-before-kill (temp essential + fight back; unarmed exception) — was Slice J
+- [ ] **K** Victim beat-before-kill (temp essential + fight back; unarmed exception) — was Slice Q / earlier J
+- [ ] **L** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
+- [ ] **M** Corpse hold / preserve sync with Necromantic
+- [ ] **N** Lady Killer / Black Widow soft gates; Cannibal stretch
+- [ ] **O** Witnesses / killer rumors
+- [ ] **P** Infamy whispers
+- [ ] **Q** Private cells + quests (Combat Zone, Culte des Ghouls, butcher shop, Pickman house)
 
 ## LoversLab release / visibility
 

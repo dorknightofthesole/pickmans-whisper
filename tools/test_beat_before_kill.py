@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Contracts for Slice J — victim beat-before-kill (temp essential).
+"""Contracts for Slice K — victim beat-before-kill (temp essential).
 
-J1: manual MCM Victims toggle (dialog-free). J2: automatic trigger when the player
-enters combat unarmed against an eligible NPC. J5: cleared ONLY on weapon-equip.
+K1: manual MCM Victims toggle (dialog-free). K2: automatic trigger when the player
+enters combat unarmed against an eligible NPC. K5: cleared ONLY on weapon-equip.
 
 Design:
   - PickmansWhisperBeatBeforeKillScript tracks Actor refs it has personally set
@@ -216,7 +216,7 @@ def test_main_wiring() -> None:
     if "aeCombatState == 1" not in combat_evt:
         fail("Actor.OnCombatStateChanged must branch on aeCombatState==1 (verified against real FO4 Actor.psc: 0=not in combat, 1=in combat, 2=searching)")
     if "OnPlayerExitCombatWith" in combat_evt or "aeCombatState == 0" in combat_evt:
-        fail("Actor.OnCombatStateChanged must NOT handle aeCombatState==0 for Slice J — confirmed live this raced with an essential actor's own protected-collapse moment and broke the feature; weapon-equip is the only reversal now")
+        fail("Actor.OnCombatStateChanged must NOT handle aeCombatState==0 for Slice K — confirmed live this raced with an essential actor's own protected-collapse moment and broke the feature; weapon-equip is the only reversal now")
 
     item_evt = extract_event(
         text, "Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)"
@@ -344,7 +344,7 @@ def main() -> int:
     test_status_row()
     test_esp_builder()
     test_deploy_gate()
-    print("All beat-before-kill (Slice J) contracts passed.")
+    print("All beat-before-kill (Slice K) contracts passed.")
     return 0
 
 

@@ -2,10 +2,12 @@
 """Contracts for Slice G1 — bed corpse hallucination (Actor NPC).
 
 Locks:
-  - FO4 sleep stubs; PlayerAlias owns RegisterForPlayerSleep
-  - Logic on PickmansWhisperBedGiftScript; Main keeps thin façades
-  - Single gameplay PlaceAtMe: MaybeWarmBedGiftBody → DiamondCityResidentF01NoodleMarket
-  - SnapIntoInteraction + KillSilent; SleepStop never spawn; SleepStart may TrySpawn fallback if warm missed
+  - FO4 sleep stubs; BedGift owns RegisterForPlayerSleep + OnPlayerSleep*
+  - PlayerAlias re-arms via GetBedGift().RegisterBedGiftSleep every load
+  - Self-contained BedGiftScript (no KillerScan); Main shared callbacks only
+  - Sole gameplay PlaceAtMe: SleepStart → TrySpawnBedCorpse → DiamondCityResidentF01NoodleMarket
+  - Own timers: TIMER_BED_OVERLAYS / TIMER_BED_POSE / TIMER_BED_DESPAWN
+  - SnapIntoInteraction + KillSilent; SleepStop never spawn
   - FID_BED_SPAWN_NPC matches Fallout4.esm DiamondCityResidentF01NoodleMarket (unnamed Resident)
   - ESP attaches both Main + BedGift scripts; Caprica/deploy compile BedGift
 
@@ -111,65 +113,91 @@ def test_stubs() -> None:
     ok("FO4 sleep + SnapIntoInteraction / KillSilent stubs")
 
 
-def test_alias(alias_text: str) -> None:
+def test_alias_rearms_bed_sleep(alias_text: str) -> None:
     if not ALIAS.is_file():
         fail(f"missing {ALIAS}")
-    reg = extract_function(alias_text, "RegisterBedGiftSleep")
-    if "RegisterForPlayerSleep" not in reg:
-        fail("alias RegisterBedGiftSleep must RegisterForPlayerSleep")
+    if re.search(r"\bRegisterForPlayerSleep\s*\(", alias_text):
+        fail("alias must not RegisterForPlayerSleep — BedGift owns it")
+    if "Event OnPlayerSleepStart" in alias_text or "Event OnPlayerSleepStop" in alias_text:
+        fail("alias must not declare OnPlayerSleep* — BedGift owns them")
+    if "GetBedGift()" not in alias_text:
+        fail("alias must resolve BedGift via GetBedGift()")
     if "RegisterBedGiftSleep()" not in alias_text:
-        fail("alias must call RegisterBedGiftSleep from init/load")
-    if "Event OnPlayerSleepStart" not in alias_text or "Event OnPlayerSleepStop" not in alias_text:
-        fail("alias must own OnPlayerSleepStart/Stop")
-    if "HandlePlayerSleepStart" not in alias_text or "HandlePlayerSleepStop" not in alias_text:
-        fail("alias sleep events must forward to main HandlePlayerSleep*")
-    ok("PlayerAlias owns bed gift sleep registration")
+        fail("alias must call bed.RegisterBedGiftSleep from init/load")
+    if "main.RegisterBedGiftSleep" in alias_text:
+        fail("alias must not call Main.RegisterBedGiftSleep — façade removed")
+    get_bed = extract_function(alias_text, "GetBedGift")
+    if "GetOwningQuest" in get_bed:
+        fail(
+            "GetBedGift must NOT use GetOwningQuest — PlayerAlias owns PlayerCombat "
+            "(0x805); BedGift is on Main (0x800)"
+        )
+    if "GetFormFromFile" not in get_bed or "FID_MAIN_QUEST" not in get_bed:
+        fail("GetBedGift must GetFormFromFile(FID_MAIN_QUEST) then cast BedGift")
+    ok("PlayerAlias re-arms BedGift sleep directly")
 
 
-def test_killer_scan_deadlines_sync() -> None:
+def test_bed_sleep_registration(bed: str) -> None:
+    reg = extract_function(bed, "RegisterBedGiftSleep")
+    if "RegisterForPlayerSleep" not in reg:
+        fail("BedGift RegisterBedGiftSleep must RegisterForPlayerSleep")
+    if "Event OnPlayerSleepStart" not in bed or "Event OnPlayerSleepStop" not in bed:
+        fail("BedGift must own OnPlayerSleepStart/Stop")
+    start = extract_function(bed, "OnPlayerSleepStart")
+    stop = extract_function(bed, "OnPlayerSleepStop")
+    if "HandlePlayerSleepStart" not in start:
+        fail("BedGift OnPlayerSleepStart must call HandlePlayerSleepStart")
+    if "HandlePlayerSleepStop" not in stop:
+        fail("BedGift OnPlayerSleepStop must call HandlePlayerSleepStop")
+    ok("BedGift owns bed gift sleep registration")
+
+
+def test_killer_scan_isolated_from_bed_gift() -> None:
     ks = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
     if not ks.is_file():
         fail(f"missing {ks}")
     text = ks.read_text(encoding="utf-8", errors="replace")
     dispatch = extract_function(text, "DispatchListeners")
-    if "OnKillerScanDeadlines" not in dispatch:
-        fail("KillerScan DispatchListeners must call OnKillerScanDeadlines")
-    if 'CallFunctionNoWait("OnKillerScanDeadlines"' in dispatch:
-        fail("KillerScan must call OnKillerScanDeadlines sync (NoWait double-counted despawn)")
-    if "bed.OnKillerScanDeadlines()" not in dispatch:
-        fail("KillerScan must invoke bed.OnKillerScanDeadlines() synchronously")
-    ok("KillerScan deadlines sync (despawn on stack; overlays via BedGift oneshot)")
+    if "OnKillerScanDeadlines" in dispatch or "MaybeWarmBedGiftBody" in dispatch:
+        fail("KillerScan DispatchListeners must not touch BedGift")
+    if re.search(r"Function\s+BedGift\s*\(", text):
+        fail("KillerScan must not expose BedGift() facade")
+    ok("KillerScan isolated from BedGift")
 
 
-def test_main_facade(main: str) -> None:
+def test_main_shared_only(main: str) -> None:
     if re.search(r"\bRegisterForPlayerSleep\s*\(", main):
-        fail("main quest must not RegisterForPlayerSleep — use PlayerAlias")
+        fail("main quest must not RegisterForPlayerSleep — BedGift owns it")
     if "Event OnPlayerSleepStart" in main or "Event OnPlayerSleepStop" in main:
         fail("main quest must not declare OnPlayerSleep*")
     if "TIMER_BED_DESPAWN" in main and "aiTimerID == TIMER_BED_DESPAWN" in main:
         fail("Main OnTimer must not handle TIMER_BED_DESPAWN — BedGift owns it")
-    bed_fn = extract_function(main, "BedGift")
-    if "as PickmansWhisperBedGiftScript" not in bed_fn:
-        fail("Main BedGift() must cast to PickmansWhisperBedGiftScript")
-    if "as Quest" not in bed_fn:
-        fail("Main BedGift() must cast via Quest (Caprica sibling-script rule)")
+    if re.search(r"^(?:PickmansWhisperBedGiftScript\s+)?Function\s+BedGift\s*\(", main, re.M):
+        fail("Main must not expose BedGift() façade — callers cast/own BedGift")
     for name in (
         "MaybeWarmBedGiftBody",
+        "RegisterBedGiftSleep",
         "HandlePlayerSleepStart",
         "HandlePlayerSleepStop",
         "DebugForceBedGift",
         "DebugClearBedGift",
+        "OnKillerScanDeadlines",
     ):
-        body = extract_function(main, name)
-        if "BedGift()" not in body:
-            fail(f"Main {name} must forward via BedGift()")
-        if "PlaceAtMe" in body:
-            fail(f"Main {name} must not PlaceAtMe (façade only)")
+        if re.search(rf"Function\s+{name}\s*\(", main):
+            fail(f"Main must not own {name} — lives on BedGiftScript or removed")
+    if re.search(r"\b(?:String\s+)?Property\s+LastBedGiftStatus\b", main):
+        fail("Main must not mirror LastBedGiftStatus — BedGift owns it")
+    status_cb = extract_function(main, "OnBedGiftStatus")
+    if "ToastDebug" not in status_cb:
+        fail("Main OnBedGiftStatus must ToastDebug (shared debug path)")
     knife_warm = extract_function(main, "HandleKillerScanKnifeAimWarm")
-    if "MaybeWarmBedGiftBody" not in knife_warm:
-        fail("HandleKillerScanKnifeAimWarm must call MaybeWarmBedGiftBody")
-    if "% 5" in knife_warm or "ScanTick % 5" in knife_warm:
-        fail("HandleKillerScanKnifeAimWarm must warm every tick (not % 5 — busy skips miss warm)")
+    if "MaybeWarmBedGiftBody" in knife_warm:
+        fail("HandleKillerScanKnifeAimWarm must not warm bed gift")
+    nongame = extract_function(main, "IsNonGameplayCorpse")
+    if "IsBedGiftCorpse" not in nongame:
+        fail("IsNonGameplayCorpse must query BedGift.IsBedGiftCorpse")
+    if "as PickmansWhisperBedGiftScript" not in nongame:
+        fail("IsNonGameplayCorpse must cast BedGift via Quest (no Main.BedGift façade)")
     load = extract_function(main, "LoadLineBanks")
     if "ModConfigAlias.LoadModConfig()" not in load:
         fail("LoadLineBanks must ModConfigAlias.LoadModConfig (resume/reload refresh)")
@@ -194,22 +222,26 @@ def test_main_facade(main: str) -> None:
         fail("BedGift must read wake toast via ModConfigAlias")
     if "ModConfigAlias.GetBedGiftCooldownDays" not in bed:
         fail("BedGift must read cooldown via ModConfigAlias")
-    ok("ModConfigAlias bed gift wiring + ModConfig wake toast + cooldown")
+    if "OnBedGiftStatus" not in bed:
+        fail("BedGift SetBedGiftStatus must callback Main.OnBedGiftStatus")
+    if "m.LastBedGiftStatus" in bed:
+        fail("BedGift must not mirror status onto Main.LastBedGiftStatus")
+    ok("Main shared callbacks only + ModConfigAlias bed gift wiring")
 
 
 def test_bed_script(bed: str) -> None:
     if "Scriptname PickmansWhisperBedGiftScript extends Quest" not in bed:
         fail("BedGift must extend Quest")
-    if "OnKillerScanDeadlines" not in bed:
-        fail("BedGift must OnKillerScanDeadlines (Killer Orchestrator)")
-    if "BedDespawnScanCount" not in bed or "BED_DESPAWN_SCANS" not in bed:
-        fail("BedGift must despawn by KillerScan pulse count (BED_DESPAWN_SCANS)")
-    if "BED_DESPAWN_SCANS = 2" not in bed:
-        fail("BED_DESPAWN_SCANS must be 2 (2nd KillerScan pulse after present)")
-    if "BedOverlaysAtReal" not in bed:
-        fail("BedGift must keep BedOverlaysAtReal for pre-present decay delay")
-    if "BedDespawnAtReal" in bed or "BED_DESPAWN_SECONDS" in bed:
-        fail("BedGift must not use real-time BedDespawnAtReal / BED_DESPAWN_SECONDS")
+    if "OnKillerScanDeadlines" in bed or "MaybeWarmBedGiftBody" in bed:
+        fail("BedGift must not use KillerScan warm/deadlines — sleep/timer self-contained")
+    if "BedDespawnScanCount" in bed or "BED_DESPAWN_SCANS" in bed:
+        fail("BedGift must not despawn by KillerScan pulse count")
+    if "BedOverlaysAtReal" in bed or "ScheduleBedGiftDecayOverlays" in bed:
+        fail("BedGift must not use BedOverlaysAtReal deadline polling")
+    if "TIMER_BED_DESPAWN" not in bed or "BED_DESPAWN_SECONDS" not in bed:
+        fail("BedGift must TIMER_BED_DESPAWN + BED_DESPAWN_SECONDS")
+    if "BED_DESPAWN_SECONDS = 4.0" not in bed and "BED_DESPAWN_SECONDS=4.0" not in bed:
+        fail("BED_DESPAWN_SECONDS must be 4.0")
     if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
         fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot (oneshot overlay)")
     on_timer = extract_function(bed, "OnTimer")
@@ -217,8 +249,18 @@ def test_bed_script(bed: str) -> None:
         fail("BedGift OnTimer must MaybeApplyBedGiftDecayOverlays")
     if "TIMER_BED_POSE" not in on_timer or "AdvanceBedPoseSequence" not in on_timer:
         fail("BedGift OnTimer must dispatch TIMER_BED_POSE to AdvanceBedPoseSequence")
+    if "TIMER_BED_DESPAWN" not in on_timer or "OnBedDespawnTimer" not in on_timer:
+        fail("BedGift OnTimer must dispatch TIMER_BED_DESPAWN to OnBedDespawnTimer")
     if "StartTimer(" in on_timer:
-        fail("BedGift OnTimer must not re-arm inline (oneshot dispatch only)")
+        fail("BedGift OnTimer must not StartTimer inline (dispatch only)")
+    arm = extract_function(bed, "ArmBedDespawnTimer")
+    if "StartTimer(" not in arm or "TIMER_BED_DESPAWN" not in arm:
+        fail("ArmBedDespawnTimer must StartTimer(TIMER_BED_DESPAWN)")
+    despawn = extract_function(bed, "OnBedDespawnTimer")
+    if "ClearBedCorpse" not in despawn:
+        fail("OnBedDespawnTimer must ClearBedCorpse")
+    if "BedOverlaysBusy" not in despawn:
+        fail("OnBedDespawnTimer must honor BedOverlaysBusy hold/watchdog")
     kick = extract_function(bed, "KickBedOverlayOnesHot")
     if "StartTimer(" not in kick or "TIMER_BED_OVERLAYS" not in kick:
         fail("KickBedOverlayOnesHot must StartTimer(TIMER_BED_OVERLAYS)")
@@ -227,6 +269,8 @@ def test_bed_script(bed: str) -> None:
         fail("ClearBedCorpse must CancelTimer(TIMER_BED_OVERLAYS)")
     if "CancelTimer(TIMER_BED_POSE)" not in clear:
         fail("ClearBedCorpse must CancelTimer(TIMER_BED_POSE) (abort in-flight pose sequence)")
+    if "CancelTimer(TIMER_BED_DESPAWN)" not in clear:
+        fail("ClearBedCorpse must CancelTimer(TIMER_BED_DESPAWN)")
     if "Actor BedCorpse" not in bed:
         fail("BedCorpse must be Actor on BedGift")
     create = extract_function(bed, "CreateBedCorpseAt")
@@ -321,16 +365,22 @@ def test_bed_script(bed: str) -> None:
         fail("TrackLivingNear must skip bed gift / wound lab corpses")
     if re.search(r"\bSetProtected\s*\(", bed):
         fail("must not SetProtected on shared ActorBase")
-    warm = extract_function(bed, "MaybeWarmBedGiftBody")
-    if "CreateBedCorpseAt" not in warm or "BedPresentedThisSleep" not in warm:
-        fail("MaybeWarmBedGiftBody must CreateBedCorpseAt and skip during presented cycle")
-    if "warm skip:" not in warm:
-        fail("MaybeWarmBedGiftBody must Trace/status skip reasons (no silent Return)")
+    spawn = extract_function(bed, "TrySpawnBedCorpse")
+    if "CreateBedCorpseAt" not in spawn:
+        fail("TrySpawnBedCorpse must CreateBedCorpseAt")
+    if "KickBedOverlayOnesHot" not in spawn:
+        fail("TrySpawnBedCorpse must KickBedOverlayOnesHot after PlaceAtMe")
+    if "m.IsBladeEquipped()" not in spawn:
+        fail("TrySpawnBedCorpse non-force path must require IsBladeEquipped")
+    if "skip:" not in spawn:
+        fail("TrySpawnBedCorpse must Trace/status skip reasons (no silent Return)")
     start = extract_function(bed, "HandlePlayerSleepStart")
     if "TrySpawnBedCorpse" not in start:
-        fail("HandlePlayerSleepStart must TrySpawnBedCorpse fallback when warm missed")
+        fail("HandlePlayerSleepStart must TrySpawnBedCorpse (sole gameplay spawn)")
     if "PlaceAtMe" in start:
         fail("HandlePlayerSleepStart must spawn via TrySpawnBedCorpse (not raw PlaceAtMe)")
+    if "MaybeApplyBedGiftDecayOverlays" in start:
+        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay")
     stop = extract_function(bed, "HandlePlayerSleepStop")
     if "PresentBedCorpseOnWake" not in stop:
         fail("HandlePlayerSleepStop must PresentBedCorpseOnWake when corpse ready")
@@ -359,19 +409,8 @@ def test_bed_script(bed: str) -> None:
         fail("PresentBedCorpseOnWake must FinishBedPresentTail on the no-pose-needed paths")
 
     tail = extract_function(bed, "FinishBedPresentTail")
-    if "BedDespawnScanCount = 0" not in tail:
-        fail("FinishBedPresentTail must arm BedDespawnScanCount = 0")
-    deadlines = extract_function(bed, "OnKillerScanDeadlines")
-    if "BedDespawnScanCount +=" not in deadlines and "BedDespawnScanCount += 1" not in deadlines:
-        fail("OnKillerScanDeadlines must increment BedDespawnScanCount")
-    if "BED_DESPAWN_SCANS" not in deadlines or "ClearBedCorpse" not in deadlines:
-        fail("OnKillerScanDeadlines must ClearBedCorpse when scan count hits BED_DESPAWN_SCANS")
-    if "KickBedOverlayOnesHot" not in deadlines:
-        fail("OnKillerScanDeadlines must KickBedOverlayOnesHot when overlay deadline due")
-    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in deadlines:
-        fail("OnKillerScanDeadlines must not CallFunctionNoWait MaybeApply (use oneshot timer)")
-    if "MaybeApplyBedGiftDecayOverlays()" in deadlines:
-        fail("OnKillerScanDeadlines must not sync-call MaybeApplyBedGiftDecayOverlays")
+    if "ArmBedDespawnTimer" not in tail:
+        fail("FinishBedPresentTail must ArmBedDespawnTimer")
     if "BedOverlaysBusy" not in bed:
         fail("BedGift must track BedOverlaysBusy against overlay re-entry")
     if "BedOverlaysApplied = False" not in tail:
@@ -382,14 +421,6 @@ def test_bed_script(bed: str) -> None:
         fail("FinishBedPresentTail must not CallFunctionNoWait MaybeApply")
     if "MaybeApplyBedGiftDecayOverlays()" in tail:
         fail("FinishBedPresentTail must not sync-apply decay overlays")
-    warm = extract_function(bed, "MaybeWarmBedGiftBody")
-    if "ScheduleBedGiftDecayOverlays" not in warm:
-        fail("MaybeWarmBedGiftBody must schedule decay while parked/disabled")
-    sleep_start = extract_function(bed, "HandlePlayerSleepStart")
-    if "MaybeApplyBedGiftDecayOverlays" in sleep_start:
-        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay (schedule only)")
-    if "ScheduleBedGiftDecayOverlays" not in sleep_start:
-        fail("HandlePlayerSleepStart must ScheduleBedGiftDecayOverlays when body present")
     if "BedWakeHandledThisSleep" not in bed:
         fail("BedGift must track BedWakeHandledThisSleep to ignore late duplicate SleepStop")
     if "MaybeSpeakBedGiftWakeToast" not in tail:
@@ -467,6 +498,15 @@ def test_config_mcm_deploy() -> None:
     mcm = MCM.read_text(encoding="utf-8")
     if "bBedGift:Voice" not in mcm or "DebugForceBedGift" not in mcm:
         fail("MCM must have bed gift voice + debug force")
+    for fn in ("DebugForceBedGift", "DebugClearBedGift"):
+        m = re.search(
+            rf'"function":\s*"{fn}"\s*,\s*"scriptName":\s*"([^"]+)"',
+            mcm,
+        )
+        if not m:
+            fail(f"MCM {fn} must declare scriptName immediately after function")
+        if m.group(1) != "PickmansWhisperBedGiftScript":
+            fail(f"MCM {fn} must target PickmansWhisperBedGiftScript, got {m.group(1)}")
     settings = SETTINGS.read_text(encoding="utf-8")
     if "bBedGiftEverySleep=1" not in settings:
         fail("settings.ini must default bBedGiftEverySleep=1 for testing")
@@ -503,9 +543,10 @@ def main() -> None:
     bed_text = BED_PSC.read_text(encoding="utf-8", errors="replace")
     alias = ALIAS.read_text(encoding="utf-8", errors="replace")
     test_stubs()
-    test_alias(alias)
-    test_main_facade(main_text)
-    test_killer_scan_deadlines_sync()
+    test_alias_rearms_bed_sleep(alias)
+    test_bed_sleep_registration(bed_text)
+    test_main_shared_only(main_text)
+    test_killer_scan_isolated_from_bed_gift()
     test_bed_script(bed_text)
     test_esm(find_esm(args.esm))
     test_config_mcm_deploy()

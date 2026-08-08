@@ -5,36 +5,41 @@ Scriptname PickmansWhisperPlayerAliasScript extends ReferenceAlias
 ;
 ; Slice F butcher key: RegisterForKey + OnKeyDown live HERE (player alias), not
 ; on the main Quest. Quest key registration is unreliable in FO4/F4SE.
-; Slice G sleep: RegisterForPlayerSleep also lives HERE for the same reason.
+; Slice G sleep: RegisterForPlayerSleep lives on BedGiftScript; this alias only
+; re-arms it every load via GetBedGift().RegisterBedGiftSleep().
 
 Int FID_MAIN_QUEST = 0x00000800
 ; F4SE RegisterForKey uses Windows VK codes (same as Necromantic N=78), not DX DIK.
 ; /? on US keyboards = VK_OEM_2 = 191 (DIK 53 was wrong and never fired).
 Int KEY_BUTCHER = 191
 Bool ButcherKeyRegistered = False
-Bool BedSleepRegistered = False
 ; Slice H P5 — magic-effect-apply detection lives here, not on the Quest. A Quest-level
 ; RegisterForMagicEffectApplyEvent(PlayerRef, ...) was tried first and confirmed dead
 ; live (an unfiltered sniff variant caught zero effects over two minutes of play, even
 ; though the registration call itself reported success) — this alias is filled with the
-; player and already proves other per-player natives work here (RegisterForKey,
-; RegisterForPlayerSleep, and OnCombatStateChanged firing locally with no registration
-; at all), so detection moved to match.
+; player and already proves other per-player natives work here (RegisterForKey and
+; OnCombatStateChanged firing locally with no registration at all), so detection
+; moved to match.
 Bool MagicEffectDetectRegistered = False
 Bool MagicEffectSniffRegistered = False
 
 Weapon Property CombatKnifeBase Auto Const
 Keyword Property PickmanModKeyword Auto Const
 Bool Property IsPickmansBladeEquipped = False Auto
-; True when the player has no weapon equipped (unarmed) — Slice Q beat-before-kill gate.
+; True when the player has no weapon equipped (unarmed) — Slice K beat-before-kill gate.
 Bool Property IsReadyToGiveBeating = False Auto
 
 Event OnAliasInit()
 	EnsurePlayerFill()
 	RegisterButcherKey()
-	RegisterBedGiftSleep()
 	RegisterMagicEffectDetect()
 	CheckIfBladeEquipped()
+	PickmansWhisperBedGiftScript bed = GetBedGift()
+	If bed
+		bed.RegisterBedGiftSleep()
+	Else
+		Debug.Trace("PickmansWhisper: alias OnAliasInit — BedGift script not found")
+	EndIf
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.EnsurePlayerCombatQuest()
@@ -48,9 +53,14 @@ EndEvent
 Event OnPlayerLoadGame()
 	EnsurePlayerFill()
 	RegisterButcherKey()
-	RegisterBedGiftSleep()
 	RegisterMagicEffectDetect()
 	CheckIfBladeEquipped()
+	PickmansWhisperBedGiftScript bed = GetBedGift()
+	If bed
+		bed.RegisterBedGiftSleep()
+	Else
+		Debug.Trace("PickmansWhisper: alias OnPlayerLoadGame — BedGift script not found")
+	EndIf
 	PickmansWhisperMainQuestScript main = GetMain()
 	If main
 		main.HandlePlayerLoadFromAlias()
@@ -123,7 +133,7 @@ Bool Function IsPickmansBlade(Actor PlayerRef, Form akBaseObject)
 	return false
 EndFunction
 
-; Re-register every load, same pattern as RegisterButcherKey/RegisterBedGiftSleep.
+; Re-register every load, same pattern as RegisterButcherKey.
 Function RegisterMagicEffectDetect()
 	PickmansWhisperMainQuestScript main = GetMain()
 	If !main
@@ -182,34 +192,6 @@ Function RegisterButcherKey()
 	Debug.Trace("PickmansWhisper: alias registered butcher key " + KEY_BUTCHER)
 EndFunction
 
-; Re-register every load — Quest-level sleep registration was missing most sleeps.
-Function RegisterBedGiftSleep()
-	If BedSleepRegistered
-		UnregisterForPlayerSleep()
-	EndIf
-	RegisterForPlayerSleep()
-	BedSleepRegistered = True
-	Debug.Trace("PickmansWhisper: alias registered PlayerSleep (bed gift)")
-EndFunction
-
-Event OnPlayerSleepStart(Float afSleepStartTime, Float afDesiredSleepEndTime, ObjectReference akBed)
-	PickmansWhisperMainQuestScript main = GetMain()
-	If !main
-		Debug.Trace("PickmansWhisper: alias sleep start — main missing")
-		Return
-	EndIf
-	main.HandlePlayerSleepStart(afSleepStartTime, afDesiredSleepEndTime, akBed)
-EndEvent
-
-Event OnPlayerSleepStop(Bool abInterrupted, ObjectReference akBed)
-	PickmansWhisperMainQuestScript main = GetMain()
-	If !main
-		Debug.Trace("PickmansWhisper: alias sleep stop — main missing")
-		Return
-	EndIf
-	main.HandlePlayerSleepStop(abInterrupted, akBed)
-EndEvent
-
 Event OnKeyDown(Int keyCode)
 	If keyCode != KEY_BUTCHER
 		Return
@@ -248,4 +230,19 @@ PickmansWhisperMainQuestScript Function GetMain()
 		Debug.Trace("PickmansWhisper: main quest cast to PickmansWhisperMainQuestScript failed")
 	EndIf
 	Return main
+EndFunction
+
+; BedGift is attached to PickmansWhisperMain (0x800), NOT this alias's owning quest
+; (PlayerCombat 0x805). Always resolve Main via FormID — GetOwningQuest cast fails.
+PickmansWhisperBedGiftScript Function GetBedGift()
+	Quest q = Game.GetFormFromFile(FID_MAIN_QUEST, "PickmansWhisper.esp") as Quest
+	If !q
+		Debug.Trace("PickmansWhisper: GetBedGift — GetFormFromFile main quest 0x800 failed")
+		Return None
+	EndIf
+	PickmansWhisperBedGiftScript bed = q as PickmansWhisperBedGiftScript
+	If !bed
+		Debug.Trace("PickmansWhisper: GetBedGift — BedGift script cast failed (is BedGift on Main VMAD?)")
+	EndIf
+	Return bed
 EndFunction
