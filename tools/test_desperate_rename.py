@@ -11,7 +11,6 @@ USER = ROOT / "Data" / "Scripts" / "Source" / "User"
 MAIN = USER / "PickmansWhisperMainQuestScript.psc"
 MODCFG = USER / "PickmansWhisperModConfigScript.psc"
 RENAME = USER / "PickmansWhisperDesperateRenameScript.psc"
-KILLER = USER / "PickmansWhisperKillerScanScript.psc"
 MOD = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 ESP = ROOT / "tools" / "build_hunger_spell_esp.py"
 DEPLOY = ROOT / "tools" / "build-deploy-local.ps1"
@@ -49,7 +48,6 @@ def main() -> None:
         fail("missing PickmansWhisperDesperateRenameScript.psc")
     rename = RENAME.read_text(encoding="utf-8", errors="replace")
     main_txt = MAIN.read_text(encoding="utf-8", errors="replace")
-    killer = KILLER.read_text(encoding="utf-8", errors="replace")
     mod = MOD.read_text(encoding="utf-8", errors="replace")
 
     if "Scriptname PickmansWhisperDesperateRenameScript extends Quest" not in rename:
@@ -114,9 +112,8 @@ def main() -> None:
     ):
         fail("desperateNameSuffix must not ConfigFieldTrim(val) — keeps leading space")
 
-    dispatch = extract_function(killer, "DispatchListeners")
-    if "SyncFromKillerScanSnapshot" in dispatch:
-        fail("KillerScan must not SyncFromKillerScanSnapshot — rename is aim-driven via LookingAtTarget")
+    if "SyncFromKillerScanSnapshot" in main_txt or "SyncFromKillerScanSnapshot" in rename:
+        fail("DesperateRename/Main must not SyncFromKillerScanSnapshot — rename is aim-driven via LookingAtTarget")
     if "StartTimer(" in rename:
         fail("DesperateRename must not StartTimer")
 
@@ -149,7 +146,7 @@ def main() -> None:
     if "| **J** | Retire KillerScan" not in road:
         fail("ROADMAP must list Slice J as retire KillerScan + Alias refactor")
 
-    ok("Slice I desperate rename script + ModConfig + KillerScan + toast name")
+    ok("Slice I desperate rename script + ModConfig + aim-driven toast name")
     print("All desperate-rename (Slice I) contracts passed.")
 
 

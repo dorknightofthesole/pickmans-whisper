@@ -59,7 +59,6 @@ PSC_BED="PickmansWhisperBedGiftScript.psc"
 PSC_DECAY="PickmansWhisperCorpseDecayScript.psc"
 PSC_WOUND_LAB="PickmansWhisperDecayWoundLabScript.psc"
 PSC_VICTIMS="PickmansWhisperVictimsScript.psc"
-PSC_WORLD_SCAN="PickmansWhisperKillerScanScript.psc"
 PSC_VOICE_SCAN="PickmansWhisperVoiceAliasScript.psc"
 PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 PSC_BUFF_TRACKER="PickmansWhisperBuffTrackerScript.psc"
@@ -161,8 +160,8 @@ python "$ROOT/tools/test_buff_tracker.py" || exit 1
 echo "==> Beat before kill (Slice J1) contract test"
 python "$ROOT/tools/test_beat_before_kill.py" || exit 1
 
-echo "==> Killer Orchestrator / KillerScan bus contract test"
-python "$ROOT/tools/test_killer_scan_bus.py" || exit 1
+echo "==> KillerScan retirement contract test"
+python "$ROOT/tools/test_no_killer_scan.py" || exit 1
 
 echo "==> Voice debug Trace / MCM dump contract test"
 python "$ROOT/tools/test_voice_debug_trace.py" || exit 1
@@ -192,10 +191,10 @@ python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_WORLD_SCAN + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_KILL_REWARD"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_KILL_REWARD"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_WORLD_SCAN" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_KILL_REWARD"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_KILL_REWARD"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -228,10 +227,6 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" ]]; then
 fi
 if [[ ! -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" ]]; then
   echo "ERROR: compile produced no Victims .pex" >&2
-  exit 1
-fi
-if [[ ! -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" ]]; then
-  echo "ERROR: compile produced no KillerScan .pex" >&2
   exit 1
 fi
 if [[ ! -f "$PEX_OUT/PickmansWhisperVoiceAliasScript.pex" ]]; then
@@ -273,7 +268,6 @@ cp -f "$PEX_OUT/PickmansWhisperBedGiftScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperCorpseDecayScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperDecayWoundLabScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVictimsScript.pex" "$DEPLOY/Scripts/"
-cp -f "$PEX_OUT/PickmansWhisperKillerScanScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperVoiceAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" "$DEPLOY/Scripts/"
@@ -284,7 +278,6 @@ cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperDecayWoundLabScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVictimsScript.psc" "$DEPLOY/Scripts/Source/User/"
-cp -f "$SRC/PickmansWhisperKillerScanScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperVoiceAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBuffTrackerScript.psc" "$DEPLOY/Scripts/Source/User/"

@@ -2,7 +2,7 @@ Scriptname PickmansWhisperBeatBeforeKillScript extends Quest
 {Slice K — victim beat-before-kill (temp essential; was roadmap Q / earlier J).
 K1: manual MCM Victims toggle (dialog-free — MCM's own status row is its feedback).
 K2–K5: Apply / clear via HandleBeatBeforeKill(Actor) using wired PlayerAlias blade/unarmed flags.
-Weapon-equip clear-all also from PlayerAlias (any weapon) + KillerScan TickEssentialReconcile safety net.
+Weapon-equip clear-all also from PlayerAlias (any weapon) + TargetScan TickEssentialReconcile safety net.
 
 REMOVED — "out of combat -> clear essential" (both the direct OnCombatStateChanged(0)
 handler and the reconcile poll's !IsInCombat() check): confirmed via live log evidence
@@ -24,6 +24,69 @@ EndFunction
 Actor[] EssentialActors
 Int EssentialCount = 0
 Int ESSENTIAL_MAX = 16
+
+; Compat wrapper — combat enter / older call sites.
+Function OnPlayerEnterCombatWith(Actor target)
+	HandleBeatBeforeKill(target)
+EndFunction
+
+; Single gameplay entry — akTarget is the NPC. Uses wired PlayerAlias for blade/unarmed:
+;   blade equipped → clear essential on her if WE tracked her
+;   unarmed (IsReadyToGiveBeating) → apply temp essential (K2) when eligible
+Function HandleBeatBeforeKill(Actor akTarget)
+	If !akTarget
+		Return
+	EndIf
+	If !PlayerAlias
+		Debug.Trace("PickmansWhisper: ERROR HandleBeatBeforeKill — PlayerAlias unbound")
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Debug.Trace("PickmansWhisper: ERROR HandleBeatBeforeKill — Main missing")
+		Return
+	EndIf
+
+	If PlayerAlias.IsPickmansBladeEquipped
+		If FindEssentialSlot(akTarget) >= 0
+			RemoveEssentialTracked(akTarget)
+			ToastEssentialChange(akTarget, False)
+			Debug.Trace("PickmansWhisper: beat-before-kill essential OFF (blade equipped) id=0x" + GardenOfEden.GetHexFormID(akTarget))
+		EndIf
+		Return
+	EndIf
+
+	If !PlayerAlias.IsReadyToGiveBeating
+		Return
+	EndIf
+
+	; Blade-away nudge (ModConfig needsBeatingWhisper) — was RegisterTarget ElseIf.
+	If m.VoiceAlias
+		m.VoiceAlias.MaybeSpeakNeedsBeatingWhisper(akTarget)
+	Else
+		Debug.Trace("PickmansWhisper: HandleBeatBeforeKill skip | VoiceAlias unbound (needsBeating)")
+	EndIf
+
+	If FindEssentialSlot(akTarget) >= 0
+		Return ; already tracked (e.g. via J1) — nothing to do
+	EndIf
+	If !m.PlayerHasBlade()
+		Debug.Trace("PickmansWhisper: beat-before-kill skip | player does not own Pickman's Blade")
+		Return
+	EndIf
+	If akTarget.IsDead() || !m.IsValidTarget(akTarget)
+		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target id=" + akTarget.GetFormID())
+		Return
+	EndIf
+	EnsureEssentialList()
+	If EssentialCount >= ESSENTIAL_MAX
+		Debug.Trace("PickmansWhisper: ERROR beat-before-kill — tracking list full (" + ESSENTIAL_MAX + ")")
+		Return
+	EndIf
+	AddEssentialTracked(akTarget)
+	Debug.Trace("PickmansWhisper: beat-before-kill essential ON (auto, unarmed) id=0x" + GardenOfEden.GetHexFormID(akTarget))
+	ToastEssentialChange(akTarget, True)
+EndFunction
 
 Function EnsureEssentialList()
 	If !EssentialActors || EssentialActors.Length != ESSENTIAL_MAX
@@ -89,8 +152,9 @@ Function ToastEssentialChange(Actor ak, Bool abNowEssential)
 	If ak.IsEssential() != abNowEssential
 		verify = "\n\nWARNING: SetEssential did not take — IsEssential() reports " + ak.IsEssential()
 	EndIf
+	; MessageBox (not Notification) — confirmed Notification is easy to miss mid-combat.
+	Debug.MessageBox("Pickman's Whisper: " + label + " is now " + stateWord + verify)
 	Debug.Trace("PickmansWhisper: beat-before-kill essential=" + abNowEssential + " id=0x" + GardenOfEden.GetHexFormID(ak) + " name=" + label)
-	; Debug.MessageBox("Pickman's Whisper\n\n" + label + " is now " + stateWord + verify)
 EndFunction
 
 ; Shared apply — caller must already have verified eligibility + list capacity. No UI
@@ -150,61 +214,6 @@ Bool Function ToggleEssentialForAimed(Actor ak)
 	Return True
 EndFunction
 
-; Single gameplay entry — akTarget is the NPC. Uses wired PlayerAlias for blade/unarmed:
-;   blade equipped → clear essential on her if WE tracked her
-;   unarmed (IsReadyToGiveBeating) → apply temp essential (K2) when eligible
-Function HandleBeatBeforeKill(Actor akTarget)
-	If !akTarget
-		Return
-	EndIf
-	If !PlayerAlias
-		Debug.Trace("PickmansWhisper: ERROR HandleBeatBeforeKill — PlayerAlias unbound")
-		Return
-	EndIf
-	PickmansWhisperMainQuestScript m = Main()
-	If !m
-		Debug.Trace("PickmansWhisper: ERROR HandleBeatBeforeKill — Main missing")
-		Return
-	EndIf
-
-	If PlayerAlias.IsPickmansBladeEquipped
-		If FindEssentialSlot(akTarget) >= 0
-			RemoveEssentialTracked(akTarget)
-			ToastEssentialChange(akTarget, False)
-			Debug.Trace("PickmansWhisper: beat-before-kill essential OFF (blade equipped) id=0x" + GardenOfEden.GetHexFormID(akTarget))
-		EndIf
-		Return
-	EndIf
-
-	If !PlayerAlias.IsReadyToGiveBeating
-		Return
-	EndIf
-	If FindEssentialSlot(akTarget) >= 0
-		Return ; already tracked (e.g. via J1) — nothing to do
-	EndIf
-	If !m.PlayerHasBlade()
-		Debug.Trace("PickmansWhisper: beat-before-kill skip | player does not own Pickman's Blade")
-		Return
-	EndIf
-	If akTarget.IsDead() || !m.IsValidTarget(akTarget)
-		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target id=" + akTarget.GetFormID())
-		Return
-	EndIf
-	EnsureEssentialList()
-	If EssentialCount >= ESSENTIAL_MAX
-		Debug.Trace("PickmansWhisper: ERROR beat-before-kill — tracking list full (" + ESSENTIAL_MAX + ")")
-		Return
-	EndIf
-	AddEssentialTracked(akTarget)
-	Debug.Trace("PickmansWhisper: beat-before-kill essential ON (auto, unarmed) id=0x" + GardenOfEden.GetHexFormID(akTarget))
-	ToastEssentialChange(akTarget, True)
-EndFunction
-
-; Compat wrapper — combat enter / older call sites.
-Function OnPlayerEnterCombatWith(Actor target)
-	HandleBeatBeforeKill(target)
-EndFunction
-
 ; J5 reversal — player equipped ANY weapon. Called from PlayerAlias after blade/unarmed
 ; flags update. Clears every currently-tracked actor.
 Function ClearAllEssentialOnWeaponEquip()
@@ -223,12 +232,17 @@ Function ClearAllEssentialOnWeaponEquip()
 	EndWhile
 EndFunction
 
-; Ambient safety net — KillerScan every tick. Cheap no-op unless list non-empty AND armed.
+; Safety net for Slice K temp-essential list (EssentialActors).
+; Primary clear is PlayerAlias OnItemEquipped → ClearAllEssentialOnWeaponEquip when
+; the player arms any weapon (IsReadyToGiveBeating goes False). This TargetScan tick
+; only runs when we still have tracked essentials; if the equip event was missed and
+; the player is armed again, clear them here so they aren't stuck unkillable.
 Function TickEssentialReconcile()
 	If EssentialCount <= 0
 		Return
 	EndIf
 	If PlayerAlias
+		; Still unarmed / beating mode — leave temp essentials alone.
 		If PlayerAlias.IsReadyToGiveBeating
 			Return
 		EndIf
@@ -236,10 +250,12 @@ Function TickEssentialReconcile()
 		ClearAllEssentialOnWeaponEquip()
 		Return
 	EndIf
+	; Alias unbound — fall back to drawn-weapon check.
 	Actor player = Game.GetPlayer()
 	If !player
 		Return
 	EndIf
+	; GetEquippedWeapon returns False if the player is unarmed
 	If player.GetEquippedWeapon(0)
 		Debug.Trace("PickmansWhisper: beat-before-kill reconcile — player armed, clearing all")
 		ClearAllEssentialOnWeaponEquip()

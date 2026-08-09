@@ -6,16 +6,12 @@ Locks:
   - Endurance ActorValue FormID (0x000002C4) verified against Fallout4.esm
   - ApplyEatRipeCorpseEndBuff: reads amount/max/hours from Main (ModConfig-sourced),
     fails loud (no baked fallback) if any are missing/invalid
-  - Cap clamps the per-application amount to remaining headroom (already +3, amount=2
-    -> only +1 applied); at cap, no ModValue call but the expiry timer still refreshes
-  - TickEndBuffExpiry: no-op unless a buff is active AND past its expiry; removes the
-    FULL applied delta in one ModValue call, then clears bookkeeping
-  - Script is attached to the Main quest's VMAD (build_hunger_spell_esp.py) — no new
-    Quest/alias plumbing needed
-  - No StartTimer of its own (Killer Orchestrator) — dispatched from
-    KillerScanScript.DispatchListeners via CallFunctionNoWait every tick
-  - MainQuestScript.BuffTracker() facade + GetEatRipeCorpseEndBuff{Amount,MaxDelta,Hours}
-    getters; ModConfig ateRipeCorpseEndBuffAmount/MaxDelta/Hours parsed + reset
+  - Cap clamps the per-application amount to remaining headroom; at cap, no ModValue
+    but the game-time expiry timer still refreshes
+  - Expiry is self-contained StartTimerGameTime / OnTimerGameTime (game-time hours)
+  - InitBuffTracker from Main RegisterBuffTracker on quest init / load (re-arm or expire)
+  - BuffTracker owns StartTimerGameTime expiry (no TickEndBuffExpiry)
+  - Script attached to Main quest VMAD; ModConfig ateRipeCorpseEndBuff* parsed + reset
 
 Usage:
   python tools/test_buff_tracker.py
@@ -36,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BUFF = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBuffTrackerScript.psc"
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
-KILLER_SCAN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
+STUB_SCRIPT_OBJECT = ROOT / "tools" / "stubs" / "ScriptObject.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 ESP_BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
 DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
@@ -69,6 +65,17 @@ def extract_function(text: str, name: str) -> str:
     return text[start : start + end_m.end()]
 
 
+def extract_event(text: str, name: str) -> str:
+    m = re.search(rf"Event\s+{name}\s*\(", text)
+    if not m:
+        fail(f"missing event {name}")
+    start = m.start()
+    end_m = re.search(r"\nEndEvent\b", text[start:])
+    if not end_m:
+        fail(f"no EndEvent for {name}")
+    return text[start : start + end_m.end()]
+
+
 def parse_modconfig_active_keys(path: Path) -> dict[str, str]:
     out: dict[str, str] = {}
     for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -96,6 +103,17 @@ def test_modconfig() -> None:
     ok("ModConfig END buff keys ship with expected shipped values (2 / 4 / 2h)")
 
 
+def test_stubs() -> None:
+    stub = STUB_SCRIPT_OBJECT.read_text(encoding="utf-8", errors="replace")
+    if not re.search(r"Function\s+StartTimerGameTime\s*\(\s*Float", stub):
+        fail("tools/stubs/ScriptObject.psc must declare StartTimerGameTime (real FO4)")
+    if not re.search(r"Function\s+CancelTimerGameTime\s*\(\s*Int", stub):
+        fail("tools/stubs/ScriptObject.psc must declare CancelTimerGameTime (real FO4)")
+    if "Event OnTimerGameTime(Int aiTimerID)" not in stub:
+        fail("tools/stubs/ScriptObject.psc must declare OnTimerGameTime")
+    ok("ScriptObject stub declares StartTimerGameTime / CancelTimerGameTime / OnTimerGameTime")
+
+
 def test_buff_script() -> None:
     if not BUFF.is_file():
         fail(f"missing {BUFF}")
@@ -105,8 +123,8 @@ def test_buff_script() -> None:
         fail("PickmansWhisperBuffTrackerScript must extend Quest (attached to Main quest VMAD)")
     if "FID_AV_ENDURANCE = 0x000002C4" not in text:
         fail("FID_AV_ENDURANCE must be 0x000002C4 (Fallout4.esm Endurance)")
-    if "StartTimer(" in text:
-        fail("BuffTrackerScript must not StartTimer (Killer Orchestrator — dispatched from KillerScan)")
+    if "TickEndBuffExpiry" in text:
+        fail("TickEndBuffExpiry retired — BuffTracker owns StartTimerGameTime expiry")
 
     apply_fn = extract_function(text, "ApplyEatRipeCorpseEndBuff")
     for needle in (
@@ -124,24 +142,42 @@ def test_buff_script() -> None:
         fail("ApplyEatRipeCorpseEndBuff must clamp the per-application amount to remaining headroom")
     if "player.ModValue(EnduranceAV, addAmount)" not in apply_fn:
         fail("ApplyEatRipeCorpseEndBuff must ModValue the clamped amount, not the raw configured amount")
-    if "EndBuffExpiryGameTime = now + (hours / 24.0)" not in apply_fn.replace("\n\t", "\n"):
-        # appears twice (cap branch + normal branch); just check it's present at all
-        if "now + (hours / 24.0)" not in apply_fn:
-            fail("ApplyEatRipeCorpseEndBuff must set expiry to now + hours/24 (game-time)")
+    if "now + (hours / 24.0)" not in apply_fn:
+        fail("ApplyEatRipeCorpseEndBuff must set expiry to now + hours/24 (game-time days bookkeeping)")
     if "headroom <= 0.0" not in apply_fn:
         fail("ApplyEatRipeCorpseEndBuff must handle the at-cap case explicitly (no ModValue, but still refresh expiry)")
+    if apply_fn.count("ArmEndBuffExpiryTimer(hours)") < 2:
+        fail("ApplyEatRipeCorpseEndBuff must ArmEndBuffExpiryTimer on both cap-refresh and apply paths")
 
-    tick_fn = extract_function(text, "TickEndBuffExpiry")
-    if "EndBuffAppliedDelta <= 0.0" not in tick_fn:
-        fail("TickEndBuffExpiry must no-op when no buff is active")
-    if "EndBuffExpiryGameTime > now" not in tick_fn:
-        fail("TickEndBuffExpiry must no-op until expiry time has passed")
-    if "player.ModValue(EnduranceAV, -EndBuffAppliedDelta)" not in tick_fn:
-        fail("TickEndBuffExpiry must remove the full applied delta in one ModValue call")
-    if "EndBuffAppliedDelta = 0.0" not in tick_fn or "EndBuffExpiryGameTime = 0.0" not in tick_fn:
-        fail("TickEndBuffExpiry must clear both bookkeeping fields after removal")
+    arm = extract_function(text, "ArmEndBuffExpiryTimer")
+    if "StartTimerGameTime(hours, TIMER_END_BUFF)" not in arm:
+        fail("ArmEndBuffExpiryTimer must StartTimerGameTime(hours, TIMER_END_BUFF) (interval = game hours)")
+    if "CancelTimerGameTime(TIMER_END_BUFF)" not in arm:
+        fail("ArmEndBuffExpiryTimer must CancelTimerGameTime before re-arm")
 
-    ok("BuffTrackerScript apply/expire logic (headroom clamp, fail-loud config, full-delta removal)")
+    on_timer = extract_event(text, "OnTimerGameTime")
+    if "ExpireEndBuff(" not in on_timer:
+        fail("OnTimerGameTime must call ExpireEndBuff")
+    if "TIMER_END_BUFF" not in on_timer:
+        fail("OnTimerGameTime must gate on TIMER_END_BUFF")
+
+    expire = extract_function(text, "ExpireEndBuff")
+    if "player.ModValue(EnduranceAV, -EndBuffAppliedDelta)" not in expire:
+        fail("ExpireEndBuff must remove the full applied delta in one ModValue call")
+    if "EndBuffAppliedDelta = 0.0" not in expire or "EndBuffExpiryGameTime = 0.0" not in expire:
+        fail("ExpireEndBuff must clear both bookkeeping fields after removal")
+
+    init = extract_function(text, "InitBuffTracker")
+    if "ReconcileEndBuffTimer()" not in init:
+        fail("InitBuffTracker must ReconcileEndBuffTimer (load re-arm / expire)")
+
+    reconcile = extract_function(text, "ReconcileEndBuffTimer")
+    if "ExpireEndBuff(" not in reconcile:
+        fail("ReconcileEndBuffTimer must ExpireEndBuff when load finds past expiry")
+    if "ArmEndBuffExpiryTimer(" not in reconcile:
+        fail("ReconcileEndBuffTimer must ArmEndBuffExpiryTimer for remaining hours")
+
+    ok("BuffTrackerScript apply + StartTimerGameTime expiry + load reconcile")
 
 
 def test_main_wiring() -> None:
@@ -149,6 +185,22 @@ def test_main_wiring() -> None:
     facade = extract_function(text, "BuffTracker")
     if "PickmansWhisperBuffTrackerScript" not in facade:
         fail("MainQuestScript.BuffTracker() facade must cast to PickmansWhisperBuffTrackerScript")
+
+    reg = extract_function(text, "RegisterBuffTracker")
+    if "InitBuffTracker()" not in reg:
+        fail("RegisterBuffTracker must call buffs.InitBuffTracker()")
+    if "BuffTracker script missing" not in reg:
+        fail("RegisterBuffTracker must fail loud when BuffTracker unbound")
+
+    quest_init = extract_event(text, "OnQuestInit")
+    if "RegisterBuffTracker()" not in quest_init:
+        fail("OnQuestInit must RegisterBuffTracker")
+    resume = extract_function(text, "HandleGameResume")
+    if "RegisterBuffTracker()" not in resume:
+        fail("HandleGameResume must RegisterBuffTracker")
+    arm = extract_function(text, "ArmRuntimeLoops")
+    if "RegisterBuffTracker()" not in arm:
+        fail("ArmRuntimeLoops must RegisterBuffTracker (load re-arm path)")
 
     if "ModConfigAlias Auto" not in text:
         fail("Main must expose ModConfigAlias for BuffTracker END buff keys")
@@ -166,17 +218,16 @@ def test_main_wiring() -> None:
         if field not in load_cfg:
             fail(f"LoadModConfig must reset {field} at the top like other ModConfig fields")
 
-    ok("MainQuestScript BuffTracker facade + ModConfigAlias + ModConfig parse/reset")
+    ok("MainQuestScript RegisterBuffTracker on init/load + ModConfig parse/reset")
 
 
-def test_killer_scan_dispatch() -> None:
-    text = KILLER_SCAN.read_text(encoding="utf-8", errors="replace")
-    if "PickmansWhisperBuffTrackerScript Function BuffTracker" not in text:
-        fail("KillerScanScript must have its own BuffTracker() facade")
-    dispatch = extract_function(text, "DispatchListeners")
-    if 'buffs.CallFunctionNoWait("TickEndBuffExpiry", None)' not in dispatch:
-        fail("DispatchListeners must CallFunctionNoWait TickEndBuffExpiry every tick")
-    ok("KillerScanScript dispatches TickEndBuffExpiry (no StartTimer on BuffTrackerScript)")
+def test_buff_expiry_self_contained() -> None:
+    text = BUFF.read_text(encoding="utf-8", errors="replace")
+    if "StartTimerGameTime" not in text:
+        fail("BuffTracker must use StartTimerGameTime for expiry")
+    if "TickEndBuffExpiry" in text:
+        fail("BuffTracker must not define TickEndBuffExpiry (self-contained timer)")
+    ok("BuffTracker StartTimerGameTime expiry; no TickEndBuffExpiry")
 
 
 def test_esp_builder() -> None:
@@ -255,9 +306,10 @@ def main() -> int:
     args = ap.parse_args()
 
     test_modconfig()
+    test_stubs()
     test_buff_script()
     test_main_wiring()
-    test_killer_scan_dispatch()
+    test_buff_expiry_self_contained()
     test_esp_builder()
     test_deploy_gate()
     test_esm(find_esm(args.esm))

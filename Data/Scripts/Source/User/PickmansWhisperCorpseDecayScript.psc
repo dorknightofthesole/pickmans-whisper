@@ -63,6 +63,11 @@ String Property LastCorpseDecayStatus = "" Auto
 Float LastEatRipeCorpseToastGameTime = 0.0
 Float EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0
 
+; Slice H P5 — set by Cannibal heal MGEF (Main.HandlePlayerMagicEffectApply); claimed by
+; MaybeRewardEatenRipeCorpse(akCorpse) from HandleCorpseDecay so the corpse is the one
+; TargetScan already handed us (no KillerScan ScanDead). Idle ticks leave this False.
+Bool PendingEatRipeReward = False
+
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
@@ -221,6 +226,7 @@ Function HandleCorpseDecay(Actor akCorpse)
 		SyncDecayForKnifeCorpse(akCorpse)
 		If ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)
 			MaybeToastEatRipeCorpse(akCorpse)
+			MaybeRewardEatenRipeCorpse(akCorpse)
 		EndIf
 	Else
 		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | no kill slot formId=" + id)
@@ -261,7 +267,7 @@ Function MaybeToastEatRipeCorpse(Actor akCorpse)
 		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | VoiceAlias unbound")
 		Return
 	EndIf
-	String line = m.VoiceAlias.ApplyNamePlaceholder(m.ModConfigAlias.EatRipeCorpseToast, overrideName)
+	String line = m.ApplyNamePlaceholder(m.ModConfigAlias.EatRipeCorpseToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | empty line after placeholder")
 		Return
@@ -605,58 +611,46 @@ Int Function ResolveDecayStageForKill(Int formId)
 	Return m.ModConfigAlias.ResolveDecayStageFromElapsedHours(elapsedHours)
 EndFunction
 
-Function MaybeRewardEatenRipeCorpse()
+; Latch from Main after RestoreHealthGeneric (Cannibal heal). HandleCorpseDecay claims it.
+Function NotePendingEatRipeReward()
+	PendingEatRipeReward = True
+	Debug.Trace("PickmansWhisper: eaten-ripe-corpse pending | waiting for HandleCorpseDecay")
+EndFunction
+
+; Slice H P5 — reward one max-stage corpse after a pending Cannibal heal. Called from
+; HandleCorpseDecay with that corpse (no KillerScan ScanDead / nearest search).
+Function MaybeRewardEatenRipeCorpse(Actor akCorpse)
+	If !PendingEatRipeReward
+		Return
+	EndIf
+	If !akCorpse
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no corpse")
+		Return
+	EndIf
 	PickmansWhisperMainQuestScript m = Main()
 	If !m || !m.PlayerRef || !m.PlayerHasCannibalPerk()
+		PendingEatRipeReward = False
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no Cannibal perk (heal was not from eating)")
 		Return
 	EndIf
-	PickmansWhisperKillerScanScript scan = m.KillerScan()
-	If !scan
-		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | KillerScan missing")
-		Return
-	EndIf
-	Actor[] dead = scan.ScanDead
-	Int deadCount = scan.ScanDeadCount
-	If !dead || deadCount <= 0
-		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | ScanDead empty")
-		Return
-	EndIf
-	Int n = deadCount
-	If n > 16
-		n = 16
-	EndIf
-	Actor nearest = None
 	; Match Main BUTCHER_CORPSE_RADIUS (shared butcher/eat range).
 	Float butcherR = 500.0
-	Float nearestDist = butcherR + 1.0
-	Int i = 0
-	While i < n
-		Actor ak = dead[i]
-		If ak && ak != m.PlayerRef
-			Float d = m.PlayerRef.GetDistance(ak)
-			If d < nearestDist
-				nearestDist = d
-				nearest = ak
-			EndIf
-		EndIf
-		i += 1
-	EndWhile
-	If !nearest
-		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no corpse within " + butcherR)
+	If m.PlayerRef.GetDistance(akCorpse) > butcherR
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | corpse out of butcher range formId=" + akCorpse.GetFormID())
 		Return
 	EndIf
-	Int formId = nearest.GetFormID()
+	Int formId = akCorpse.GetFormID()
 	If FindDecayKillSlot(formId) < 0
-		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse untracked formId=" + formId)
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | corpse untracked formId=" + formId)
 		Return
 	EndIf
-	If !m.ModConfigAlias || ResolveDecayStageForKill(formId) != (m.ModConfigAlias.DECAY_STAGE_COUNT - 1)
-		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse not max stage formId=" + formId)
+	If ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | corpse not max stage formId=" + formId)
 		Return
 	EndIf
-	ToastAteRipeCorpse(nearest)
-	ApplyEatRipeCorpseBonus(nearest)
+	PendingEatRipeReward = False
+	ToastAteRipeCorpse(akCorpse)
+	ApplyEatRipeCorpseBonus(akCorpse)
 EndFunction
 
 Function ToastAteRipeCorpse(Actor akCorpse)
@@ -676,7 +670,7 @@ Function ToastAteRipeCorpse(Actor akCorpse)
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | VoiceAlias unbound")
 		Return
 	EndIf
-	String line = m.VoiceAlias.ApplyNamePlaceholder(m.ModConfigAlias.AteRipeCorpseToast, overrideName)
+	String line = m.ApplyNamePlaceholder(m.ModConfigAlias.AteRipeCorpseToast, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | empty line after placeholder")
 		Return
@@ -1427,6 +1421,8 @@ Function FinalizeActorAfterSFTFace(Actor akActor, Bool abWasDead)
 			m.SetKnifeKillCreditSuppressed(True)
 		EndIf
 		Actor player = Game.GetPlayer()
+		; Protected ActorBases: KillSilent() with no killer can leave them alive.
+		; Pass player as killer (credit suppressed above); do not clear Protected on the base.
 		If player
 			akActor.KillSilent(player)
 		Else

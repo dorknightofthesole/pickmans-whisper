@@ -1,6 +1,6 @@
 Scriptname PickmansWhisperVoiceAliasScript extends ReferenceAlias
 {Voice owner — Notice / Recognition / SleepRecognition / stage Audio / Intimacy.
-Entry: HandleWhisperVoice(Actor). KillerScan snapshot APIs are stubs until replaced.}
+Entry: HandleWhisperVoice(Actor).}
 
 ; One row in the look-fixation table (who / how many looks / recognition toasts heard).
 Struct FixationEntry
@@ -81,13 +81,13 @@ String LastStageLoadDiag = ""
 Float Property LastNoticeToastRealTime = 0.0 Auto
 Float Property LastNoticeToastGameTime = 0.0 Auto ; hunger whisper cadence (game days)
 Float NOTICE_TOAST_COOLDOWN = 6.0 ; legacy real-s gap (kept for probes); ambient uses NOTICE_MIN_GAME_HOURS
-Float NOTICE_MIN_GAME_HOURS = 1.0 ; max ~1 ambient hunger whisper per game hour
+Float NOTICE_MIN_GAME_HOURS = 0.083333 ; ~5 game minutes between ambient hunger whispers
 Float NOTICE_NPC_COOLDOWN = 12.0 ; per-NPC cool after a hunger toast (does NOT block fixation)
 ; Trust / hunger-band / praise toast cooldowns (Main façades read/write these — must be Property).
 Float Property LastTrustToastRealTime = 0.0 Auto
 Float Property LastHungerToastRealTime = 0.0 Auto
 Float Property LastPraiseToastRealTime = 0.0 Auto
-Float Property TRUST_TOAST_COOLDOWN = 8.0 Auto Const
+Float Property TRUST_TOAST_COOLDOWN = 60 Auto Const
 Float Property HUNGER_TOAST_COOLDOWN = 6.0 Auto Const
 Float Property PRAISE_TOAST_COOLDOWN = 2.0 Auto Const
 Int[] NoticeCoolIds
@@ -103,33 +103,30 @@ String Property LastNoticeStatus = "" Auto ; MCM Debug — why notice did/didn't
 ; Called from TargetScan (via Main.LookingAtTarget) once per scan when aimed at someone.
 ;
 ; Per-NPC memory (up to FIXATION_MAX): single FixationEntry[] table.
-; Aim throttle: LastLookFixationId + SameAimPollCount — first look counts now;
-; hold-aim throttle applies only after that first look is in the table.
+; Spacing: SkipFixation / FIXATION_TOAST_GAP between counted looks while holding aim.
 ;
 ; Voice by look count (mild → sharper):
 ;   1st look — silent (just remember her)
 ;   2nd look — recognition lines (sleep bank if she is asleep)
 ;   3rd+    — hunger-stage notice lines (C3 banks; stronger than recognition)
+; Name-her prompt queues at look count >= RECOGNITION_NAME_PROMPT_AT (still unnamed).
 Int FIXATION_MAX = 32
 Int LOOK_COUNT_FIRST_SILENT = 1
 Int LOOK_COUNT_SECOND_RECOGNITION = 2
-
-Int LOOK_SAME_AIM_POLLS = 3 ; while holding aim, count on every Nth TargetScan pulse
 FixationEntry[] Fixations
 Int FixationSlotCount = 0
 Int LastLookFixationId = 0 ; last aimed actorId; 0 after look-away
-Int SameAimPollCount = 0 ; consecutive scans on LastLookFixationId since last counted look
 String Property LastFixationStatus = "" Auto ; MCM Debug
 String[] RecognitionLines
 Int RecognitionLineCount = 0
 String LastRecognitionLine = "" ; no-immediate-repeat (raw template)
 String RecognitionLoadStatus = ""
-; C5 P5 — sleep recognition bank (3rd+ look while GetSleepState >= 3).
+; C5 P5 — sleep recognition bank (2nd look while GetSleepState >= 3).
 String[] SleepRecognitionLines
 Int SleepRecognitionLineCount = 0
 String LastSleepRecognitionLine = "" ; no-immediate-repeat (raw template)
 String SleepRecognitionLoadStatus = ""
-; After this many recognition toasts on one NPC (still unnamed), nudge toward MCM Victims.
+; After this many counted looks on one NPC (still unnamed), nudge toward MCM Victims.
 Int RECOGNITION_NAME_PROMPT_AT = 3
 
 String[] IntimacyStartNamedLines
@@ -150,6 +147,8 @@ Int IntimacyEndAudioCount = 0
 String IntimacyEndAudioStatus = ""
 String LastIntimacyAudioFile = "" ; no-immediate-repeat for audio-only intimacy rolls
 Int WHISPER_SNDR_MAX = 128 ; Desperate + Necromantic intimacy maps
+; True while PlayWhisperXwmAndWait is latent on PlayAndWait — skip overlapping clips.
+Bool WhisperAudioBusy = False
 
 Float FIXATION_TOAST_GAP = 20.0 ; real seconds between fixation toasts for one NPC
 
@@ -192,49 +191,6 @@ Function HandleWhisperVoice(Actor akTarget)
 	EndIf
 	NoteVoiceDispatch("target=" + who)
 	MaybeSpeakNoticeLine(akTarget)
-EndFunction
-
-; --- KillerScan deprecation stubs (dummy returns + toast/trace until wired) ------
-
-Function NotifyKillerScanStub(String apiName)
-	String msg = "PW: KillerScan stub " + apiName + " — needs fix"
-	Debug.Trace("PickmansWhisper: TODO " + msg)
-	Debug.Notification(msg)
-EndFunction
-
-Actor[] Function StubScanAlive()
-	NotifyKillerScanStub("ScanAlive")
-	Return None
-EndFunction
-
-Int Function StubScanAliveCount()
-	NotifyKillerScanStub("ScanAliveCount")
-	Return 0
-EndFunction
-
-Actor[] Function StubScanDead()
-	NotifyKillerScanStub("ScanDead")
-	Return None
-EndFunction
-
-Int Function StubScanDeadCount()
-	NotifyKillerScanStub("ScanDeadCount")
-	Return 0
-EndFunction
-
-Actor Function StubCameraActor()
-	NotifyKillerScanStub("CameraActor")
-	Return None
-EndFunction
-
-Actor Function StubFacedDead()
-	NotifyKillerScanStub("FacedDead")
-	Return None
-EndFunction
-
-Actor Function StubFacedLiving()
-	NotifyKillerScanStub("FacedLiving")
-	Return None
 EndFunction
 
 ; --- moved functions ---
@@ -294,7 +250,7 @@ Function MaybeSpeakNamedIntimacyEvent(Actor partner, Bool abStart)
 	Else
 		toastTemplate = IntimacyEndNamedLines[tIdx]
 	EndIf
-	String line = ApplyNamePlaceholder(toastTemplate, overrideName)
+	String line = Main().ApplyNamePlaceholder(toastTemplate, overrideName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		Return
 	EndIf
@@ -474,14 +430,13 @@ Function MaybeSpeakNoticeLine(Actor akTarget)
 	OnNoticeSpoken(akTarget, npcName, line)
 EndFunction
 
-; Called when the player is aimed at someone.
-; First look at an NPC counts immediately (silent). Hold-aim throttle runs only
-; after that first look is in the table — otherwise SameAimPollCount can reach
-; LOOK_SAME_AIM_POLLS, Increment to first look, reset to 0, and stall forever.
+; Called when the player is aimed at someone (Main.LookingAtTarget / TargetScan).
+; First look counts immediately (silent). Further looks spaced by SkipFixation gap.
 ;
 ; After each counted look, speak based on how many times we have counted her:
-;   1st — silent   2nd — recognition   3rd+ — hunger-stage (ends sharper)
+;   1st — silent   2nd — recognition   3rd+ — hunger-stage
 ; Blade must be drawn to speak (not required for the silent first look).
+; Name-her queues at look count >= RECOGNITION_NAME_PROMPT_AT.
 Function LookFixation(Actor akTarget)
 	If !Main().PlayerRef
 		Main().PlayerRef = Game.GetPlayer()
@@ -493,12 +448,11 @@ Function LookFixation(Actor akTarget)
 		Return
 	EndIf
 
-	; Not aimed at a valid target — reset aim throttle so the next look counts now.
+	; Not aimed at a valid target — clear aim id so the next look can count.
 	; Eligibility matches notice filters but ignores hunger toast cooldown, so a
 	; recent ambient whisper cannot block look-counting.
 	If !akTarget || akTarget == Main().PlayerRef || !IsFixationEligible(akTarget)
 		LastLookFixationId = 0
-		SameAimPollCount = 0
 		Return
 	EndIf
 
@@ -517,10 +471,10 @@ Function LookFixation(Actor akTarget)
 		Return
 	EndIf
 
-	; per-NPC lastFixation time — skip toast until N seconds after last
+	; per-NPC lastFixation time — skip until N seconds after last counted look
 	Bool skip = SkipFixation(fixEntryId, actorId)
 	If skip
-		Debug.Notification("PW Debug: Skipping fixation, its been less than " + FIXATION_TOAST_GAP + " since the last fixation whisper." )
+		; Debug.Notification("PW Debug: Skipping fixation, its been less than " + FIXATION_TOAST_GAP + " since the last fixation whisper." )
 		Debug.Trace("PW Debug: Skipping fixation, its been less than " + FIXATION_TOAST_GAP + " since the last fixation whisper." )
 		Return
 	EndIf
@@ -533,6 +487,7 @@ Function LookFixation(Actor akTarget)
 		Return
 	EndIf
 	Int count = bumped.LookCount
+	LastLookFixationId = actorId
 
 	; Name for toasts / MCM (rejects junk glyphs; Victims rename if set).
 	String displayName = NoticeNameForLine(GetActorDisplayName(akTarget))
@@ -546,11 +501,21 @@ Function LookFixation(Actor akTarget)
 	WriteFixationStatusToMcm()
 	Debug.Trace("PickmansWhisper: fixation edge | " + LastFixationStatus)
 
+	; Name-her uses look count (not recognition-toast count) — queues for TickPendingRenameDeadline.
+	If count >= RECOGNITION_NAME_PROMPT_AT
+		MaybePromptNameHer(akTarget, count)
+	EndIf
+
+	If count == LOOK_COUNT_FIRST_SILENT
+		; Remember her; no voice yet.
+		Return
+	EndIf
+
 	If !IsVoiceWeaponReady()
 		LastFixationStatus = label + " seen x" + count + " (no blade — silent)"
 		WriteFixationStatusToMcm()
 		Debug.Trace("PickmansWhisper: fixation skip | Blade not equipped")
-		Debug.Notification("PickmansWhisper: fixation skip | Blade not equipped")
+		; Debug.Notification("PickmansWhisper: fixation skip | Blade not equipped")
 		Return
 	EndIf
 
@@ -558,7 +523,7 @@ Function LookFixation(Actor akTarget)
 		; Second look — milder recognition (or sleep-recognition if she is asleep).
 		SpeakRecognitionLine(akTarget, displayName)
 	Else
-		; Third look or later — hunger-stage notice (sharper; ends the ladder).
+		; Third look or later — hunger-stage notice (sharper).
 		SpeakFixationStageWhisper(akTarget, displayName)
 	EndIf
 
@@ -617,6 +582,35 @@ Function ShowVoiceToast(String line)
 EndFunction
 
 
+; Ambient trust lines (TrustLines.txt on Main). Hosted from TargetScan cadence.
+Function MaybeSpeakTrustLine()
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.BondStarted
+		Return
+	EndIf
+	If !IsVoiceEnabled()
+		Return
+	EndIf
+	If Utility.IsInMenuMode()
+		Return
+	EndIf
+	If !IsVoiceWeaponReady()
+		Return
+	EndIf
+	Float now = Utility.GetCurrentRealTime()
+	If (now - LastTrustToastRealTime) < TRUST_TOAST_COOLDOWN
+		Return
+	EndIf
+	String line = m.PickTrustLine()
+	If line == ""
+		Return
+	EndIf
+	LastTrustToastRealTime = now
+	ShowVoiceToast(line)
+	Debug.Trace("PickmansWhisper: voice | " + line)
+EndFunction
+
+
 ; Blade OnHit nudge — ModConfig hitWhisper toast for now; may grow into audio later.
 Function MaybeSpeakHitWhisper(Actor akTarget)
 	If !Main() || !Main().ModConfigAlias
@@ -634,6 +628,7 @@ EndFunction
 
 ; Living tracked NPC while blade unequipped — ModConfig needsBeatingWhisper.
 ; No ShowVoiceToast (that gates on blade drawn); plain FormatVoiceToast Notification.
+; FormatLineWithActorName(..., False) keeps Settler/HUD label (not ambient nameless strip).
 Function MaybeSpeakNeedsBeatingWhisper(Actor akTarget)
 	If !akTarget
 		Debug.Trace("PickmansWhisper: MaybeSpeakNeedsBeatingWhisper skip | no actor")
@@ -648,8 +643,7 @@ Function MaybeSpeakNeedsBeatingWhisper(Actor akTarget)
 		Debug.Trace("PickmansWhisper: MaybeSpeakNeedsBeatingWhisper skip | needsBeatingWhisper empty (ModConfig)")
 		Return
 	EndIf
-	String npcName = NoticeNameForLine(GetActorDisplayName(akTarget))
-	String line = ApplyNamePlaceholder(raw, npcName)
+	String line = Main().FormatLineWithActorName(raw, akTarget, False)
 	If !line
 		Debug.Trace("PickmansWhisper: MaybeSpeakNeedsBeatingWhisper skip | line empty after {name}")
 		Return
@@ -661,7 +655,6 @@ EndFunction
 ; Whisper / fixation / notice label for an actor.
 ; P3+P4 Potential Victims: override + GoE2.SetDisplayName so {name} matches aim/HUD.
 String Function GetActorDisplayName(Actor ak)
-	Debug.Notification("PW Debug: GetActorDisplayName")
 	If !ak
 		Return ""
 	EndIf
@@ -835,8 +828,10 @@ Bool Function SkipFixation(Int fixEntryId, Int actorId)
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
 	; lastFixation == 0 → never toasted; always allow and stamp.
-	If e.lastFixation > 0.0 && (now - e.lastFixation) < FIXATION_TOAST_GAP
-		Debug.Trace("PickmansWhisper: fixation skip | toast gap " + (now - e.lastFixation) + "s < " + FIXATION_TOAST_GAP)
+	; Negative gap = real-time clock reset after load — treat as allow (else Skip forever).
+	Float gap = now - e.lastFixation
+	If e.lastFixation > 0.0 && gap >= 0.0 && gap < FIXATION_TOAST_GAP
+		Debug.Trace("PickmansWhisper: fixation skip | toast gap " + gap + "s < " + FIXATION_TOAST_GAP)
 		Return True
 	EndIf
 	e.lastFixation = now
@@ -864,22 +859,6 @@ FixationEntry Function IncrementFixation(Int fixEntryId, Int actorId)
 	e.LookCount = e.LookCount + 1
 	Fixations[fixEntryId] = e
 	Return e
-EndFunction
-
-; Bump how many RecognitionLines toasts this actor has heard. 0 if unknown slot.
-Int Function IncrementRecognitionToast(Int actorId)
-	EnsureFixationLists()
-	Int i = 0
-	While i < FixationSlotCount
-		FixationEntry bumped = Fixations[i]
-		If bumped && bumped.ActorId == actorId
-			bumped.RecognitionToasts = bumped.RecognitionToasts + 1
-			Fixations[i] = bumped
-			Return bumped.RecognitionToasts
-		EndIf
-		i += 1
-	EndWhile
-	Return 0
 EndFunction
 
 ; Drop this actor from the look table (no-op if she is not tracked).
@@ -912,7 +891,6 @@ Function RemoveFixationByActorId(Int actorId)
 			FixationSlotCount -= 1
 			If LastLookFixationId == actorId
 				LastLookFixationId = 0
-				SameAimPollCount = 0
 			EndIf
 			Return
 		EndIf
@@ -968,12 +946,13 @@ EndFunction
 ;-------------------------- Fixation Entry Util End --------------------------;
 
 
-; After N recognition toasts, if still unnamed, queue MCM Victims nudge (delayed).
+; After N counted looks (LookFixation), if still unnamed, queue MCM Victims nudge (delayed).
 ; Never ShowVoiceToast here — a second Notification in the same tick replaces the
-; RecognitionLines toast in the FO4 HUD.
+; recognition / stage toast in the FO4 HUD.
 ; Prompt text: ModConfig.txt → renamePromptFemaleNPC (files-only).
-Function MaybePromptNameHer(Actor ak, Int recognitionToasts)
-	If !ak || recognitionToasts < RECOGNITION_NAME_PROMPT_AT
+; aiLookCount is FixationEntry.LookCount from LookingAtTarget / LookFixation.
+Function MaybePromptNameHer(Actor ak, Int aiLookCount)
+	If !ak || aiLookCount < RECOGNITION_NAME_PROMPT_AT
 		Return
 	EndIf
 	If Main().GetVictimOverrideName(ak)
@@ -989,9 +968,9 @@ Function MaybePromptNameHer(Actor ak, Int recognitionToasts)
 		Return
 	EndIf
 	Main().PendingRenamePrompt = Main().ModConfigAlias.RenamePromptFemaleNPC
-	; Main OnKillerScanCadence polls PendingRenameAtReal, then toasts the queued prompt.
+	; LookingAtTarget → TickPendingRenameDeadline polls PendingRenameAtReal.
 	Main().PendingRenameAtReal = Utility.GetCurrentRealTime() + RENAME_PROMPT_DELAY
-	Debug.Trace("PickmansWhisper: name-her prompt queued (deadline) | id=0x" + GardenOfEden.GetHexFormID(ak))
+	Debug.Trace("PickmansWhisper: name-her prompt queued (deadline) | id=0x" + GardenOfEden.GetHexFormID(ak) + " looks=" + aiLookCount)
 EndFunction
 
 ; Empty string = passes. Otherwise a short reject reason for MCM / MessageBox.
@@ -1335,7 +1314,7 @@ String Function PickRecognitionLine(String npcName)
 				Return ""
 			EndIf
 		Else
-			String line = ApplyNamePlaceholder(raw, useName)
+			String line = Main().ApplyNamePlaceholder(raw, useName)
 			If line && GardenOfEden.StrLength(line) >= 1
 				LastRecognitionLine = raw
 				Return line
@@ -1371,7 +1350,7 @@ String Function PickSleepRecognitionLine(String npcName)
 				Return ""
 			EndIf
 		Else
-			String line = ApplyNamePlaceholder(raw, useName)
+			String line = Main().ApplyNamePlaceholder(raw, useName)
 			If line && GardenOfEden.StrLength(line) >= 1
 				LastSleepRecognitionLine = raw
 				Return line
@@ -1383,7 +1362,27 @@ EndFunction
 
 
 ; 3rd+ look — speak current hunger-stage notice line (does not rewrite MaybeSpeakNoticeLine).
+; Honors Voice delivery (toast+audio / audio-only / toast-only) — Desperate_Audio etc.
 Function SpeakFixationStageWhisper(Actor ak, String npcName)
+	Int stage = GetNoticeStage()
+	Int mode = GetVoiceDeliveryMode() ; 0 toast+audio / 1 audio only / 2 toast only
+
+	If mode == 1
+		Int aIdx = PickNoticeAudioIndex(stage)
+		If aIdx < 0
+			LastFixationStatus = "stage audio-only skipped (map empty)"
+			WriteFixationStatusToMcm()
+			Debug.Trace("PickmansWhisper: SpeakFixationStageWhisper skip | audio-only empty stage=" + stage)
+			Return
+		EndIf
+		PlayNoticeAudio(stage, aIdx)
+		If ak
+			MarkNoticeCooldown(ak)
+			OnNoticeSpoken(ak, npcName, "")
+		EndIf
+		Return
+	EndIf
+
 	String line = PickNoticeLine(npcName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		LastFixationStatus = "seen x2 — stage line skipped (bank empty)"
@@ -1394,6 +1393,10 @@ Function SpeakFixationStageWhisper(Actor ak, String npcName)
 	EndIf
 	; ToastNoticeLine stamps game-hour gate so ambient won't double-toast soon after.
 	ToastNoticeLine(line)
+	; Same-index audio as MaybeSpeakNoticeLine (Desperate_Audio.txt when stage 4).
+	If mode == 0
+		PlayNoticeAudio(stage, LastNoticePickIndex)
+	EndIf
 	If ak
 		MarkNoticeCooldown(ak)
 		OnNoticeSpoken(ak, npcName, line)
@@ -1402,8 +1405,7 @@ EndFunction
 
 
 ; 2nd look — awake RecognitionLines / sleep SleepRecognitionLines (no hunger hour stamp).
-; After RECOGNITION_NAME_PROMPT_AT successful toasts on this NPC (still unnamed),
-; queue ModConfig renamePromptFemaleNPC until named.
+; Name-her prompt is LookFixation look-count (RECOGNITION_NAME_PROMPT_AT), not here.
 Function SpeakRecognitionLine(Actor ak, String npcName)
 	Bool asleep = IsActorSleeping(ak)
 	String line = ""
@@ -1445,11 +1447,6 @@ Function SpeakRecognitionLine(Actor ak, String npcName)
 	Else
 		Debug.Trace("PickmansWhisper: recognition | " + line)
 	EndIf
-	If !ak
-		Return
-	EndIf
-	Int n = IncrementRecognitionToast(ak.GetFormID())
-	MaybePromptNameHer(ak, n)
 EndFunction
 
 
@@ -1770,7 +1767,7 @@ EndFunction
 
 ; Play one Whisper SNDR by map key (WhisperSndrIds). Top-level or relative
 ; under Sound\PickmansWhisper\ (e.g. Necromantic/Start/01-LooksPeaceful.xwm).
-; Fail loud — never substitute.
+; Fail loud — never substitute. Skips if a clip is already PlayAndWait-ing.
 Function PlayWhisperXwmByFile(String fileName)
 	If !IsVoiceWeaponReady()
 		Return
@@ -1778,6 +1775,27 @@ Function PlayWhisperXwmByFile(String fileName)
 	If !fileName || GardenOfEden.StrLength(fileName) < 1
 		Debug.Notification("Pickman's Whisper: empty audio filename")
 		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile empty filename")
+		Return
+	EndIf
+	If WhisperAudioBusy
+		Debug.Trace("PickmansWhisper: PlayWhisperXwmByFile skip | audio busy | " + fileName)
+		Return
+	EndIf
+	; Claim before NoWait so a second caller on another stack sees busy.
+	WhisperAudioBusy = True
+	Var[] args = new Var[1]
+	args[0] = fileName
+	CallFunctionNoWait("PlayWhisperXwmAndWait", args)
+EndFunction
+
+
+; Latent worker — PlayAndWait until the clip ends, then clear WhisperAudioBusy.
+; Do not call synchronously from toast/fixation stacks (would freeze the game).
+Function PlayWhisperXwmAndWait(String fileName)
+	If !fileName || GardenOfEden.StrLength(fileName) < 1
+		WhisperAudioBusy = False
+		Debug.Notification("Pickman's Whisper: empty audio filename")
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmAndWait empty filename")
 		Return
 	EndIf
 	String leaf = fileName
@@ -1811,43 +1829,50 @@ Function PlayWhisperXwmByFile(String fileName)
 		dirPath = ".\\Data\\Sound\\PickmansWhisper\\" + relBack
 	EndIf
 	If !leaf || GardenOfEden.StrLength(leaf) < 1
+		WhisperAudioBusy = False
 		Debug.Notification("Pickman's Whisper: empty audio leaf for " + fileName)
 		Return
 	EndIf
 	Bool xwmOk = GardenOfEden2.DoesFileExist(leaf, dirPath)
 	If !xwmOk
+		WhisperAudioBusy = False
 		Debug.Notification("Pickman's Whisper: missing xwm " + fileName)
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile xwm missing " + fileName + " path=" + dirPath)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmAndWait xwm missing " + fileName + " path=" + dirPath)
 		Return
 	EndIf
 	; WhisperSndrIds keys match the map line (forward-slash relative path).
 	Int fid = FindWhisperSndrFid(fileName)
 	If fid <= 0
+		WhisperAudioBusy = False
 		Debug.Notification("Pickman's Whisper: no SNDR id for " + fileName + " — rebuild ESP")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile no FormID for " + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmAndWait no FormID for " + fileName)
 		Return
 	EndIf
 	If !Main().PlayerRef
 		Main().PlayerRef = Game.GetPlayer()
 	EndIf
 	If !Main().PlayerRef
+		WhisperAudioBusy = False
 		Debug.Notification("Pickman's Whisper: audio play — no player")
 		Return
 	EndIf
 	Sound snd = Game.GetFormFromFile(fid, "PickmansWhisper.esp") as Sound
 	If !snd
+		WhisperAudioBusy = False
 		Debug.Notification("Pickman's Whisper: SNDR missing for " + fileName + " (fid=" + fid + ")")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile GetFormFromFile failed fid=" + fid + " file=" + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmAndWait GetFormFromFile failed fid=" + fid + " file=" + fileName)
 		Return
 	EndIf
-	Int inst = snd.Play(Main().PlayerRef)
-	If inst == 0
-		Debug.Notification("Pickman's Whisper: Play failed for " + fileName + " (instance 0)")
-		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmByFile Play=0 file=" + fileName)
+	; Latent — holds this stack until the instance finishes (or fails).
+	Bool ok = snd.PlayAndWait(Main().PlayerRef)
+	WhisperAudioBusy = False
+	If !ok
+		Debug.Notification("Pickman's Whisper: PlayAndWait failed for " + fileName)
+		Debug.Trace("PickmansWhisper: ERROR PlayWhisperXwmAndWait PlayAndWait=false file=" + fileName)
 		Return
 	EndIf
 	LastAudioFile = fileName
-	Debug.Trace("PickmansWhisper: PlayWhisperXwmByFile " + fileName + " inst=" + inst)
+	Debug.Trace("PickmansWhisper: PlayWhisperXwmAndWait done " + fileName)
 EndFunction
 
 
@@ -2129,8 +2154,8 @@ String Function PickNoticeLine(String npcName)
 	LastNoticePickIndex = idx
 	LastNoticePickStage = stage
 
-	; ApplyNamePlaceholder strips {name} safely when there's no usable name.
-	Return ApplyNamePlaceholder(raw, useName)
+	; Main.ApplyNamePlaceholder strips {name} safely when there's no usable name.
+	Return Main().ApplyNamePlaceholder(raw, useName)
 EndFunction
 
 
@@ -2197,17 +2222,12 @@ EndFunction
 
 
 ; GoE string ops only — FO4 has no StringUtil (see no-fake-native-stubs).
+; Façade — Main.ApplyNamePlaceholder is SSOT (StripNamePlaceholder lives there too).
 String Function ApplyNamePlaceholder(String line, String npcName)
-	If !line
+	If !Main()
 		Return ""
 	EndIf
-	If !npcName
-		Return Main().StripNamePlaceholder(line)
-	EndIf
-	If !Main().StrContains(line, "{name}")
-		Return line
-	EndIf
-	Return GardenOfEden.ReplaceStr(line, "{name}", npcName)
+	Return Main().ApplyNamePlaceholder(line, npcName)
 EndFunction
 
 
@@ -2274,7 +2294,7 @@ Function DebugTestNoticeLine(Actor akTarget)
 	EndIf
 
 	If !akTarget
-		Main().DiagNotify("Pickman's Whisper — Notice [" + Main().DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nTagged: " + Main().BladeTaggedCount + "\nRadius: " + (watchR as Int) + "\nNeed adult female, not hostile, not essential.")
+		Main().DiagNotify("Pickman's Whisper — Notice [" + Main().DEBUG_BUILD + "]\n\nNo candidate.\nGoE female loaded: " + nFem + "\nGoE any living: " + nAny + "\nRadius: " + (watchR as Int) + "\nNeed adult female, not hostile, not essential.")
 		Return
 	EndIf
 	String npcName = GetActorDisplayName(akTarget)

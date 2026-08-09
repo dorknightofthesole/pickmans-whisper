@@ -16,7 +16,7 @@ Design:
     NPC essential for any other reason.
   - Gameplay entry is HandleBeatBeforeKill(Actor) on BeatBeforeKillScript, using a
     wired PlayerAlias (blade equipped → clear her if tracked; IsReadyToGiveBeating →
-    apply). Main OnCombatStateChanged + RegisterTarget (unarmed branch) call it.
+    apply + needsBeatingWhisper). Main OnCombatStateChanged + RegisterTarget call it.
   - REMOVED — "out of combat -> clear" (both the direct aeCombatState==0 handler and
     TickEssentialReconcile's !IsInCombat() check): confirmed live in the Papyrus log.
     Weapon-equip is the only full reversal now.
@@ -24,7 +24,7 @@ Design:
     → !IsReadyToGiveBeating → ClearAllEssentialOnWeaponEquip). Not on Main OnItemEquipped.
   - The debug dialog (Debug.MessageBox) is scoped to the AUTOMATIC path only —
     HandleBeatBeforeKill and ClearAllEssentialOnWeaponEquip call it explicitly.
-  - TickEssentialReconcile is an ambient KillerScan-dispatched safety net that re-checks
+  - TickEssentialReconcile remains on Beat as an ambient safety net that re-checks
     alias armed state (or GetEquippedWeapon fallback) — not combat state.
   - MCM button/status row lives on the Victims page (targets PickmansWhisperVictimsScript,
     matching every other Victims MCM action).
@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BEAT = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBeatBeforeKillScript.psc"
 VICTIMS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVictimsScript.psc"
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
-KILLER_SCAN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
+TARGET_SCAN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperTargetScanScript.psc"
 MCM_CONFIG = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 MCM_SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
 SETTINGS_LEGACY = ROOT / "Data" / "MCM" / "Settings" / "PickmansWhisper.ini"
@@ -172,6 +172,12 @@ def test_auto_trigger() -> None:
         fail("HandleBeatBeforeKill must explicitly call ToastEssentialChange(akTarget, True) after applying")
     if "RemoveEssentialTracked(akTarget)" not in handle:
         fail("HandleBeatBeforeKill blade path must RemoveEssentialTracked(akTarget) when tracked")
+    if "MaybeSpeakNeedsBeatingWhisper" not in handle:
+        fail("HandleBeatBeforeKill must MaybeSpeakNeedsBeatingWhisper when unarmed (was RegisterTarget ElseIf)")
+    ready_idx = handle.find("IsReadyToGiveBeating")
+    whisper_idx = handle.find("MaybeSpeakNeedsBeatingWhisper")
+    if ready_idx < 0 or whisper_idx < 0 or whisper_idx < ready_idx:
+        fail("HandleBeatBeforeKill must call MaybeSpeakNeedsBeatingWhisper after IsReadyToGiveBeating gate")
 
     wrap = extract_function(text, "OnPlayerEnterCombatWith")
     if "HandleBeatBeforeKill(target)" not in wrap:
@@ -226,14 +232,12 @@ def test_main_wiring() -> None:
     reg = extract_function(text, "RegisterTarget")
     if "HandleBeatBeforeKill(akTarget)" not in reg:
         fail("RegisterTarget must call HandleBeatBeforeKill(akTarget) for living targets")
+    if "MaybeSpeakNeedsBeatingWhisper" in reg or "IsReadyToGiveBeating" in reg:
+        fail("RegisterTarget must not own needs-beating whisper / IsReadyToGiveBeating (BeatBeforeKill owns it)")
     blade_flag = reg.find("isPickmansBladeEquipped = PlayerAlias.IsPickmansBladeEquipped")
     beat_call = reg.find("HandleBeatBeforeKill(akTarget)")
     if blade_flag < 0 or beat_call < 0 or beat_call < blade_flag:
         fail("RegisterTarget must call HandleBeatBeforeKill after reading IsPickmansBladeEquipped (blade clear + unarmed apply)")
-    # Must not be buried only inside the IsReadyToGiveBeating branch.
-    ready_idx = reg.find("IsReadyToGiveBeating")
-    if ready_idx >= 0 and beat_call > ready_idx:
-        fail("RegisterTarget HandleBeatBeforeKill must run before the IsReadyToGiveBeating branch so blade-equipped clears temp essential")
 
     if "Event Actor.OnItemEquipped" in text or "Event Actor.OnItemUnequipped" in text:
         fail("Main must not own OnItemEquipped/Unequipped — PlayerAlias owns drawn/K5; ownership is OnItemAdded/Removed")
@@ -257,14 +261,42 @@ def test_main_wiring() -> None:
     ok("Main/Alias wiring: HandleBeatBeforeKill + Alias K5 clear + SyncBladeDrawnDebugLatch")
 
 
-def test_killer_scan_dispatch() -> None:
-    text = KILLER_SCAN.read_text(encoding="utf-8", errors="replace")
-    if "PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill" not in text:
-        fail("KillerScanScript must have its own BeatBeforeKill() facade")
-    dispatch = extract_function(text, "DispatchListeners")
-    if 'beat.CallFunctionNoWait("TickEssentialReconcile", None)' not in dispatch:
-        fail("DispatchListeners must CallFunctionNoWait TickEssentialReconcile every tick (ambient safety net)")
-    ok("KillerScanScript dispatches TickEssentialReconcile (no StartTimer on BeatBeforeKillScript)")
+def test_essential_reconcile_host() -> None:
+    killer = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
+    if killer.is_file():
+        fail("PickmansWhisperKillerScanScript.psc must be retired")
+    beat = BEAT.read_text(encoding="utf-8", errors="replace")
+    if "Function TickEssentialReconcile()" not in beat:
+        fail("BeatBeforeKillScript must keep TickEssentialReconcile (ambient safety net)")
+    target = TARGET_SCAN.read_text(encoding="utf-8", errors="replace") if TARGET_SCAN.is_file() else ""
+    main = MAIN.read_text(encoding="utf-8", errors="replace")
+    hosted = (
+        "TickEssentialReconcile" in target
+        or "TickBeatEssentialReconcile" in target
+        or "TickEssentialReconcile" in main
+        or "TickBeatEssentialReconcile" in main
+    )
+    if "DispatchListeners" in target:
+        fail("TargetScan must not revive KillerScan DispatchListeners")
+    if not hosted:
+        # Rehost may land as TargetScan → Main.CallFunctionNoWait; Beat body is the SSOT for now.
+        ok("KillerScan gone; TickEssentialReconcile still on Beat (rehost pending)")
+    else:
+        ok("TickEssentialReconcile hosted after KillerScan retirement")
+    if "LastReadyToGiveBeating" not in target:
+        fail("TargetScan must remember LastReadyToGiveBeating across ticks")
+    if "LastPickmansBladeEquipped" in target:
+        fail("LastPickmansBladeEquipped retired — edge is IsReadyToGiveBeating only")
+    if "beatDownChange = MaybeRekickBeatOnBeatingModeEdge(potentialTarget)" not in target:
+        fail("ProcessTargets must capture beatDownChange from MaybeRekickBeatOnBeatingModeEdge")
+    if "ElseIf beatDownChange" not in target:
+        fail("ProcessTargets must ElseIf beatDownChange re-RegisterTarget for already-tracked")
+    edge = target[target.find("Function MaybeRekickBeatOnBeatingModeEdge") : target.find("\nEndFunction", target.find("Function MaybeRekickBeatOnBeatingModeEdge"))]
+    if "IsReadyToGiveBeating" not in edge or "LastReadyToGiveBeating = ready" not in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must compare and commit LastReadyToGiveBeating")
+    if "CheckForBeatDown(akTarget)" not in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must CheckForBeatDown on edge")
+    ok("TargetScan beatDownChange edge re-RegisterTarget for already-tracked living")
 
 
 def test_victims_wiring() -> None:
@@ -372,7 +404,7 @@ def main() -> int:
     test_manual_toggle()
     test_auto_trigger()
     test_main_wiring()
-    test_killer_scan_dispatch()
+    test_essential_reconcile_host()
     test_victims_wiring()
     test_mcm_config()
     test_status_row()

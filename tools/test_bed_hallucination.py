@@ -167,15 +167,13 @@ def test_bed_sleep_registration(bed: str) -> None:
 
 def test_killer_scan_isolated_from_bed_gift() -> None:
     ks = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
-    if not ks.is_file():
-        fail(f"missing {ks}")
-    text = ks.read_text(encoding="utf-8", errors="replace")
-    dispatch = extract_function(text, "DispatchListeners")
-    if "OnKillerScanDeadlines" in dispatch or "MaybeWarmBedGiftBody" in dispatch:
-        fail("KillerScan DispatchListeners must not touch BedGift")
-    if re.search(r"Function\s+BedGift\s*\(", text):
-        fail("KillerScan must not expose BedGift() facade")
-    ok("KillerScan isolated from BedGift")
+    if ks.is_file():
+        fail("PickmansWhisperKillerScanScript.psc must be retired")
+    bed = BED_PSC.read_text(encoding="utf-8", errors="replace")
+    main = PSC.read_text(encoding="utf-8", errors="replace")
+    if "OnKillerScanDeadlines" in bed or "OnKillerScanDeadlines" in main:
+        fail("BedGift/Main must not use OnKillerScanDeadlines")
+    ok("KillerScan absent; no OnKillerScanDeadlines")
 
 
 def test_main_shared_only(main: str) -> None:
@@ -202,9 +200,10 @@ def test_main_shared_only(main: str) -> None:
     status_cb = extract_function(main, "OnBedGiftStatus")
     if "ToastDebug" not in status_cb:
         fail("Main OnBedGiftStatus must ToastDebug (shared debug path)")
-    knife_warm = extract_function(main, "HandleKillerScanKnifeAimWarm")
-    if "MaybeWarmBedGiftBody" in knife_warm:
-        fail("HandleKillerScanKnifeAimWarm must not warm bed gift")
+    if re.search(r"Function\s+HandleKillerScanKnifeAimWarm\s*\(", main):
+        knife_warm = extract_function(main, "HandleKillerScanKnifeAimWarm")
+        if "MaybeWarmBedGiftBody" in knife_warm:
+            fail("HandleKillerScanKnifeAimWarm must not warm bed gift")
     nongame = extract_function(main, "IsNonGameplayCorpse")
     if "IsBedGiftCorpse" not in nongame:
         fail("IsNonGameplayCorpse must query BedGift.IsBedGiftCorpse")
@@ -368,11 +367,11 @@ def test_bed_script(bed: str) -> None:
     main_txt = PSC.read_text(encoding="utf-8", errors="replace")
     if "IsNonGameplayCorpse" not in main_txt:
         fail("Main must expose IsNonGameplayCorpse for bed/lab ignore")
-    handle = extract_function(main_txt, "HandleNPCDeath")
+    handle = extract_function(main_txt, "RewardKill")
     if "KnifeKillCreditSuppressed" not in handle or "IsNonGameplayCorpse" not in handle:
-        fail("HandleNPCDeath must skip bed gift / wound lab corpses")
+        fail("RewardKill must skip bed gift / wound lab corpses")
     if "SatiateHunger" in handle:
-        fail("HandleNPCDeath must not call SatiateHunger directly (ProcessKnifeKill does)")
+        fail("RewardKill must not call SatiateHunger directly (ProcessKnifeKill does)")
     track = extract_function(main_txt, "TrackLivingNear")
     if "IsNonGameplayCorpse" not in track:
         fail("TrackLivingNear must skip bed gift / wound lab corpses")

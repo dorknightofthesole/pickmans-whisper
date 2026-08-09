@@ -355,10 +355,17 @@ def test_play_subdir_and_sndr_cap(text: str) -> None:
     play = extract_function(voice, "PlayWhisperXwmByFile")
     if "IsVoiceWeaponReady" not in play:
         fail("PlayWhisperXwmByFile must gate IsVoiceWeaponReady")
-    if "Debug.Notification" not in play:
-        fail("PlayWhisperXwmByFile must fail loud")
-    if 'c == "/"' not in play and "lastSep" not in play:
-        fail("PlayWhisperXwmByFile must split relative subdir keys")
+    if "WhisperAudioBusy" not in play:
+        fail("PlayWhisperXwmByFile must gate WhisperAudioBusy")
+    if 'CallFunctionNoWait("PlayWhisperXwmAndWait"' not in play:
+        fail("PlayWhisperXwmByFile must CallFunctionNoWait PlayWhisperXwmAndWait")
+    wait = extract_function(voice, "PlayWhisperXwmAndWait")
+    if "Debug.Notification" not in wait:
+        fail("PlayWhisperXwmAndWait must fail loud")
+    if 'c == "/"' not in wait and "lastSep" not in wait:
+        fail("PlayWhisperXwmAndWait must split relative subdir keys")
+    if "PlayAndWait" not in wait:
+        fail("PlayWhisperXwmAndWait must Sound.PlayAndWait")
     load_ids = extract_function(voice, "LoadWhisperSndrIds")
     if "new String[128]" not in load_ids and "WHISPER_SNDR_MAX" not in voice:
         fail("LoadWhisperSndrIds must support >=128 entries for intimacy SNDRs")
@@ -374,7 +381,7 @@ def test_play_subdir_and_sndr_cap(text: str) -> None:
         fail("builder must sanitize relative-path EDIDs")
     if r"Sound\PickmansWhisper\{rel}" not in builder and "Sound\\PickmansWhisper\\" not in builder:
         fail("builder ANAM must use Sound\\PickmansWhisper\\<relative>")
-    ok("PlayWhisperXwmByFile subdir + SNDR cap + builder relative ANAM")
+    ok("PlayWhisperXwmAndWait subdir + SNDR cap + builder relative ANAM")
 
 
 def test_kill_helpers_untouched(text: str) -> None:

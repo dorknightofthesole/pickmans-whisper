@@ -437,13 +437,33 @@ def test_psc_contracts() -> None:
     elif "GardenOfEden.SubStr(" not in prb.group(1):
         errors.append("ParseRawIntoBank must use GardenOfEden.SubStr for '#' comments")
     for fn_name in (
-        "ApplyNamePlaceholder",
         "PickNoticeLine",
     ):
         m = re.search(rf"(?:String )?Function {fn_name}\(.*?(?:EndFunction)", text, re.S)
         if m and "StringUtil." in m.group(0):
             errors.append(f"{fn_name} must not call StringUtil (use GoE StrFind/SubStr/ReplaceStr)")
-    # Strip helpers stay on Main; VoiceAlias.ApplyNamePlaceholder calls them via Main().
+    # {name} fill/strip SSOT is Main.ApplyNamePlaceholder (+ StripNamePlaceholder).
+    apply_main = re.search(
+        r"String Function ApplyNamePlaceholder\(String line, String npcName\)(.*?)EndFunction",
+        main_text,
+        re.S,
+    )
+    if not apply_main:
+        errors.append("ApplyNamePlaceholder missing on Main (SSOT for {name})")
+    elif "StripNamePlaceholder" not in apply_main.group(1) or "ReplaceStr" not in apply_main.group(1):
+        errors.append("Main.ApplyNamePlaceholder must StripNamePlaceholder or ReplaceStr {name}")
+    if "Function FormatLineWithActorName(" not in main_text:
+        errors.append("Main must expose FormatLineWithActorName (Actor + template SSOT)")
+    apply_voice = re.search(
+        r"String Function ApplyNamePlaceholder\(String line, String npcName\)(.*?)EndFunction",
+        text,
+        re.S,
+    )
+    if not apply_voice:
+        errors.append("VoiceAlias.ApplyNamePlaceholder façade missing")
+    elif "Main().ApplyNamePlaceholder" not in apply_voice.group(1):
+        errors.append("VoiceAlias.ApplyNamePlaceholder must forward to Main().ApplyNamePlaceholder")
+    # Strip helpers stay on Main.
     for fn_name in (
         "StripNamePlaceholder",
         "StripLeadingNameSeparator",
@@ -680,21 +700,27 @@ def _psc_int(text: str, name: str) -> int:
 
 
 def test_notice_cadence() -> None:
-    """Hunger whispers are rare; the killscan poll stays frequent for fixation.
+    """Hunger whispers are rare; TargetScan poll stays frequent enough for fixation.
 
-    Ambient hunger: ~1 per game hour (NOTICE_MIN_GAME_HOURS).
-    Killscan timer: KILL_SCAN_SECONDS < 10 so look-fixation can edge often.
+    Ambient hunger: ~5 game minutes (NOTICE_MIN_GAME_HOURS).
+    TargetScan ScanInterval < 10 so look-fixation can edge often.
     """
     text = PSC.read_text(encoding="utf-8", errors="replace")
-    main_text = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
-    scan_secs = _psc_float(main_text, "KILL_SCAN_SECONDS")
+    target_scan = (
+        ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperTargetScanScript.psc"
+    ).read_text(encoding="utf-8", errors="replace")
+    scan_secs = _psc_float(target_scan, "ScanInterval")
     hour_gate = _psc_float(text, "NOTICE_MIN_GAME_HOURS")
 
     errors: list[str] = []
     if scan_secs <= 0 or scan_secs >= 10.0:
-        errors.append(f"KILL_SCAN_SECONDS {scan_secs} must be in (0, 10)")
-    if hour_gate < 1.0:
-        errors.append(f"NOTICE_MIN_GAME_HOURS {hour_gate} must be >= 1 (max ~1 hunger toast / game hour)")
+        errors.append(f"TargetScan ScanInterval {scan_secs} must be in (0, 10)")
+    # ~5 game minutes (5/60 h). Keep a tight band so we don't silently drift back to 1h.
+    five_min_hours = 5.0 / 60.0
+    if abs(hour_gate - five_min_hours) > 0.001:
+        errors.append(
+            f"NOTICE_MIN_GAME_HOURS {hour_gate} must be ~{five_min_hours:.6f} (5 game minutes)"
+        )
 
     toast = re.search(r"Function ToastNoticeLine\(String line\)(.*?)EndFunction", text, re.S)
     if not toast or "LastNoticeToastGameTime" not in toast.group(1):
@@ -731,18 +757,12 @@ def test_notice_cadence() -> None:
             errors.append(f"{fn_name} must ShowVoiceToast (not bare Debug.Notification for voice)")
 
     voice_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
-    world_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
     if not voice_path.is_file():
-        errors.append("PickmansWhisperVoiceAliasScript.psc missing (KillerScan bus voice path)")
+        errors.append("PickmansWhisperVoiceAliasScript.psc missing")
     else:
         body = voice_path.read_text(encoding="utf-8", errors="replace")
         if "Function HandleWhisperVoice" not in body:
             errors.append("VoiceAlias must HandleWhisperVoice(Actor)")
-    if world_path.is_file():
-        wbody = world_path.read_text(encoding="utf-8", errors="replace")
-        if "HandleWhisperVoice" not in wbody or "DispatchListeners" not in wbody:
-            errors.append("KillerScan must DispatchListeners → HandleWhisperVoice")
-
 
     if errors:
         raise AssertionError("notice cadence failures:\n  - " + "\n  - ".join(errors))
@@ -752,7 +772,7 @@ def test_notice_approach_c4_parked() -> None:
     """C4 is parked until ambient C3 whispers are verified again in-game.
 
     Prior C4 wiring (0.5s timer / extra FindActors on killscan) silenced all
-    notices. This contract locks the restore: KillerScan ambient only, no approach
+    notices. This contract locks the restore: ambient path only, no approach
     hot path, no 0.5s StartTimer.
     """
     text = PSC.read_text(encoding="utf-8", errors="replace")
@@ -798,15 +818,6 @@ def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
         errors.append("Main must not Debug.MessageBox (use DiagNotify)")
     if "Debug.MessageBox(" in text:
         errors.append("VoiceAlias must not Debug.MessageBox (use Main().DiagNotify)")
-
-    run = re.search(
-        r"Function HandleKillerScanKnifeAimWarm\(\)(.*?)EndFunction",
-        main_text,
-        re.S,
-    )
-    if run and ("Debug.MessageBox(" in run.group(1) or "DiagNotify(" in run.group(1)):
-        errors.append("HandleKillerScanKnifeAimWarm must not MessageBox/DiagNotify (heartbeat is ToastDebug only)")
-
 
     arm_ann = re.search(
         r"Function AnnounceKillScanArmed\(\)(.*?)EndFunction", main_text, re.S
@@ -966,7 +977,7 @@ def main() -> int:
     print("  5 hunger stages parse; generic settlers -> nameless whisper (not 'them')")
     print("  unprintable/glyph names -> nameless; P3 GetVictimOverrideName hook in GetActorDisplayName")
     print("  PickNoticeLine: stage-select + no-immediate-repeat; probe/toast invariants held")
-    print("  cadence: killscan <10s; hunger ~1/game hour; fixation separate")
+    print("  cadence: killscan <10s; hunger ~5 game min; fixation separate")
     print("  C4 parked: ambient killscan ToastNoticeLine only (C3 restore)")
     print("  ambient UX: no MessageBox in notice loop; MCM Scan nearby uses DiagNotify")
     print("  files-only notice banks: builtins retired, per-file MCM load status + error toast")

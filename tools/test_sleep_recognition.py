@@ -138,8 +138,8 @@ def test_psc(text: str) -> None:
     if "pick empty" not in speak:
         fail("SpeakRecognitionLine must Trace pick-empty separately from missing file")
     pick = extract_function(text, "PickSleepRecognitionLine")
-    if "ApplyNamePlaceholder" not in pick:
-        fail("PickSleepRecognitionLine must ApplyNamePlaceholder before return")
+    if "ApplyNamePlaceholder" not in pick or "Main().ApplyNamePlaceholder" not in pick:
+        fail("PickSleepRecognitionLine must Main().ApplyNamePlaceholder before return")
     if "While attempt" not in pick:
         fail("PickSleepRecognitionLine must retry when placeholder strip yields empty")
     load_sleep = extract_function(text, "LoadSleepRecognitionLines")

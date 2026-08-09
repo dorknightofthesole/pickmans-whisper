@@ -1,5 +1,5 @@
 # Rebuild PickmansWhisper.esp with:
-#   QUST 0x01000800 PickmansWhisperMain (MainQuest + BedGift + CorpseDecay + DecayWoundLab + KillerScan)
+#   QUST 0x01000800 PickmansWhisperMain (MainQuest + BedGift + CorpseDecay + DecayWoundLab + TargetScan)
 #   QUST 0x01000805 PickmansWhisperPlayerCombat (Player UniqueActor alias —
 #     VMAD mirrors DialogueGenericPlayer: 0 quest scripts + alias script)
 #   GLOB / MGEF / SPEL Knife Hunger
@@ -260,7 +260,7 @@ def build_variable_avif_payload(edid: str, full: str) -> bytes:
 # ALST 0–1 were TrackedNPCs (retired). ALST 2–4 were KillRewardAlias / PendingReward (retired).
 # ModConfig.txt host (Unique Actor = Player) — PickmansWhisperModConfigScript.
 ALIAS_MOD_CONFIG_ID = 5
-# KillerScan voice host (Unique Actor = Player) — PickmansWhisperVoiceAliasScript.
+# Voice host (Unique Actor = Player) — PickmansWhisperVoiceAliasScript.
 ALIAS_VOICE_ID = 6
 
 
@@ -342,7 +342,6 @@ def build_main_quest_payload() -> bytes:
         "PickmansWhisperDecayWoundLabScript",
         "PickmansWhisperVictimsScript",
         "PickmansWhisperDesperateRenameScript",
-        "PickmansWhisperKillerScanScript",
         "PickmansWhisperBuffTrackerScript",
         "PickmansWhisperBeatBeforeKillScript",
         "PickmansWhisperTargetScanScript",

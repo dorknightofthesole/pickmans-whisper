@@ -50,14 +50,7 @@ If BondStarted
 EndIf
 
 BondStarted = True
-Float now = Utility.GetCurrentGameTime()
-BondStartGameTime = now
-
-If LastKnifeActivityGameTime <= 0.0
-	LastKnifeActivityGameTime = now
-EndIf
-
-LastHungerPollGameTime = now
+BondStartGameTime = Utility.GetCurrentGameTime()
 Debug.Trace("PickmansWhisper: bond started (" + reason + ")")
 Debug.Notification("Pickman's Whisper: bond active")
 
@@ -66,9 +59,7 @@ If !IntroToastShown
 	; ...
 EndIf
 
-ArmRuntimeLoops()
 RefreshHungerPanel(False)
-
 If !RefreshDebugBusy
 	RefreshDebugStatus()
 EndIf
@@ -78,16 +69,11 @@ If BondStarted
 	Return
 EndIf
 BondStarted = True
-Float now = Utility.GetCurrentGameTime()
-BondStartGameTime = now
-If LastKnifeActivityGameTime <= 0.0
-	LastKnifeActivityGameTime = now
-EndIf
-LastHungerPollGameTime = now
+BondStartGameTime = Utility.GetCurrentGameTime()
 If !IntroToastShown
 	; ...
 EndIf
-ArmRuntimeLoops()
+RefreshHungerPanel(False)
 ```
 
 Do not reformat large legacy Main blocks unless the user asks; apply this on **new / touched** code.

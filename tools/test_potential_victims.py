@@ -216,20 +216,22 @@ def test_main_naming(text: str) -> None:
         fail("Main must keep TIMER_DECAY_ADVANCE declared (save OnTimer compatibility)")
     ok("Main Victims helpers for Push")
 
-    aim = extract_function(text, "OnKillerScanVictimsAim")
-    if "NoteVictimsAimActor" not in aim:
-        fail("OnKillerScanVictimsAim must NoteVictimsAimActor")
-    knife_fn = extract_function(text, "HandleKillerScanKnifeAimWarm")
-    if "OnKillerScanVictimsAim" not in knife_fn:
-        fail("HandleKillerScanKnifeAimWarm must OnKillerScanVictimsAim")
+    if "Function NoteVictimsAimActor(" not in text:
+        fail("Main must expose NoteVictimsAimActor façade")
     knife = extract_function(text, "ProcessKnifeKill")
     if "NoteVictimsAimActor" not in knife:
         fail("ProcessKnifeKill must NoteVictimsAimActor for Victims/decay MCM")
+    target_scan = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperTargetScanScript.psc"
+    if target_scan.is_file():
+        ts = target_scan.read_text(encoding="utf-8", errors="replace")
+        looking = extract_function(text, "LookingAtTarget")
+        if "NoteVictimsAimActor" not in ts and "NoteVictimsAimActor" not in looking and "NoteVictimsAimActor" not in knife:
+            fail("NoteVictimsAimActor must be reachable from TargetScan/Main (LookingAtTarget or ProcessKnifeKill)")
     dbg = extract_function(text, "RefreshDebugStatus")
     after_dbg = dbg.split("MCM.RefreshMenu()", 1)
     if len(after_dbg) < 2 or "PushVictimsPanelStrings" not in after_dbg[-1]:
         fail("RefreshDebugStatus must PushVictimsPanelStrings AFTER RefreshMenu (Victims wipe)")
-    ok("KillerScan / knife / Debug Victims wiring")
+    ok("Main NoteVictimsAimActor + knife / Debug Victims wiring")
 
 
 def test_victims_script(victims: str) -> None:
@@ -330,15 +332,9 @@ def test_victims_script(victims: str) -> None:
     refresh_i = mcm_refresh.find("MCM.RefreshMenu()")
     if refresh_i < 0 or aux_i < 0 or aux_i < refresh_i or aux_i > box_i:
         fail("MCMRefreshVictimsPanel must RefreshMenu → WriteVictimsMcmAuxRows → DiagNotify")
-    if "NoteFromKillerScanSnapshot" not in victims:
-        fail("VictimsScript must NoteFromKillerScanSnapshot")
-    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
-        encoding="utf-8", errors="replace"
-    )
-    dispatch = extract_function(world, "DispatchListeners")
-    if "NoteFromKillerScanSnapshot" not in dispatch:
-        fail("KillerScan DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
-    ok("MCMRefreshVictimsPanel entry + KillerScan aim NoWait")
+    if "Function NoteVictimsAimActor(" not in victims:
+        fail("VictimsScript must NoteVictimsAimActor")
+    ok("MCMRefreshVictimsPanel entry + NoteVictimsAimActor")
 
     mcm_fn = extract_function(victims, "MCMNameAimedVictim")
     if "ResolveVictimsAimActor" not in mcm_fn or "sVictimName:Victims" not in mcm_fn:

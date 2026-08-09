@@ -134,6 +134,17 @@ REQUIRED_NATIVES = [
     ),
     (
         "ScriptObject.psc",
+        r"Function\s+StartTimerGameTime\s*\(",
+        "StartTimerGameTime",
+    ),
+    (
+        "ScriptObject.psc",
+        r"Function\s+CancelTimerGameTime\s*\(",
+        "CancelTimerGameTime",
+    ),
+
+    (
+        "ScriptObject.psc",
         r"Bool\s+Function\s+RegisterForRemoteEvent\s*\(\s*ScriptObject",
         "RegisterForRemoteEvent(ScriptObject, ScriptEventName)",
     ),

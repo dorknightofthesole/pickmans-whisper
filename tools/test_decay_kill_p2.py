@@ -67,8 +67,8 @@ def test_registry_and_stamp() -> None:
     stamp = extract_function(decay, "StampDecayKill")
     if "GetCurrentGameTime" not in stamp:
         fail("StampDecayKill must stamp Utility.GetCurrentGameTime")
-    if "LastKnifeActivityGameTime" in stamp:
-        fail("StampDecayKill must not reuse LastKnifeActivityGameTime")
+    if "LastKnifeActivityGameTime" in stamp or "LastHungerPollGameTime" in stamp:
+        fail("StampDecayKill must use its own kill clock, not hunger activity stamps")
     if "DecayKillLastStage" not in stamp or "-1" not in stamp:
         fail("StampDecayKill must reset lastStage to -1")
     process = extract_function(main, "ProcessKnifeKill")
@@ -81,13 +81,14 @@ def test_registry_and_stamp() -> None:
 
 def test_killscan_sync() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    knife = extract_function(main, "ProcessKnifeCreditFromKillerScan")
-    if "SyncDecayForKnifeCorpse" in knife:
-        fail("ProcessKnifeCreditFromKillerScan must NOT SyncDecay")
-    if "FindActors" in knife:
-        fail("ProcessKnifeCreditFromKillerScan must not FindActors")
-    if "EnsureDecayForTrackedVictim" in knife:
-        fail("knife credit must not EnsureDecay (CorpseDecay NoWait owns stamps + overlays)")
+    if "Function ProcessKnifeCreditFromKillerScan(" in main:
+        knife = extract_function(main, "ProcessKnifeCreditFromKillerScan")
+        if "SyncDecayForKnifeCorpse" in knife:
+            fail("ProcessKnifeCreditFromKillerScan must NOT SyncDecay")
+        if "FindActors" in knife:
+            fail("ProcessKnifeCreditFromKillerScan must not FindActors")
+        if "EnsureDecayForTrackedVictim" in knife:
+            fail("knife credit must not EnsureDecay (CorpseDecay NoWait owns stamps + overlays)")
     voice_path = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
     if not voice_path.is_file():
         fail("VoiceScan script missing")
@@ -102,9 +103,10 @@ def test_killscan_sync() -> None:
         fail("VoiceAlias must not own knife credit")
     if "RegisterForCustomEvent" in voice:
         fail("VoiceAlias must not CustomEvent-listen (direct HandleWhisperVoice)")
-    knife_fn = extract_function(main, "HandleKillerScanKnifeAimWarm")
-    if "LookFixation" in knife_fn or "MaybeSpeakNoticeLine" in knife_fn:
-        fail("HandleKillerScanKnifeAimWarm must not own voice (VoiceAlias does)")
+    if "Function HandleKillerScanKnifeAimWarm(" in main:
+        knife_fn = extract_function(main, "HandleKillerScanKnifeAimWarm")
+        if "LookFixation" in knife_fn or "MaybeSpeakNoticeLine" in knife_fn:
+            fail("HandleKillerScanKnifeAimWarm must not own voice (VoiceAlias does)")
     if "StartDecaySyncLoop" in main:
         fail("retire StartDecaySyncLoop — overlays via HandleCorpseDecay")
     if "SyncNearbyKnifeDecayOverlays" in main:
@@ -203,16 +205,15 @@ def test_killscan_sync() -> None:
         fail("SyncDecayForKnifeCorpse must Trace before ApplyDecayStageOverlays")
     if "ApplyDecayStageOverlays failed" not in sync:
         fail("SyncDecayForKnifeCorpse must Trace ERROR when ApplyDecayStageOverlays returns false")
-    killer = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
-        encoding="utf-8", errors="replace"
-    )
-    dispatch = extract_function(killer, "DispatchListeners")
-    if "SyncOverlaysFromKillerScanSnapshot" in dispatch or "CheckPendingAimedDecayApply" in dispatch:
-        fail("KillerScan DispatchListeners must not dispatch CorpseDecay (HandleCorpseDecay owns ambient)")
+    killer = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
+    if killer.is_file():
+        fail("PickmansWhisperKillerScanScript.psc must be retired")
+    if "SyncOverlaysFromKillerScanSnapshot" in main or "SyncOverlaysFromKillerScanSnapshot" in decay:
+        fail("SyncOverlaysFromKillerScanSnapshot must stay retired")
     bed = BED.read_text(encoding="utf-8", errors="replace")
     if "StampDecayKill" in bed:
         fail("BedGift must not StampDecayKill (hallucination stays out of kill registry)")
-    ok("decay sync via HandleCorpseDecay + TargetScan/RegisterTarget; KillerScan decoupled")
+    ok("decay sync via HandleCorpseDecay + TargetScan/RegisterTarget; KillerScan retired")
 
 
 def test_docs() -> None:
@@ -263,8 +264,8 @@ def test_mcm_decay_stage_row() -> None:
         fail("TickVictimsAimCache must not sticky-activate (regressed corpse cache)")
     if "GetFacedSeverCorpse" in extract_function(victims, "ResolveVictimsAimActor"):
         fail("ResolveVictimsAimActor must not GetFacedSeverCorpse (MCM Refresh FindActors hitch)")
-    if "OnKillerScanVictimsAim" not in main:
-        fail("Main must OnKillerScanVictimsAim (fills aim cache from KillerScan event)")
+    if "Function NoteVictimsAimActor(" not in main:
+        fail("Main must NoteVictimsAimActor (fills Victims aim cache)")
     if "NoteVictimsAimActor" not in extract_function(main, "ProcessKnifeKill"):
         fail("ProcessKnifeKill must NoteVictimsAimActor")
     if "FormatDecayStageStatusForFormId" not in decay:

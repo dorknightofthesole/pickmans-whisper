@@ -57,7 +57,7 @@ EndFunction
 
 ; Toast / GetActorDisplayName — append while desperate if not already present.
 String Function MaybeSuffixDisplayName(Actor ak, String baseName)
-	Debug.Notification("PW Debug: MaybeSuffixDisplayName " + baseName)
+	Debug.Trace("PW Debug: MaybeSuffixDisplayName " + baseName)
 	If !baseName
 		Return ""
 	EndIf

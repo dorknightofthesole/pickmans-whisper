@@ -22,6 +22,16 @@ KILLER = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerS
 FID_QUEST = 0x01000800
 
 
+def _scan_body(psc: str) -> str:
+    start = psc.find("Function ScanAndCleanTargets()")
+    if start < 0:
+        fail("missing Function ScanAndCleanTargets")
+    end = psc.find("\nEndFunction", start)
+    if end < 0:
+        fail("unclosed ScanAndCleanTargets")
+    return psc[start : end + len("\nEndFunction")]
+
+
 def fail(msg: str) -> None:
     print(f"FAIL: {msg}", file=sys.stderr)
     raise SystemExit(1)
@@ -96,14 +106,78 @@ def main() -> None:
         fail("TargetScan must not leave LookFixation TODO stub")
     if "Float Property KILL_CORPSE_RADIUS = 400.0 Auto Const" not in psc:
         fail("TargetScan must own KILL_CORPSE_RADIUS Property Auto Const (SSOT)")
+    if 'CallFunctionNoWait("RunHungerTick"' not in psc:
+        fail("ScanAndCleanTargets must CallFunctionNoWait RunHungerTick (Slice A hunger host)")
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    killer = KILLER.read_text(encoding="utf-8", errors="replace")
+    if "Function RunHungerTick()" not in main:
+        fail("Main must own RunHungerTick (hunger advance body)")
+    hunger = main[main.find("Function RunHungerTick()") : main.find("EndFunction", main.find("Function RunHungerTick()")) + len("EndFunction")]
+    if "ApplyHungerDelta" not in hunger or "GetHungerTimeGainPerHour" not in hunger:
+        fail("RunHungerTick must apply unused-knife-time hunger gain")
+    if "MaybeSpeakNoticeLine" in hunger:
+        fail("RunHungerTick must not drive ambient notice (RegisterTarget / LookFixation)")
+    if "HungerWithdrawalToast" not in hunger:
+        fail("RunHungerTick must toast HungerWithdrawalToast on withdrawal onset")
+    if KILLER.is_file():
+        fail("PickmansWhisperKillerScanScript.psc must be retired")
     if "KILL_WATCH_RADIUS = 800.0" in main or "KILL_CORPSE_RADIUS = 400.0" in main:
         fail("Main must not redefine scan radii — TargetScan Properties are SSOT")
-    if "KILL_WATCH_RADIUS = 800.0" in killer or "KILL_CORPSE_RADIUS = 400.0" in killer:
-        fail("KillerScan must not redefine scan radii — TargetScan Properties are SSOT")
     if "Function TargetScan()" not in main:
         fail("Main must expose TargetScan() façade")
+    scan = _scan_body(psc)
+    for optional in ("NoteVictimsAimActor", "TickEssential"):
+        if optional in scan:
+            ok(f"TargetScan ScanAndCleanTargets hosts {optional}")
+    if "ReconcileBladeTagged" in scan:
+        fail("TargetScan must not host ReconcileBladeTagged (BladeTagged retired)")
+    if "LastReadyToGiveBeating" not in psc:
+        fail("TargetScan must store LastReadyToGiveBeating for IsReadyToGiveBeating edge")
+    if "LastPickmansBladeEquipped" in psc:
+        fail("LastPickmansBladeEquipped retired — edge is IsReadyToGiveBeating only")
+    if "BeatingModeEdgePrimed" in psc or "BeatModeEdgedThisScan" in psc:
+        fail("Edge latch retired — MaybeRekickBeatOnBeatingModeEdge owns LastReady compare + commit")
+    if "LastReadyToGiveBeating = MainQuest.PlayerAlias.IsReadyToGiveBeating" not in psc:
+        fail("Init must seed LastReadyToGiveBeating from PlayerAlias")
+    if "LastReadyToGiveBeating = MainQuest.PlayerAlias.IsReadyToGiveBeating" in scan:
+        fail("ScanAndCleanTargets must not commit LastReady — that lives in MaybeRekickBeatOnBeatingModeEdge")
+    edge_start = psc.find("Function MaybeRekickBeatOnBeatingModeEdge")
+    if edge_start < 0:
+        fail("TargetScan must expose MaybeRekickBeatOnBeatingModeEdge(Actor)")
+    edge = psc[edge_start : psc.find("\nEndFunction", edge_start)]
+    if "TrackedTargets" in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must not walk TrackedTargets")
+    if "IsReadyToGiveBeating" not in edge or "LastReadyToGiveBeating" not in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must compare IsReadyToGiveBeating to LastReadyToGiveBeating")
+    if "LastReadyToGiveBeating = ready" not in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must commit LastReadyToGiveBeating = ready on edge")
+    if "CheckForBeatDown(akTarget)" not in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must CheckForBeatDown(akTarget) on edge")
+    if "Return True" not in edge or "Return False" not in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must return Bool (edge yes/no)")
+    if 'CallFunctionNoWait("RegisterTarget"' in edge:
+        fail("MaybeRekickBeatOnBeatingModeEdge must not RegisterTarget — ProcessTargets ElseIf beatDownChange does")
+    check_start = psc.find("Function CheckForBeatDown")
+    if check_start < 0:
+        fail("TargetScan must expose CheckForBeatDown(Actor)")
+    check = psc[check_start : psc.find("\nEndFunction", check_start)]
+    if "HandleBeatBeforeKill(akTarget)" in check:
+        fail("CheckForBeatDown must not call HandleBeatBeforeKill synchronously")
+    if 'CallFunctionNoWait("HandleBeatBeforeKill"' not in check:
+        fail("CheckForBeatDown must CallFunctionNoWait HandleBeatBeforeKill")
+    proc_start = psc.find("Function ProcessTargets")
+    if proc_start < 0:
+        fail("TargetScan must expose ProcessTargets")
+    proc = psc[proc_start : psc.find("\nEndFunction", proc_start)]
+    if "beatDownChange = MaybeRekickBeatOnBeatingModeEdge(potentialTarget)" not in proc:
+        fail("ProcessTargets must capture MaybeRekickBeatOnBeatingModeEdge result as beatDownChange")
+    if "ElseIf beatDownChange" not in proc:
+        fail("ProcessTargets must ElseIf beatDownChange re-RegisterTarget for already-tracked")
+    edged_branch = proc[proc.find("ElseIf beatDownChange") : proc.find("Else", proc.find("ElseIf beatDownChange") + 1)]
+    if 'CallFunctionNoWait("RegisterTarget"' not in edged_branch:
+        fail("ElseIf beatDownChange must CallFunctionNoWait RegisterTarget")
+    if "TrackedTargets.Add" in edged_branch:
+        fail("ElseIf beatDownChange must not Add (already tracked)")
+    ok("TargetScan edge Bool + ElseIf beatDownChange re-RegisterTarget")
 
     builder = BUILDER.read_text(encoding="utf-8", errors="replace")
     if '"PickmansWhisperTargetScanScript"' not in builder:

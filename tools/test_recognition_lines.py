@@ -108,6 +108,8 @@ def test_psc(text: str) -> None:
     tick = extract_function(text, "LookFixation")
     if "PW fixation:" in tick:
         fail('LookFixation must retire "PW fixation:" debug toast')
+    if "LOOK_COUNT_FIRST_SILENT" not in tick:
+        fail("LookFixation must gate 1st look with LOOK_COUNT_FIRST_SILENT (silent)")
     if "SpeakRecognitionLine" not in tick:
         fail("LookFixation must call SpeakRecognitionLine on 2nd look")
     if "SpeakFixationStageWhisper" not in tick:
@@ -116,13 +118,16 @@ def test_psc(text: str) -> None:
         fail("VoiceAlias must name LOOK_COUNT_SECOND_RECOGNITION (recognition look)")
     if "count == LOOK_COUNT_SECOND_RECOGNITION" not in tick and "count==LOOK_COUNT_SECOND_RECOGNITION" not in tick.replace(" ", ""):
         fail("LookFixation must branch on LOOK_COUNT_SECOND_RECOGNITION (recognition)")
+    if "MaybePromptNameHer(akTarget, count)" not in tick and "MaybePromptNameHer(akTarget,count)" not in tick.replace(" ", ""):
+        fail("LookFixation must MaybePromptNameHer(akTarget, count) from look count")
+    i_silent = tick.find("LOOK_COUNT_FIRST_SILENT")
     i_recog = tick.find("SpeakRecognitionLine")
     i_stage = tick.find("SpeakFixationStageWhisper")
-    if i_recog < 0 or i_stage < 0 or i_recog > i_stage:
-        fail("LookFixation must SpeakRecognitionLine (if), SpeakFixationStageWhisper (else)")
+    if i_silent < 0 or i_recog < 0 or i_stage < 0 or not (i_silent < i_recog < i_stage):
+        fail("LookFixation must silent (1) then SpeakRecognitionLine (2) then SpeakFixationStageWhisper (3+)")
     if "MaybeSpeakNoticeLine" in tick:
         fail("LookFixation must not call MaybeSpeakNoticeLine")
-    ok("LookFixation voice by count (recognition / hunger-stage)")
+    ok("LookFixation voice by count (1 silent / 2 recognition / 3+ hunger-stage)")
 
     stage = extract_function(text, "SpeakFixationStageWhisper")
     if "PickNoticeLine" not in stage:
@@ -140,17 +145,17 @@ def test_psc(text: str) -> None:
         fail("SpeakRecognitionLine must not stamp LastNoticeToastGameTime")
     if "ShowVoiceToast" not in recog:
         fail("SpeakRecognitionLine must ShowVoiceToast (HUD lead-glyph pad)")
-    if "IncrementRecognitionToast" not in recog:
-        fail("SpeakRecognitionLine must IncrementRecognitionToast (name-her counter)")
-    if "MaybePromptNameHer" not in recog:
-        fail("SpeakRecognitionLine must MaybePromptNameHer after recognition toast")
+    if "IncrementRecognitionToast" in recog:
+        fail("SpeakRecognitionLine must not IncrementRecognitionToast (rename uses look count)")
+    if "MaybePromptNameHer" in recog:
+        fail("SpeakRecognitionLine must not MaybePromptNameHer (LookFixation owns name-her)")
     if "RecognitionLineCount <= 0" not in recog:
         fail("SpeakRecognitionLine must only claim RecognitionLines.txt missing when count <= 0")
     if "pick empty" not in recog:
         fail("SpeakRecognitionLine must distinguish pick-empty from missing file")
     pick = extract_function(text, "PickRecognitionLine")
-    if "ApplyNamePlaceholder" not in pick:
-        fail("PickRecognitionLine must ApplyNamePlaceholder inside retry loop")
+    if "ApplyNamePlaceholder" not in pick or "Main().ApplyNamePlaceholder" not in pick:
+        fail("PickRecognitionLine must Main().ApplyNamePlaceholder inside retry loop")
     load_awake = extract_function(text, "LoadRecognitionLines")
     if not re.search(
         r"RecognitionLineCount\s*=\s*0\s*\n\s*RecognitionLines\s*=\s*new",
@@ -161,6 +166,8 @@ def test_psc(text: str) -> None:
 
     if 'RECOGNITION_NAME_PROMPT_AT = 3' not in text and "RECOGNITION_NAME_PROMPT_AT=3" not in text:
         fail("RECOGNITION_NAME_PROMPT_AT must be 3")
+    if "Function IncrementRecognitionToast" in text:
+        fail("IncrementRecognitionToast retired — name-her uses LookCount")
     prompt = extract_function(text, "MaybePromptNameHer")
     if "RenamePromptFemaleNPC" not in prompt:
         fail("MaybePromptNameHer must use RenamePromptFemaleNPC (from ModConfig.txt)")
@@ -169,19 +176,31 @@ def test_psc(text: str) -> None:
     if "ShowVoiceToast" in prompt:
         fail("MaybePromptNameHer must NOT ShowVoiceToast (clobbers recognition); queue timer instead")
     if "PendingRenameAtReal" not in prompt:
-        fail("MaybePromptNameHer must set PendingRenameAtReal deadline (Killer Orchestrator)")
+        fail("MaybePromptNameHer must set PendingRenameAtReal deadline (LookingAtTarget TickPendingRenameDeadline)")
     if "StartTimer" in prompt:
         fail("MaybePromptNameHer must not StartTimer")
     if "PendingRenamePrompt" not in prompt:
         fail("MaybePromptNameHer must set PendingRenamePrompt")
-    if "recognitionToasts < RECOGNITION_NAME_PROMPT_AT" not in prompt and "recognitionToasts<RECOGNITION_NAME_PROMPT_AT" not in prompt:
-        fail("MaybePromptNameHer must fire every toast from count >= 3 (not == 3 only)")
+    if "aiLookCount < RECOGNITION_NAME_PROMPT_AT" not in prompt and "aiLookCount<RECOGNITION_NAME_PROMPT_AT" not in prompt.replace(" ", ""):
+        fail("MaybePromptNameHer must gate on aiLookCount >= RECOGNITION_NAME_PROMPT_AT")
     if RENAME_PROMPT_DEFAULT in text:
         fail("PSC must not hard-code renamePromptFemaleNPC text (ModConfig.txt is source of truth)")
     main_text = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
-    cadence = extract_function(main_text, "OnKillerScanCadence")
-    if "PendingRenameAtReal" not in cadence or "ShowVoiceToast(PendingRenamePrompt)" not in cadence:
-        fail("OnKillerScanCadence must fire PendingRenameAtReal → ShowVoiceToast (VoiceAlias)")
+    target_scan = (
+        ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperTargetScanScript.psc"
+    )
+    ts_text = target_scan.read_text(encoding="utf-8", errors="replace") if target_scan.is_file() else ""
+    if "Function TickPendingRenameDeadline(" in main_text:
+        deadline = extract_function(main_text, "TickPendingRenameDeadline")
+        if "PendingRenameAtReal" not in deadline or "ShowVoiceToast" not in deadline:
+            fail("TickPendingRenameDeadline must fire PendingRenameAtReal → ShowVoiceToast")
+        looking = extract_function(main_text, "LookingAtTarget")
+        if "TickPendingRenameDeadline()" not in looking:
+            fail("LookingAtTarget must TickPendingRenameDeadline (aim path owns name-her fire)")
+        if "TickPendingRenameDeadline" in ts_text:
+            fail("TargetScan must not CallFunctionNoWait TickPendingRenameDeadline (moved to LookingAtTarget)")
+    elif "PendingRenameAtReal" not in main_text:
+        fail("PendingRenameAtReal must still exist (rename prompt deadline)")
     load_banks_main = extract_function(main_text, "LoadLineBanks")
     if "ModConfigAlias.LoadModConfig()" not in load_banks_main:
         fail("LoadLineBanks must ModConfigAlias.LoadModConfig (resume/reload refresh)")
@@ -193,7 +212,7 @@ def test_psc(text: str) -> None:
         fail("LoadModConfig must parse renamePromptFemaleNPC")
     if "Debug.Notification" in load_mod:
         fail("LoadModConfig must not Notification (clobbers voice toasts); Trace only")
-    ok("name-her prompt delayed via KillerScan cadence; ModConfig files-only")
+    ok("name-her prompt deadline + ModConfig files-only")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "SpeakRecognitionLine" in notice or "SpeakFixationStageWhisper" in notice:

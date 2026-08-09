@@ -130,6 +130,9 @@ def test_psc(text: str) -> None:
         fail("MaybeSpeakNoticeLine must call PlayNoticeAudio")
     if "PickNoticeAudioIndex" not in speak:
         fail("MaybeSpeakNoticeLine audio-only must PickNoticeAudioIndex")
+    fix_stage = extract_function(text, "SpeakFixationStageWhisper")
+    if "PlayNoticeAudio" not in fix_stage:
+        fail("SpeakFixationStageWhisper must PlayNoticeAudio (look 3+ stage voice; Desperate_Audio)")
     pick = extract_function(text, "PickNoticeLine")
     if "LastNoticePickIndex" not in pick:
         fail("PickNoticeLine must set LastNoticePickIndex")
@@ -137,14 +140,28 @@ def test_psc(text: str) -> None:
     if "PlayWhisperXwmByFile" not in play:
         fail("PlayNoticeAudio must delegate to PlayWhisperXwmByFile")
     xwm = extract_function(text, "PlayWhisperXwmByFile")
-    if "Debug.Notification" not in xwm:
-        fail("PlayWhisperXwmByFile must fail loud")
-    if "GetFormFromFile" not in xwm or ".Play(" not in xwm:
-        fail("PlayWhisperXwmByFile must resolve Sound and Play")
+    if "WhisperAudioBusy" not in xwm:
+        fail("PlayWhisperXwmByFile must gate on WhisperAudioBusy (no overlapping clips)")
+    if 'CallFunctionNoWait("PlayWhisperXwmAndWait"' not in xwm:
+        fail("PlayWhisperXwmByFile must CallFunctionNoWait PlayWhisperXwmAndWait (latent PlayAndWait off toast stack)")
+    if ".Play(" in xwm or "PlayAndWait" in xwm:
+        fail("PlayWhisperXwmByFile must not Play/PlayAndWait itself — worker owns the latent call")
+    wait = extract_function(text, "PlayWhisperXwmAndWait")
+    if "PlayAndWait" not in wait:
+        fail("PlayWhisperXwmAndWait must Sound.PlayAndWait (wait until clip ends)")
+    if "WhisperAudioBusy = False" not in wait:
+        fail("PlayWhisperXwmAndWait must clear WhisperAudioBusy on all exits")
+    if "Debug.Notification" not in wait:
+        fail("PlayWhisperXwmAndWait must fail loud")
+    if "GetFormFromFile" not in wait:
+        fail("PlayWhisperXwmAndWait must resolve Sound via GetFormFromFile")
+    stub = (ROOT / "tools" / "stubs" / "Sound.psc").read_text(encoding="utf-8", errors="replace")
+    if "PlayAndWait" not in stub:
+        fail("tools/stubs/Sound.psc must declare real FO4 PlayAndWait Native")
     # No hard-coded clip filename list in PSC
     if "OneCutForever.xwm" in text or "BelongsToTheBlade.xwm" in text:
         fail("PSC must not hard-code Desperate_Audio filenames")
-    ok("D1 load/play/delivery wired; files-only maps")
+    ok("D1 load/play/delivery wired; files-only maps; PlayAndWait busy gate")
 
 
 def test_mcm() -> None:

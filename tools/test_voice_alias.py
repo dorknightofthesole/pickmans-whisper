@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""VoiceAlias on PickmansWhisperMain — KillerScan voice listener host.
+"""VoiceAlias on PickmansWhisperMain — voice listener host.
 
 Locks:
   - Main ALST 6 VoiceAlias UniqueActor=Player
@@ -8,7 +8,6 @@ Locks:
   - Nested alias object header is ofmt-2 (unk=0, aliasId, quest) — not (aliasId, 0)
   - Main.VoiceAlias Auto Const + VMAD Object bind to ALST 6
   - VoiceAliasScript extends ReferenceAlias; Main via GetOwningQuest
-  - KillerScan DispatchListeners uses m.VoiceAlias.HandleWhisperVoice
   - Deploy compiles + ships VoiceAliasScript + runs this contract
 
 Usage:
@@ -25,7 +24,6 @@ BUILDER = ROOT / "tools" / "build_hunger_spell_esp.py"
 ESP = ROOT / "Data" / "PickmansWhisper.esp"
 MAIN_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 VOICE_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVoiceAliasScript.psc"
-KILLER_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc"
 DEPLOY_PS1 = ROOT / "tools" / "build-deploy-local.ps1"
 
 FID_QUEST = 0x01000800
@@ -164,13 +162,6 @@ def main() -> None:
     if "Function VoiceScan()" in psc:
         fail("Main VoiceScan() quest cast helper must be removed (use VoiceAlias)")
     ok("MainQuestScript declares VoiceAlias Auto Const")
-
-    killer = KILLER_PSC.read_text(encoding="utf-8", errors="replace")
-    if "m.VoiceAlias.HandleWhisperVoice(FacedLiving)" not in killer:
-        fail("KillerScan DispatchListeners must call m.VoiceAlias.HandleWhisperVoice(FacedLiving)")
-    if "(Self as Quest) as PickmansWhisperVoiceAliasScript" in killer:
-        fail("KillerScan must not quest-cast VoiceAliasScript")
-    ok("KillerScan dispatches via Main.VoiceAlias")
 
     if not ESP.is_file():
         fail(f"ESP missing: {ESP}")

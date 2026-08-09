@@ -1,42 +1,28 @@
 #!/usr/bin/env python3
 """Contracts for Slice H P5 — reward/toast when the player actually eats a max-stage corpse.
 
-Detection design (see MaybeRewardEatenRipeCorpse's own comment for the full rationale):
-no vanilla FO4 script anywhere registers an animation event for the Cannibal eat action
-(checked against the real Scripts/Source tree — the one precedent, Bloodbug's feed event,
-uses an arbitrary per-animation name with no guessable convention), so we cannot reliably
-detect this via RegisterForAnimationEvent without a live discovery pass. Instead we listen
-for the vanilla PerkCannibalHeal spell's RestoreHealthGeneric magic effect landing on the
-player (verified against Fallout4.esm: duration 5s, not instant) and disambiguate from
-Stimpaks/other heals via (a) requiring the Cannibal perk and (b) requiring the nearest
-ScanDead corpse to be tracked and at max decay stage, within butcher range.
+Detection design: no vanilla FO4 script registers an animation event for the Cannibal
+eat action, so we listen for PerkCannibalHeal's RestoreHealthGeneric MGEF on the player
+alias, latch PendingEatRipeReward, then claim it from HandleCorpseDecay →
+MaybeRewardEatenRipeCorpse(akCorpse) on the TargetScan corpse (no KillerScan ScanDead).
 
-Registration lives on PickmansWhisperPlayerAliasScript (a ReferenceAlias filled with the
-player), not the Quest. A Quest-level RegisterForMagicEffectApplyEvent(PlayerRef, ...)
-was tried first and confirmed dead live — an unfiltered sniff variant of it caught zero
-magic effects over two minutes of play, even though the registration call itself
-reported success. The alias's local event handler must match ScriptObject's declared
-OnMagicEffectApply signature EXACTLY (all 3 params) — Caprica rejects a shortened
-2-param override some community snippets use (confirmed via a real compile error).
+Registration lives on PickmansWhisperPlayerAliasScript (ReferenceAlias filled with the
+player). Quest-level RegisterForMagicEffectApplyEvent was confirmed dead live.
 
 Locks:
   - ModConfig ateRipeCorpseToast ships with {name} support
   - LoadModConfig parses + resets ateRipeCorpseToast
   - tools/stubs/ScriptObject.psc declares RegisterForMagicEffectApplyEvent + OnMagicEffectApply
-  - MainQuestScript.GetRestoreHealthGenericEffect + PlayerAlias Auto Const (VMAD → PlayerCombat ALST 0)
-  - PlayerAliasScript.RegisterMagicEffectDetect: RegisterForMagicEffectApplyEvent(Self, ...)
-    filtered to RestoreHealthGenericEffect, called from OnAliasInit + OnPlayerLoadGame
-  - PlayerAliasScript.Event OnMagicEffectApply (3-param local form) calls
-    MainQuestScript.HandlePlayerMagicEffectApply
-  - HandlePlayerMagicEffectApply re-verifies akEffect before dispatching
-  - MaybeRewardEatenRipeCorpse: Cannibal-perk gate, nearest-ScanDead-corpse resolution
-    (BUTCHER_CORPSE_RADIUS cap), tracked + max-stage gate, no silent skips
-  - ToastAteRipeCorpse: {name} -> "She" fallback when unnamed (capitalized, unlike P4's
-    lowercase "her" — this toast leads with the pronoun as sentence subject)
-  - ApplyEatRipeCorpseBonus delegates to BuffTrackerScript.ApplyEatRipeCorpseEndBuff
-    (see test_buff_tracker.py for the buff logic itself)
+  - MainQuestScript.GetRestoreHealthGenericEffect + PlayerAlias Auto Const
+  - PlayerAliasScript.RegisterMagicEffectDetect + OnMagicEffectApply → HandlePlayerMagicEffectApply
+  - HandlePlayerMagicEffectApply → NotePendingEatRipeReward (not immediate reward)
+  - HandleCorpseDecay at max stage → MaybeRewardEatenRipeCorpse(akCorpse)
+  - MaybeRewardEatenRipeCorpse(Actor): pending latch, Cannibal perk, butcher range,
+    tracked + max-stage on that actor; no KillerScan / FindActors
+  - ToastAteRipeCorpse: {name} -> "She" fallback when unnamed
+  - ApplyEatRipeCorpseBonus → BuffTrackerScript.ApplyEatRipeCorpseEndBuff
   - FID_MGEF_RESTORE_HEALTH_GENERIC verified against Fallout4.esm
-  - SyncMagicEffectSniffer (Quest, MCM-triggered) delegates to alias.SyncMagicEffectSniff
+  - SyncMagicEffectSniffer delegates to alias.SyncMagicEffectSniff
 
 Usage:
   python tools/test_decay_eaten_ripe_corpse.py
@@ -170,8 +156,10 @@ def test_main_wiring() -> None:
     handler = extract_function(text, "HandlePlayerMagicEffectApply")
     if "akEffect != RestoreHealthGenericEffect" not in handler:
         fail("HandlePlayerMagicEffectApply must re-verify akEffect before dispatching")
-    if "MaybeRewardEatenRipeCorpse()" not in handler:
-        fail("HandlePlayerMagicEffectApply must call MaybeRewardEatenRipeCorpse")
+    if "NotePendingEatRipeReward()" not in handler:
+        fail("HandlePlayerMagicEffectApply must call NotePendingEatRipeReward (latch for HandleCorpseDecay)")
+    if "MaybeRewardEatenRipeCorpse(" in handler:
+        fail("HandlePlayerMagicEffectApply must not call MaybeRewardEatenRipeCorpse directly (no Actor yet)")
     if "DebugSniffMagicEffects" not in handler:
         fail("HandlePlayerMagicEffectApply must Trace every effect while the P5 discovery sniffer is on")
 
@@ -186,50 +174,61 @@ def test_main_wiring() -> None:
     if 'id == "bSniffMagicEffects:Debug"' not in extract_function(text, "OnMCMSettingChange"):
         fail("OnMCMSettingChange must dispatch bSniffMagicEffects:Debug to SyncMagicEffectSniffer")
 
-    facade = extract_function(text, "MaybeRewardEatenRipeCorpse")
+    facade = extract_function(text, "NotePendingEatRipeReward")
     if "CorpseDecay()" not in facade:
-        fail("Main MaybeRewardEatenRipeCorpse must facade via CorpseDecay()")
+        fail("Main NotePendingEatRipeReward must facade via CorpseDecay()")
     decay_txt = DECAY.read_text(encoding="utf-8", errors="replace")
+    note = extract_function(decay_txt, "NotePendingEatRipeReward")
+    if "PendingEatRipeReward = True" not in note:
+        fail("NotePendingEatRipeReward must set PendingEatRipeReward = True")
+    if "eaten-ripe-corpse pending" not in note:
+        fail("NotePendingEatRipeReward must Trace pending latch (no silent set)")
+
+    handle = extract_function(decay_txt, "HandleCorpseDecay")
+    if "MaybeRewardEatenRipeCorpse(akCorpse)" not in handle:
+        fail("HandleCorpseDecay must call MaybeRewardEatenRipeCorpse(akCorpse) at max stage")
+    if "KillerScan" in handle or "ScanDead" in handle:
+        fail("HandleCorpseDecay must not use KillerScan / ScanDead for P5 reward")
+
     reward = extract_function(decay_txt, "MaybeRewardEatenRipeCorpse")
+    if "Actor akCorpse" not in reward[:120]:
+        fail("MaybeRewardEatenRipeCorpse must take Actor akCorpse")
+    if "!PendingEatRipeReward" not in reward:
+        fail("MaybeRewardEatenRipeCorpse must early-return when PendingEatRipeReward is False")
     if "PlayerHasCannibalPerk()" not in reward:
         fail("MaybeRewardEatenRipeCorpse must gate on PlayerHasCannibalPerk (RestoreHealthGeneric is not cannibal-exclusive)")
-    if "scan.ScanDead" not in reward or "KillerScan()" not in reward:
-        fail("MaybeRewardEatenRipeCorpse must resolve nearest corpse from KillerScan().ScanDead")
+    if "KillerScan" in reward or "ScanDead" in reward:
+        fail("MaybeRewardEatenRipeCorpse must not use KillerScan / ScanDead (Actor param from HandleCorpseDecay)")
     if "FindActors" in reward:
-        fail("MaybeRewardEatenRipeCorpse must not FindActors (reuse ScanDead)")
+        fail("MaybeRewardEatenRipeCorpse must not FindActors")
     if "butcherR" not in reward and "BUTCHER_CORPSE_RADIUS" not in reward:
-        fail("MaybeRewardEatenRipeCorpse must cap nearest-corpse search at butcher range (500)")
-    if "PlayerRef.GetDistance(ak)" not in reward:
-        fail("MaybeRewardEatenRipeCorpse must pick the nearest corpse via GetDistance (two ripe corpses in one room must disambiguate)")
+        fail("MaybeRewardEatenRipeCorpse must cap butcher range (500)")
+    if "GetDistance(akCorpse)" not in reward:
+        fail("MaybeRewardEatenRipeCorpse must GetDistance(akCorpse) for butcher range")
     if "FindDecayKillSlot(formId)" not in reward:
-        fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be tracked")
+        fail("MaybeRewardEatenRipeCorpse must require the corpse be tracked")
     stage_check_idx = reward.find(
-        "ResolveDecayStageForKill(formId) != (m.ModConfigAlias.DECAY_STAGE_COUNT - 1)"
+        "ResolveDecayStageForKill(formId) != (DECAY_STAGE_COUNT - 1)"
     )
     if stage_check_idx < 0:
-        stage_check_idx = reward.find(
-            "ResolveDecayStageForKill(formId) != (ModConfigAlias.DECAY_STAGE_COUNT - 1)"
-        )
-    if stage_check_idx < 0:
-        fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be at max decay stage")
-    if "ToastAteRipeCorpse(nearest)" not in reward or "ApplyEatRipeCorpseBonus(nearest)" not in reward:
-        fail("MaybeRewardEatenRipeCorpse must call both ToastAteRipeCorpse and ApplyEatRipeCorpseBonus")
-    # Not just "these strings appear somewhere" — the stage check must actually gate the
-    # calls: a Return inside its own If block, positioned before both calls in source.
+        fail("MaybeRewardEatenRipeCorpse must require the corpse be at max decay stage (DECAY_STAGE_COUNT - 1)")
+    if "ToastAteRipeCorpse(akCorpse)" not in reward or "ApplyEatRipeCorpseBonus(akCorpse)" not in reward:
+        fail("MaybeRewardEatenRipeCorpse must call both ToastAteRipeCorpse and ApplyEatRipeCorpseBonus on akCorpse")
     stage_if_block = reward[stage_check_idx : reward.find("EndIf", stage_check_idx)]
     if "Return" not in stage_if_block:
         fail("MaybeRewardEatenRipeCorpse's max-decay-stage check must Return (not just Trace) on mismatch")
-    toast_idx = reward.find("ToastAteRipeCorpse(nearest)")
-    bonus_idx = reward.find("ApplyEatRipeCorpseBonus(nearest)")
+    toast_idx = reward.find("ToastAteRipeCorpse(akCorpse)")
+    bonus_idx = reward.find("ApplyEatRipeCorpseBonus(akCorpse)")
     if toast_idx < stage_check_idx or bonus_idx < stage_check_idx:
         fail("ToastAteRipeCorpse/ApplyEatRipeCorpseBonus must be called AFTER the max-decay-stage gate, not before")
+    if "PendingEatRipeReward = False" not in reward:
+        fail("MaybeRewardEatenRipeCorpse must clear PendingEatRipeReward on success / cannibal fail")
     for needle in (
         "eaten-ripe-corpse skip | no Cannibal perk",
-        "eaten-ripe-corpse skip | KillerScan missing",
-        "eaten-ripe-corpse skip | ScanDead empty",
-        "eaten-ripe-corpse skip | no corpse within",
-        "eaten-ripe-corpse skip | nearest corpse untracked",
-        "eaten-ripe-corpse skip | nearest corpse not max stage",
+        "eaten-ripe-corpse skip | no corpse",
+        "eaten-ripe-corpse skip | corpse out of butcher range",
+        "eaten-ripe-corpse skip | corpse untracked",
+        "eaten-ripe-corpse skip | corpse not max stage",
     ):
         if needle not in reward:
             fail(f"MaybeRewardEatenRipeCorpse must Trace {needle!r} (no silent skip)")

@@ -2,7 +2,7 @@ Scriptname PickmansWhisperVictimsScript extends Quest
 {C5 Victims MCM + aim cache. Own script lock so CallFunction is not starved by Main killscan.}
 
 ; MCM buttons CallFunction this script (not MainQuestScript).
-; Aim cache filled from KillerScan / knife / Tick via Main façades → NoteVictimsAimActor.
+; Aim cache filled from TargetScan look / knife via Main façades → NoteVictimsAimActor.
 ; Naming table stays on Main; decay clocks live on CorpseDecay; this script owns aim + MCM push.
 ; Decay advance timer still cancelled (no StartTimer here). H P2: Set/Reset only
 ; move the kill clock; KillerScan → CorpseDecay SyncOverlays owns LooksMenu apply.
@@ -131,23 +131,6 @@ Actor Function ResolveVictimsAimActor()
 		EndIf
 	EndIf
 	Return None
-EndFunction
-
-; Former KillerScan snapshot consumer — VoiceAlias stubs until aim bus is rewired.
-Function NoteFromKillerScanSnapshot()
-	PickmansWhisperMainQuestScript m = Main()
-	If !m || !m.VoiceAlias
-		Debug.Trace("PickmansWhisper: ERROR Victims NoteFromKillerScanSnapshot — VoiceAlias unbound")
-		Return
-	EndIf
-	Actor cam = m.VoiceAlias.StubCameraActor()
-	Actor facedDead = m.VoiceAlias.StubFacedDead()
-	If cam
-		NoteVictimsAimActor(cam)
-	EndIf
-	If facedDead
-		NoteVictimsAimActor(facedDead)
-	EndIf
 EndFunction
 
 String Function LocalActorLabel(Actor ak)
@@ -391,7 +374,7 @@ Bool Function ResetAimedDecayKillClock()
 	If MCM.IsInstalled()
 		MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", 0)
 	EndIf
-	m.LastVictimStatus = "kill clock reset to now (stage 0 Freshly Deceased) — overlays on next KillerScan sync"
+	m.LastVictimStatus = "kill clock reset to now (stage 0 Freshly Deceased) — overlays on next HandleCorpseDecay"
 	Debug.Trace("PickmansWhisper: ResetAimedDecayKillClock ok id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -444,7 +427,7 @@ Bool Function PrepAimedDecayStage(Int targetStage)
 	Else
 		m.SetDecayKillLastStage(formId, targetStage - 1)
 	EndIf
-	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.ModConfigAlias.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
+	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.ModConfigAlias.GetDecayStageName(targetStage) + " — overlays on next HandleCorpseDecay"
 	Debug.Trace("PickmansWhisper: PrepAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -470,7 +453,7 @@ Bool Function QueueAimedDecayStage(Int targetStage)
 	PendingDecayAdvanceActor = aimed
 	PendingDecayAdvanceStage = targetStage
 	PendingDecayAdvanceFormId = formId
-	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.ModConfigAlias.GetDecayStageName(targetStage) + " — overlays on next KillerScan sync"
+	m.LastVictimStatus = "kill clock → stage " + targetStage + " " + m.ModConfigAlias.GetDecayStageName(targetStage) + " — overlays on next HandleCorpseDecay"
 	Debug.Trace("PickmansWhisper: QueueAimedDecayStage ok stage=" + targetStage + " id=0x" + GardenOfEden.GetHexFormID(aimed))
 	Return True
 EndFunction
@@ -621,7 +604,7 @@ Function MCMAdvanceAimedDecayStage()
 		status = m.LastVictimStatus
 	EndIf
 	If ok
-		DiagNotify("Pickman's Whisper — Advance decay clock\n\n" + status + "\n\nClose MCM — KillerScan applies overlays on the next sync.")
+		DiagNotify("Pickman's Whisper — Advance decay clock\n\n" + status + "\n\nClose MCM — overlays apply on next HandleCorpseDecay.")
 	Else
 		DiagNotify("Pickman's Whisper — Advance decay clock\n\nFailed / skipped:\n" + status)
 

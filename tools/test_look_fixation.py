@@ -264,6 +264,8 @@ def test_psc_contracts(text: str) -> None:
     test_fixation_entry_table_helpers(text)
 
     # Hold-aim poll throttle (SameAimPollCount / LOOK_SAME_AIM_POLLS) retired.
+    if "SameAimPollCount" in text or "LOOK_SAME_AIM_POLLS" in text:
+        fail("SameAimPollCount / LOOK_SAME_AIM_POLLS must stay retired (SkipFixation gap is spacing)")
     for name in (
         "LookFixation",
         "GetFixationEntry",
@@ -330,9 +332,13 @@ def test_psc_contracts(text: str) -> None:
     looking = extract_function(main, "LookingAtTarget")
     if "VoiceAlias.LookFixation(WhoIsThat)" not in looking:
         fail("Main.LookingAtTarget must call VoiceAlias.LookFixation")
+    if "TickPendingRenameDeadline()" not in looking:
+        fail("LookingAtTarget must TickPendingRenameDeadline (not ambient TargetScan cadence)")
     if "DesperateRename()" not in looking or "rename.DesperateRename(WhoIsThat)" not in looking:
         fail("LookingAtTarget must DesperateRename() façade then rename.DesperateRename(WhoIsThat)")
-    ok("TargetScan -> Main.LookingAtTarget -> VoiceAlias.LookFixation + DesperateRename")
+    if "TickPendingRenameDeadline" in scan_fn:
+        fail("TargetScan ScanAndCleanTargets must not host TickPendingRenameDeadline")
+    ok("TargetScan -> Main.LookingAtTarget -> LookFixation + rename deadline + DesperateRename")
 
     fix_el = extract_function(text, "IsFixationEligible")
     if "ExplainNoticeReject(ak, True)" not in fix_el and "ExplainNoticeReject(ak,True)" not in fix_el:
@@ -356,6 +362,18 @@ def test_psc_contracts(text: str) -> None:
         fail('LookFixation must not use retired "PW fixation:" debug toast (P2 voice)')
     if "SpeakFixationStageWhisper" not in tick or "SpeakRecognitionLine" not in tick:
         fail("LookFixation must route P2 voice (SpeakFixationStageWhisper / SpeakRecognitionLine)")
+    stage_wh = extract_function(text, "SpeakFixationStageWhisper")
+    if "PlayNoticeAudio" not in stage_wh:
+        fail("SpeakFixationStageWhisper must PlayNoticeAudio (Desperate_Audio when stage 4; was toast-only)")
+    if "GetVoiceDeliveryMode" not in stage_wh:
+        fail("SpeakFixationStageWhisper must honor GetVoiceDeliveryMode")
+    skip = extract_function(text, "SkipFixation")
+    if "gap >= 0.0" not in skip and "gap >= 0" not in skip:
+        fail("SkipFixation must allow when realtime gap is negative (post-load clock reset)")
+    if "LOOK_COUNT_FIRST_SILENT" not in tick:
+        fail("LookFixation must keep 1st look silent via LOOK_COUNT_FIRST_SILENT")
+    if "MaybePromptNameHer" not in tick:
+        fail("LookFixation must MaybePromptNameHer from look count (>= RECOGNITION_NAME_PROMPT_AT)")
     if "MaybeSpeakNoticeLine" in tick:
         fail("LookFixation must not call MaybeSpeakNoticeLine (ambient stays separate)")
     if "FIXATION_TOAST_COOLDOWN" in tick:
@@ -367,7 +385,7 @@ def test_psc_contracts(text: str) -> None:
         encoding="utf-8", errors="replace"
     )
     if "Function HandleWhisperVoice" not in voice:
-        fail("VoiceScan must expose HandleWhisperVoice (direct KillerScan dispatch)")
+        fail("VoiceAlias must expose HandleWhisperVoice")
     if "MaybeSpeakNoticeLine(akTarget)" not in voice:
         fail("VoiceAlias must MaybeSpeakNoticeLine(akTarget)")
     if "ProcessKnifeCreditFromKillerScan" in voice:
@@ -375,19 +393,6 @@ def test_psc_contracts(text: str) -> None:
     if "RegisterForCustomEvent" in voice:
         fail("VoiceScan must not use CustomEvent (same-quest delivery was silent)")
     ok("VoiceAlias ambient speak + no knife ownership")
-
-    # KillerScan OnTimer must re-arm before RunKillerScanTick (silence guard)
-    world = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperKillerScanScript.psc").read_text(
-        encoding="utf-8", errors="replace"
-    )
-    on_timer = extract_function_event(world, "OnTimer")
-    i_arm = on_timer.find("StartKillerScanLoop()")
-    i_run = on_timer.find("RunKillerScanTick()")
-    if i_arm < 0 or i_run < 0:
-        fail("KillerScan OnTimer must call StartKillerScanLoop and RunKillerScanTick")
-    if i_arm > i_run:
-        fail("KillerScan OnTimer must StartKillerScanLoop BEFORE RunKillerScanTick (silence guard)")
-    ok("KillerScan OnTimer re-arms before tick body")
 
     notice = extract_function(text, "MaybeSpeakNoticeLine")
     if "LookFixation" in notice or "Fixations" in notice or "FixationEntry" in notice:

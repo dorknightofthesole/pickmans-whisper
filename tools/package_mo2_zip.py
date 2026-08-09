@@ -83,7 +83,6 @@ def stage() -> None:
         "PickmansWhisperDecayWoundLabScript",
         "PickmansWhisperVictimsScript",
         "PickmansWhisperDesperateRenameScript",
-        "PickmansWhisperKillerScanScript",
         "PickmansWhisperVoiceAliasScript",
         "PickmansWhisperPlayerAliasScript",
         "PickmansWhisperBuffTrackerScript",

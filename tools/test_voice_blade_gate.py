@@ -79,6 +79,7 @@ def main() -> None:
         "PlayNoticeAudio",
         "PlayWhisperXwmByFile",
         "MaybeSpeakNamedIntimacyEvent",
+        "MaybeSpeakTrustLine",
     ):
         body = extract_function(voice_text, name)
         if "IsVoiceWeaponReady" not in body:
@@ -87,12 +88,13 @@ def main() -> None:
         "ToastVoice",
         "ToastHungerLine",
         "ToastPraiseLine",
-        "MaybeSpeakTrustLine",
         "MaybeSpeakNamedKillVoice",
     ):
         body = extract_function(main_text, name)
         if "IsVoiceWeaponReady" not in body:
             fail(f"{name} must gate with IsVoiceWeaponReady (via VoiceAlias)")
+    if "Function MaybeSpeakTrustLine" in main_text:
+        fail("MaybeSpeakTrustLine must live on VoiceAlias, not Main")
     ok("toast / notice / fixation / audio / named-E paths gated")
 
     for name in (
@@ -103,17 +105,29 @@ def main() -> None:
         "HUNGER_TOAST_COOLDOWN",
         "PRAISE_TOAST_COOLDOWN",
     ):
-        if f"Float {name}" in main_text or f"\n{name} =" in main_text:
-            # Declarations must live on VoiceAlias; Main may only reference VoiceAlias.*
-            if f"Float {name}" in main_text:
-                fail(f"{name} must be declared on VoiceAlias, not Main")
+        if f"Float {name}" in main_text:
+            fail(f"{name} must be declared on VoiceAlias, not Main")
         if f"Float Property {name}" not in voice_text and f"Float {name}" not in voice_text:
             fail(f"{name} must be declared on VoiceAlias")
         # Cross-script access from Main requires Property (not a plain script var).
         if f"Float Property {name}" not in voice_text:
             fail(f"{name} must be Property on VoiceAlias (Main reads/writes it)")
+    # Main still stamps LastTrust* via ToastVoice; hunger/praise cools stay on Main toast paths.
+    # TRUST_TOAST_COOLDOWN is VoiceAlias-only (MaybeSpeakTrustLine moved off Main).
+    for name in (
+        "LastTrustToastRealTime",
+        "LastHungerToastRealTime",
+        "LastPraiseToastRealTime",
+        "HUNGER_TOAST_COOLDOWN",
+        "PRAISE_TOAST_COOLDOWN",
+    ):
         if f"VoiceAlias.{name}" not in main_text:
             fail(f"Main toast paths must use VoiceAlias.{name}")
+    if "TRUST_TOAST_COOLDOWN" not in voice_text:
+        fail("VoiceAlias must own TRUST_TOAST_COOLDOWN for MaybeSpeakTrustLine")
+    trust = extract_function(voice_text, "MaybeSpeakTrustLine")
+    if "TRUST_TOAST_COOLDOWN" not in trust:
+        fail("MaybeSpeakTrustLine must enforce TRUST_TOAST_COOLDOWN")
     ok("trust/hunger/praise toast cools owned by VoiceAlias")
 
     if "IsBladeKillWeaponReady" not in main_text:

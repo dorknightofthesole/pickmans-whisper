@@ -93,6 +93,11 @@ def test_main_register_reward_path() -> None:
         fail("UnRegisterTarget must UnregisterForRemoteEvent OnDeath")
     if "UnregisterForHitEvent(akTarget, PlayerRef)" not in un:
         fail("UnRegisterTarget must UnregisterForHitEvent(akTarget, PlayerRef)")
+    if "KnifeKillCreditSuppressed = False" not in un:
+        fail(
+            "UnRegisterTarget must clear KnifeKillCreditSuppressed "
+            "(sticky True from Bed Gift KillSilent must not mute real kills forever)"
+        )
     if "UnregisterForHitEvent(akTarget, akCaster)" in un:
         fail("UnRegisterTarget must not use akCaster hit filter (signature dropped akCaster)")
 
@@ -120,19 +125,35 @@ def test_main_register_reward_path() -> None:
         fail("MaybeSpeakHitWhisper must ShowVoiceToast (toast now; audio later)")
 
     reg = fn_body(psc, "RegisterTarget")
-    if "MaybeSpeakNeedsBeatingWhisper" not in reg:
-        fail("RegisterTarget unequipped path must VoiceAlias.MaybeSpeakNeedsBeatingWhisper")
+    if "MaybeSpeakNeedsBeatingWhisper" in reg:
+        fail("RegisterTarget must not call MaybeSpeakNeedsBeatingWhisper (moved to BeatBeforeKill)")
+    if "IsReadyToGiveBeating" in reg:
+        fail("RegisterTarget must not gate IsReadyToGiveBeating for needs-beating (BeatBeforeKill owns it)")
     if "needs a good beating" in reg:
         fail("RegisterTarget must not hard-code beating toast (ModConfig NeedsBeatingWhisper)")
+    beat_psc = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBeatBeforeKillScript.psc"
+    if not beat_psc.is_file():
+        fail("BeatBeforeKillScript missing")
+    handle_beat = fn_body(beat_psc.read_text(encoding="utf-8", errors="replace"), "HandleBeatBeforeKill")
+    if "MaybeSpeakNeedsBeatingWhisper" not in handle_beat:
+        fail("HandleBeatBeforeKill must VoiceAlias.MaybeSpeakNeedsBeatingWhisper when unarmed")
+    if "IsReadyToGiveBeating" not in handle_beat:
+        fail("HandleBeatBeforeKill must gate on IsReadyToGiveBeating before needs-beating whisper")
     beat = fn_body(voice, "MaybeSpeakNeedsBeatingWhisper")
     if "ModConfigAlias.NeedsBeatingWhisper" not in beat:
         fail("MaybeSpeakNeedsBeatingWhisper must read ModConfigAlias.NeedsBeatingWhisper")
-    if "ApplyNamePlaceholder" not in beat:
-        fail("MaybeSpeakNeedsBeatingWhisper must ApplyNamePlaceholder for {name}")
+    if "FormatLineWithActorName" not in beat:
+        fail("MaybeSpeakNeedsBeatingWhisper must Main.FormatLineWithActorName for {name}")
+    if "NoticeNameForLine" in beat:
+        fail("MaybeSpeakNeedsBeatingWhisper must not NoticeNameForLine — use FormatLineWithActorName(..., False)")
     if "ShowVoiceToast" in beat:
         fail("MaybeSpeakNeedsBeatingWhisper must not ShowVoiceToast (blade gate; knife is away)")
     if "FormatVoiceToast" not in beat or "Debug.Notification" not in beat:
         fail("MaybeSpeakNeedsBeatingWhisper must Notification(FormatVoiceToast(...))")
+    if "Function FormatLineWithActorName(" not in psc:
+        fail("Main must expose FormatLineWithActorName (SSOT actor+template)")
+    if "Function ApplyNamePlaceholder(String line, String npcName)" not in psc:
+        fail("Main must own ApplyNamePlaceholder SSOT")
 
     ondeath = fn_body(psc, "OnDeath")
     if "RewardKill(akSender)" not in ondeath:
@@ -178,6 +199,14 @@ def test_start_bond_equip_path() -> None:
     bond = fn_body(psc, "StartBond")
     if "ModConfigAlias.BondIntroGreeting" not in bond:
         fail("StartBond must still read ModConfigAlias.BondIntroGreeting")
+    if "ArmRuntimeLoops" in bond:
+        fail("StartBond must not ArmRuntimeLoops (load/init arms scanners)")
+    if "LastHungerPollGameTime" in bond or "LastKnifeActivityGameTime" in bond:
+        fail("StartBond is bond latch only — no hunger/activity stamps")
+    if "LastKnifeActivityGameTime" in psc:
+        fail("LastKnifeActivityGameTime retired (was write-only)")
+    if "Function NoteKnifeActivity" in psc:
+        fail("NoteKnifeActivity retired with LastKnifeActivityGameTime")
     ok('StartBond: equip path blade-equipped; not from RewardKill')
 
 

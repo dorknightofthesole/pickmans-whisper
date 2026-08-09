@@ -37,6 +37,11 @@ Function StartTimer(Float afInterval, Int aiTimerID = 0) Native
 Function CancelTimer(Int aiTimerID = 0) Native
 Event OnTimer(Int aiTimerID)
 EndEvent
+; Game-time timers — afInterval is game-time hours (not days). Real FO4 ScriptObject.
+Function StartTimerGameTime(Float afInterval, Int aiTimerID = 0) Native
+Function CancelTimerGameTime(Int aiTimerID = 0) Native
+Event OnTimerGameTime(Int aiTimerID)
+EndEvent
 ; Do NOT stub Skyrim RegisterForUpdate* — removed in FO4; fake Natives compile green
 ; and fail at runtime. See .cursor/rules/no-fake-native-stubs.mdc.
 
