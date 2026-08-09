@@ -1466,10 +1466,27 @@ Function SyncBladeDrawnDebugLatch()
 	If !PlayerAlias
 		BladeCurrentlyDrawn = False
 		DrawnWeaponStateValid = False
+		SyncDialogActivatePerks()
 		Return
 	EndIf
 	DrawnWeaponStateValid = True
 	BladeCurrentlyDrawn = PlayerAlias.IsPickmansBladeEquipped
+	; Force Trade / Slavery activate choices must not appear while the blade is drawn —
+	; they push the multi-activate menu and steal attack input.
+	SyncDialogActivatePerks()
+EndFunction
+
+; abAllowDialog = blade sheathed / other weapon / unarmed.
+Function SyncDialogActivatePerks()
+	Bool allow = !BladeCurrentlyDrawn
+	PickmansWhisperVictimTradeScript trade = VictimTrade()
+	If trade
+		trade.SyncTradeActivatePerk(allow)
+	EndIf
+	PickmansWhisperSlaveryScript slavery = Slavery()
+	If slavery
+		slavery.SyncSlaveryActivatePerk(allow)
+	EndIf
 EndFunction
 
 ; Alias for kill checks — no sheath / empty-hand grace. Gun or fists = not ready.
@@ -2317,6 +2334,10 @@ PickmansWhisperVictimTradeScript Function VictimTrade()
 	Return (Self as Quest) as PickmansWhisperVictimTradeScript
 EndFunction
 
+PickmansWhisperSlaveryScript Function Slavery()
+	Return (Self as Quest) as PickmansWhisperSlaveryScript
+EndFunction
+
 ; Perk OnEntryRun → feature script (activate choice Trade).
 Function TryForceVictimTradeFromActivate(Actor akTarget)
 	PickmansWhisperVictimTradeScript trade = VictimTrade()
@@ -2326,6 +2347,35 @@ Function TryForceVictimTradeFromActivate(Actor akTarget)
 		Return
 	EndIf
 	trade.TryForceVictimTradeFromActivate(akTarget)
+EndFunction
+
+; Slavery perk Enslave / Free → feature script.
+Function TryEnslaveFromActivate(Actor akTarget)
+	PickmansWhisperSlaveryScript slavery = Slavery()
+	If !slavery
+		Debug.Trace("PickmansWhisper: ERROR TryEnslaveFromActivate — SlaveryScript missing")
+		Debug.Notification("PickmansWhisper: Slavery script missing")
+		Return
+	EndIf
+	slavery.TryEnslaveFromActivate(akTarget)
+EndFunction
+
+Function TryFreeSlaveFromActivate(Actor akTarget)
+	PickmansWhisperSlaveryScript slavery = Slavery()
+	If !slavery
+		Debug.Trace("PickmansWhisper: ERROR TryFreeSlaveFromActivate — SlaveryScript missing")
+		Debug.Notification("PickmansWhisper: Slavery script missing")
+		Return
+	EndIf
+	slavery.TryFreeSlaveFromActivate(akTarget)
+EndFunction
+
+Bool Function IsOurSlave(Actor ak)
+	PickmansWhisperSlaveryScript slavery = Slavery()
+	If !slavery
+		Return False
+	EndIf
+	Return slavery.IsOurSlave(ak)
 EndFunction
 
 ; --- Slice H P0.1 — decay wound lab (façade) ------------------------------------
@@ -3170,9 +3220,22 @@ Bool Function IsValidTarget(Actor ak, Bool abAllowHostile = False)
 		; Debug.Notification("PickmansWhisper: target reject | child id=" + id)
 		Return False
 	EndIf
+	; Vanilla teammates/companions are not Whisper victims. Our enslaved latch is
+	; SetPlayerTeammate for follow only — still eligible for notice/kill/beat.
 	If ak.IsPlayerTeammate()
-		Debug.Trace("PickmansWhisper: target reject | teammate id=" + id)
-		; Debug.Notification("PickmansWhisper: target reject | teammate id=" + id)
+		If !IsOurSlave(ak)
+			Debug.Trace("PickmansWhisper: target reject | teammate id=" + id)
+			; Debug.Notification("PickmansWhisper: target reject | teammate id=" + id)
+			Return False
+		EndIf
+	EndIf
+	; Never treat Followers CurrentCompanionFaction as a slavery target.
+	Faction companionFac = Game.GetFormFromFile(0x00023C01, "Fallout4.esm") as Faction
+	If !companionFac
+		companionFac = Game.GetForm(0x00023C01) as Faction
+	EndIf
+	If companionFac && ak.IsInFaction(companionFac)
+		Debug.Trace("PickmansWhisper: target reject | current companion faction id=" + id)
 		Return False
 	EndIf
 	If IsStoryEssential(ak)

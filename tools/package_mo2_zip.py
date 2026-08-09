@@ -91,6 +91,8 @@ def stage() -> None:
         "PickmansWhisperTargetScanScript",
         "PickmansWhisperVictimTradeScript",
         "PickmansWhisperVictimTradePerkScript",
+        "PickmansWhisperSlaveryScript",
+        "PickmansWhisperSlaveryPerkScript",
     ):
         pex = ROOT / "Data" / "Scripts" / f"{script_stem}.pex"
         require_file(pex, f"compiled {script_stem}.pex")

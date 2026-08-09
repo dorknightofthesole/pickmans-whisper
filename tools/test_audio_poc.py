@@ -130,8 +130,9 @@ def test_builder() -> None:
         "Desperate_Audio.txt",
         "WhisperSndrIds.txt",
         # Past Slice I decay-face reserve (0x850..0x86F) + proximity cloak (0x870–0x873)
-        # + blade/reward AVIFs (0x874–0x877) + trade PERK (0x878) + empty OTFT (0x879).
-        "NEXT_OID = 0x0000087A",
+        # + blade/reward AVIFs (0x874–0x877) + trade PERK (0x878) + empty OTFT (0x879)
+        # + slavery PERK (0x87A).
+        "NEXT_OID = 0x0000087B",
     ):
         if needle not in src:
             fail(f"build_hunger_spell_esp.py missing {needle!r}")

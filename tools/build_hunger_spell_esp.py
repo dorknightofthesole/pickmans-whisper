@@ -68,8 +68,9 @@ FID_AV_KILL_REWARD_CHECK_TIME = 0x01000876  # PW_KillRewardCheckTime
 FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877  # PW_TargetTrackerExpiration
 FID_PERK_VICTIM_TRADE = 0x01000878  # PW_VictimTradeActivate (Talk + Force Trade)
 FID_OTFT_EMPTY = 0x01000879  # PW_EmptyOutfit — strip default outfits for Force Trade
+FID_PERK_SLAVERY = 0x0100087A  # PW_SlaveryActivate (Talk + Enslave / Free)
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
-NEXT_OID = 0x0000087A  # == (FID_OTFT_EMPTY & 0xFFFFFF) + 1
+NEXT_OID = 0x0000087B  # == (FID_PERK_SLAVERY & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
@@ -348,12 +349,16 @@ def build_main_quest_payload() -> bytes:
         "PickmansWhisperBeatBeforeKillScript",
         "PickmansWhisperTargetScanScript",
         "PickmansWhisperVictimTradeScript",
+        "PickmansWhisperSlaveryScript",
     ]
     trade_perk_prop = build_vmad_object_form_property(
         "TradeActivatePerk", FID_PERK_VICTIM_TRADE
     )
     trade_outfit_prop = build_vmad_object_form_property(
         "EmptyOutfit", FID_OTFT_EMPTY
+    )
+    slavery_perk_prop = build_vmad_object_form_property(
+        "SlaveryActivatePerk", FID_PERK_SLAVERY
     )
     # CK-style: Main.PlayerAlias → PickmansWhisperPlayerCombat ALST 0 (script host).
     player_alias_prop = build_vmad_object_alias_property(
@@ -401,6 +406,9 @@ def build_main_quest_payload() -> bytes:
                 "PickmansWhisperVictimTradeScript": [
                     trade_perk_prop,
                     trade_outfit_prop,
+                ],
+                "PickmansWhisperSlaveryScript": [
+                    slavery_perk_prop,
                 ],
             },
             alias_scripts=[
@@ -743,6 +751,30 @@ def build_empty_outfit_payload() -> bytes:
     )
 
 
+def _ctda_get_dead_eq_0() -> bytes:
+    # Vanilla GetDead == 0 (func 0x2E) — from WastelandWhisperer / Intimidation PERKs.
+    return bytes.fromhex(
+        "00c0c967000000002e00000000000000000000000000000000000000ffffffff"
+    )
+
+
+def _activate_choice_entry(label: str, priority: int = 0) -> list[bytes]:
+    """One Activate / Add Activate Choice entry (living target). priority = PRKE byte2."""
+    return [
+        field(b"PRKE", bytes([0x02, 0x00, priority & 0xFF])),
+        # Activate (0x0E) / Add Activate Choice (0x09) / 2 condition tabs
+        field(b"DATA", bytes.fromhex("0e0902")),
+        field(b"PRKC", bytes.fromhex("00")),  # Perk Owner tab (empty)
+        field(b"PRKC", bytes.fromhex("01")),  # Target tab
+        field(b"CTDA", _ctda_get_dead_eq_0()),  # living only — leave corpses to Cannibal
+        field(b"EPFT", bytes.fromhex("04")),  # Activate text
+        field(b"EPFB", bytes.fromhex("0000")),
+        field(b"EPF2", zstr(label)),
+        field(b"EPF3", bytes.fromhex("0000")),  # not Replace Default / not Run Immediately
+        field(b"PRKF", b""),
+    ]
+
+
 def build_victim_trade_perk_payload() -> bytes:
     """PERK Activate / Add Activate Choice labeled Force Trade (beside Talk).
 
@@ -759,29 +791,35 @@ def build_victim_trade_perk_payload() -> bytes:
             ],
         },
     )
-    # Vanilla GetDead == 0 (func 0x2E) — from WastelandWhisperer / Intimidation PERKs.
-    ctda_get_dead_eq_0 = bytes.fromhex(
-        "00c0c967000000002e00000000000000000000000000000000000000ffffffff"
-    )
     parts = [
         field(b"EDID", zstr("PW_VictimTradeActivate")),
         field(b"VMAD", perk_vmad),
         field(b"FULL", zstr("Pickman's Whisper Trade")),
         # Trait=0, level=0, ranks=1, playable=1, hidden=0
         field(b"DATA", bytes.fromhex("0000010100")),
-        # Entry Point rank0 priority0
-        field(b"PRKE", bytes.fromhex("020000")),
-        # Activate (0x0E) / Add Activate Choice (0x09) / 2 condition tabs
-        field(b"DATA", bytes.fromhex("0e0902")),
-        field(b"PRKC", bytes.fromhex("00")),  # Perk Owner tab (empty)
-        field(b"PRKC", bytes.fromhex("01")),  # Target tab
-        field(b"CTDA", ctda_get_dead_eq_0),  # living only — leave corpses to Cannibal
-        field(b"EPFT", bytes.fromhex("04")),  # Activate text
-        field(b"EPFB", bytes.fromhex("0000")),
-        field(b"EPF2", zstr("Force Trade")),
-        field(b"EPF3", bytes.fromhex("0000")),  # not Replace Default / not Run Immediately
-        field(b"PRKF", b""),
     ]
+    parts.extend(_activate_choice_entry("Force Trade", priority=0))
+    return b"".join(parts)
+
+
+def build_slavery_perk_payload() -> bytes:
+    """PERK with Enslave (entry 0) + Free (entry 1) activate choices. Living only."""
+    perk_vmad = build_vmad_scripts(
+        ["PickmansWhisperSlaveryPerkScript"],
+        script_properties={
+            "PickmansWhisperSlaveryPerkScript": [
+                build_vmad_object_form_property("MainQuest", FID_QUEST),
+            ],
+        },
+    )
+    parts = [
+        field(b"EDID", zstr("PW_SlaveryActivate")),
+        field(b"VMAD", perk_vmad),
+        field(b"FULL", zstr("Pickman's Whisper Slavery")),
+        field(b"DATA", bytes.fromhex("0000010100")),
+    ]
+    parts.extend(_activate_choice_entry("Enslave", priority=0))
+    parts.extend(_activate_choice_entry("Free", priority=1))
     return b"".join(parts)
 
 
@@ -891,6 +929,9 @@ def main() -> None:
     perk_trade = record(
         b"PERK", FID_PERK_VICTIM_TRADE, build_victim_trade_perk_payload()
     )
+    perk_slavery = record(
+        b"PERK", FID_PERK_SLAVERY, build_slavery_perk_payload()
+    )
     otft_empty = record(b"OTFT", FID_OTFT_EMPTY, build_empty_outfit_payload())
     avif_hit = record(
         b"AVIF",
@@ -926,9 +967,9 @@ def main() -> None:
     arma_blob = b"".join(arma_recs)
     armo_blob = b"".join(armo_recs)
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + MESG + PERK + OTFT + 4 AVIF + N SNDR + N ARMA + N ARMO
+    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + MESG + 2x PERK + OTFT + 4 AVIF + N SNDR + N ARMA + N ARMO
     # (proximity cloak MGEF/SPEL chain retired)
-    num_records = 13 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
+    num_records = 14 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
@@ -940,7 +981,7 @@ def main() -> None:
         + group(b"MGEF", mgef_agi + mgef_cha)
         + group(b"SPEL", spel_rec)
         + group(b"MESG", msg_rec)
-        + group(b"PERK", perk_trade)
+        + group(b"PERK", perk_trade + perk_slavery)
         + group(b"OTFT", otft_empty)
         + group(b"ARMA", arma_blob)
         + group(b"ARMO", armo_blob)
@@ -954,6 +995,7 @@ def main() -> None:
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
     print(f"  PERK 0x{FID_PERK_VICTIM_TRADE:08X} PW_VictimTradeActivate (Force Trade, living)")
+    print(f"  PERK 0x{FID_PERK_SLAVERY:08X} PW_SlaveryActivate (Enslave/Free, living)")
     print(f"  OTFT 0x{FID_OTFT_EMPTY:08X} PW_EmptyOutfit")
     print("  Proximity cloak MGEF/SPEL chain retired (0x870-0x873 gap)")
     print(

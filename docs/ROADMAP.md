@@ -17,14 +17,13 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **J** | Retire KillerScan + thin Main via Alias scripts (e.g. MCM Alias)                               | **J1 implemented** — awaiting in-game confirm                                                                                                        |
 | **K** | Victim “beat before kill” — temp essential + fight back (unarmed exception)                    | Planned (was Slice Q / earlier J; code/comments may still say J or Q)                                                                                |
 | **L** | Slow hunger stages (days) + peak-hunger wait rewards                                           | Planned                                                                                                                                              |
-| **M** | Corpse preserve sync with Necromantic                                                          | Planned                                                                                                                                              |
 | **N** | Perk gates; optional butcher cell / Cannibal hooks                                             | Planned                                                                                                                                              |
 | **O** | Witness support: flee/scream or attack; rumors of the "killer"                                 | Planned                                                                                                                                              |
 | **P** | Infamy / serial-killer whispers                                                                | Planned                                                                                                                                              |
 | **Q** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned                                                                                                                                              |
 | **R** | First blade acquire (inventory) — quest beat when the knife enters the player’s hands          | Planned                                                                                                                                              |
-
-
+| **S** | Force Trade — activate-choice inventory + one-time strip + slave pacify                        | **Done** — verified in-game                                                                                                                          |
+| **T** | Slavery — Enslave/Free follow + collar gate; killable (not vanilla companion)                  | **Implemented** — awaiting in-game confirm                                                                                                           |
 
 
 ## Slice A — trigger, toast, hunger, MCM
@@ -35,8 +34,6 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - [x] MCM: How To Use, Hunger, Voice, Debug.
 - [x] Satiation UI copy present; full clear on knife kill reserved for B.
 
-
-
 ## Slice B — knife kills + satiation
 
 **Status: Done** (verified: blade sates on non-hostile adult females; gun with blade in inventory does not). Regression: [TEST.md](../TEST.md) + `tools/test_blade_detect_contract.py` + MCM **Verify blade detect**.
@@ -45,8 +42,6 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - [x] **Blade identity (B27):** GoE equipped-slot name / OMOD pair (`Knife` `0x913CA` + bleed `0x1E7C20` + stealth `0x187A10`). Do **not** trust `GetEquippedWeapon` name alone (reports Combat Knife) or LVLI `0x22595F` as the drawn WEAP.
 - [x] Valid target: adult **female** non-**essential** human, seen **non-hostile** while alive (Protected settlers **do** count after you aggro them); skips men, hostiles-from-first-sight (raiders), children, teammates, ghoul/SM/synth/robot.
 - [x] Only kills with **Pickman's Blade** drawn count; gun with blade only in inventory must **not** sate.
-
-
 
 ## Slice C — NPC scan + comments + fixation
 
@@ -61,8 +56,6 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
   - [x] **P3+P4** — Potential Victims (merged): MCM Victims page ↔ FormID table + GoE2 `SetDisplayName` (world name) so `{name}` matches aim label; cap 32; lazy re-apply when seen; optional `VictimsHold` RefCollectionAlias (`tools/test_potential_victims.py`).
   - [x] **P5** — Sleep recognition: `SleepRecognitionLines.txt` when 2nd look and `GetSleepState() >= 3` (`tools/test_sleep_recognition.py`).
 
-
-
 ## Slice D — audio
 
 - [x] **D0-POC** — MCM Debug **Play test whisper (EndIt)** → `Sound.Play` on `PW_Whisper_EndIt` (`0x807`).
@@ -72,8 +65,6 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - Map keys are `.xwm` under `Data/Sound/PickmansWhisper/`. Blank Calm/Restless/Hungry/Starving maps until clips exist.
 - Docs: [AUDIO.md](AUDIO.md), [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
 - Voice features require owning Pickman's Blade (`IsVoiceWeaponReady` → `PlayerHasBlade`); kills / butcher still require it drawn (`IsBladeEquipped`).
-
-
 
 ## Slice E — named kill voice + soft Necromantic intimacy
 
@@ -87,8 +78,6 @@ Special lines when the player has a personal stake (Potential Victims name) and 
 
 - Honor direction rules: not sexual here; soft complementarity only; blade-drawn voice gate still applies.
 
-
-
 ## Slice F — blade corpse sever
 
 Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (verified in-game).
@@ -97,8 +86,6 @@ Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (veri
 - [x] Limb picker via MSG `PW_SeverLimbMenu` (`0x806`) → `Actor.Dismember(part, False, True, False)` (force sever, no BloodyMess gib).
 - [x] Skip Necromantic scene latch. Hacksaw / other weapons later.
 - [x] Contract: `tools/test_corpse_sever.py`.
-
-
 
 ## Slice G — bed corpse hallucination
 
@@ -111,11 +98,9 @@ Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contrac
 - Despawn via BedGift oneshot timer after present.
 - MCM Voice toggle + Debug force/clear; no custom corpse mesh.
 
-
-
 ## Slice H — corpse decay (body + face) / consume + victim places
 
-Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft with **M** (preserve) and **N** (Cannibal). Cap aligns with Victims (32).
+Design: [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md). Face art: [Decay_Head_Guide.md](Decay_Head_Guide.md). Soft with **N** (Cannibal). Corpse preserve left to an external mod. Cap aligns with Victims (32).
 
 **Merged former face-only slice** (FaceGen-preserving slot-54 face decals) into this slice — body overlays + face ARMO share the same stage clock.
 
@@ -148,21 +133,19 @@ Honor direction: never rename **essential** story NPCs. Editable suffix in `ModC
 
 Architecture cleanup after the event-driven cloak / OnHit / OnDeath / KillReward path is solid. Do **not** start until that path is confirmed in-game. Supersedes the old “KillerScan → true event bus” Later item — the goal here is removal, not a prettier bus.  Eddie: It is a prettier bus though. This feature began with this query: "fallout 4 I want to build a cloak of fear aura mod" on July 28th. This is a substantial refactor of the project.
 
-- [ ] **J1 — Deprecate and remove KillerScan** — **J1 implemented** — awaiting in-game confirm. Retire `PickmansWhisperKillerScanScript` and the poll-driven TargetSnapshot / cadence fan-out once notice, fixation, decay sync, bed gift, and related listeners are driven by events (or thin dedicated hosts). Update contracts (`test_no_killer_scan.py`, arming docs) so they no longer require the scanner. Protect proven load/arm behavior until the replacement is verified — then delete, don’t leave a zombie poller.
-- [ ] **J2 — Thin MainQuestScript via Alias scripts** — Move more feature/MCM surface out of `PickmansWhisperMainQuestScript` onto quest Alias scripts (same pattern as ModConfigAlias, KillRewardAlias, PlayerAlias). Example: MCM CallFunction / panel refresh into its own Alias. Main stays a thin router; Caprica cast-through-Quest rule still applies. Follow [modular-feature-scripts](.cursor/rules/modular-feature-scripts.mdc).
+- [x] **J1 — Deprecate and remove KillerScan** — **J1 implemented** — awaiting in-game confirm. Retire `PickmansWhisperKillerScanScript` and the poll-driven TargetSnapshot / cadence fan-out once notice, fixation, decay sync, bed gift, and related listeners are driven by events (or thin dedicated hosts). Update contracts (`test_no_killer_scan.py`, arming docs) so they no longer require the scanner. Protect proven load/arm behavior until the replacement is verified — then delete, don’t leave a zombie poller.
+- [x] **J2 — Thin MainQuestScript via Alias scripts** — Move more feature/MCM surface out of `PickmansWhisperMainQuestScript` onto quest Alias scripts (same pattern as ModConfigAlias, KillRewardAlias, PlayerAlias). Example: MCM CallFunction / panel refresh into its own Alias. Main stays a thin router; Caprica cast-through-Quest rule still applies. Follow [modular-feature-scripts](.cursor/rules/modular-feature-scripts.mdc).
 - [ ] J3 **— Deprecate Bond —** Remove all MCM and code references to bond.
-
-
 
 ## Slice K — victim beat-before-kill (temp essential)
 
 Formerly roadmap **Slice Q** (and earlier **J**; scripts/tests may still say J / Q / J1–J5). Let the player **pretend to beat** a qualified woman before finishing her with the knife — she won’t die during the scuffle and ideally **fights back**. Soft with Victims (C5) and knife-kill rules (B).
 
-- [ ] **K1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear via K5 / MCM off / blade kill path.
-- [ ] **K2 — Auto on unarmed attack** — If the player attacks a **qualified** NPC **without a weapon armed** (fists / no drawn weapon), auto-enter the same temp-essential + fight-back state. **Exception:** Pickman's Blade need **not** be drawn for this path (blade still required later to sate / praise).
-- [ ] **K3 — Fight back** — Aggro / combat so she resists instead of crumpling; exit cleanly when essential is cleared so a later blade kill can work.
-- [ ] **K4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
-- [ ] **K5 — Clear essential on rearm** — When the player **rearms any weapon** (draws / equips a weapon again after the unarmed beat), mark her **unessential** (restore prior state) so she can be finished with the blade.
+- [x] **K1 — MCM Victims: mark essential** — On a Potential Victim (or aimed eligible NPC), toggle “can’t be killed” for the beat fantasy. Clear via K5 / MCM off / blade kill path.
+- [x] **K2 — Auto on unarmed attack** — If the player attacks a **qualified** NPC **without a weapon armed** (fists / no drawn weapon), auto-enter the same temp-essential + fight-back state. **Exception:** Pickman's Blade need **not** be drawn for this path (blade still required later to sate / praise).
+- [x] **K3 — Fight back** — Aggro / combat so she resists instead of crumpling; exit cleanly when essential is cleared so a later blade kill can work.
+- [x] **K4 — Qualification** — Same spirit as notice/kill: adult **female**, human, **non-hostile** (at first contact); skip story essentials, children, teammates, non-humans. Never leave a shared `ActorBase` permanently essential (FO4 essential is base-level — design must be ref-safe / restore prior state).
+- [x] **K5 — Clear essential on rearm** — When the player **rearms any weapon** (draws / equips a weapon again after the unarmed beat), mark her **unessential** (restore prior state) so she can be finished with the blade.
 
 Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
 
@@ -175,25 +158,12 @@ Stretch the hunger climb so each stage lasts **days** of game time (not a quick 
 - Do **not** break C3 stage file mapping while tuning rise rate; prefer finishing **Slice J** (KillScanner gone) before relying on scan-tied hunger ticks.
 - Soft-stack with Necromantic craving feel; no ESP master dependency.
 
-
-
-## Slice M — corpse preserve
-
-- `HeldCorpses[]` + soft claim token on knife-kill victims.
-- Compatible with Necromantic holds; no ESP master dependency.
-- Ephemeral bed-hallucination corpses (Slice G) are **not** long-term hold targets.
-- Soft with **H**: preserved / claimed corpses pause or reset decay (body + face stage).
-
-
-
 ## Slice N — perk / stretch
 
 - Soft-gate or enhance via Lady Killer / Black Widow.
 - Optional Cannibal; stretch butcher-shop cell.
 - Occult Pact bridges documented only until that mod exists.
 - Soft with **H**: Cannibal / blade-eat consume path that clears Victims (clear body + face decay visuals first).
-
-
 
 ## Slice O — witnesses
 
@@ -207,8 +177,6 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 - Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
 - Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
 
-
-
 ## Slice P — infamy
 
 Serial-killer reputation that builds as the player leaves a trail. Soft with **O** (witnesses / rumors) and **Q** (public performances). Honor direction: never urge or reward killing **essential** / protected story NPCs.
@@ -219,7 +187,7 @@ Serial-killer reputation that builds as the player leaves a trail. Soft with **O
 
 ## Slice Q — private cells + quests (stage, cult, shop, home)
 
-Large stretch: custom (or heavily edited) **private cells** and quests that turn the knife voice into a public/secret economy of murder. Soft with **N** (butcher / Cannibal), **M** (preserve), **P** (infamy). Design before ESP sprawl — each pillar can ship as its own sub-slice.
+Large stretch: custom (or heavily edited) **private cells** and quests that turn the knife voice into a public/secret economy of murder. Soft with **N** (butcher / Cannibal) and **P** (infamy). Design before ESP sprawl — each pillar can ship as its own sub-slice.
 
 - [ ] **Q1 — Combat Zone stage of horror** — Partner with **Tommy Lonegan** at the Combat Zone; offer “performances” where the player murders captured slaves before an audience. Transform the Combat Zone into a stage of horror (crowd reaction, payment, optional return gigs).
 - [ ] **Q2 — Culte des Ghouls** — Secret society of elites who **pay to watch** the player commit murder; they are secret cannibals and want to **feast on the victim afterward**. Private salon / cellar cell; invitation / membership progression TBD.
@@ -240,6 +208,30 @@ Design a real first-acquire beat when Pickman’s Blade first enters the player 
 
 Honor direction: editable lines; no essential-NPC pressure; blade still gates kills / satiation when drawn.
 
+## Slice S — Force Trade (victim inventory)
+
+Activate-choice **Force Trade** on eligible living NPCs (perk beside Talk). Soft with beat-before-kill (**K**) and Potential Victims (**C5**). Contract: `tools/test_victim_trade.py`. Config: `ModConfig.txt` `victimTradeMinCha` (SSOT).
+
+- [x] **S1 — Perk activate choice** — PERK `PW_VictimTradeActivate` Add Activate Choice labeled **Force Trade**; CTDA living only (`GetDead == 0`) so it does not steal Cannibal **Eat Corpse** on corpses. Fragment → Main `TryForceVictimTradeFromActivate`. Modular `PickmansWhisperVictimTradeScript` + perk script; not a hotkey.
+- [x] **S2 — Gates** — Living; `IsValidTarget` with hostiles allowed for trade; calm hunger (`HungerLevel` below calm max); player CHA ≥ `victimTradeMinCha`. Fail loud via toast/trace when blocked.
+- [x] **S3 — Inventory UI** — `OpenInventory(True)` (not `ShowBarterMenu` — empty panes on non-vendors).
+- [x] **S4 — One-time strip per NPC** — First Force Trade: empty OTFT `SetOutfit` + `UnequipAll` so outfit-locked default gear is lootable; latch by FormID (cap 32). Later Force Trades skip strip so gear the player put on her stays equipped. Never strip on ContainerMenu close.
+- [x] **S5 — Slave pacify on close** — After menu close, if inventory item name contains `slave` (case-insensitive): stop combat/alarm, clear attack-on-sight, raise relationship, evaluate package + toast; then `SyncSlaveryFromSlaveGear` (Slice **T**).
+
+Honor direction: never urge/reward essential story kills; living-only activate so corpse eat stays available.
+
+## Slice T — Slavery
+
+Enslave a living eligible NPC who has slave gear so she **follows and teleports** with the player. Not a vanilla companion (`CurrentCompanionFaction`); remains a Whisper victim (notice / blade kill / beat-before-kill). Contract: `tools/test_slavery.py`. Config: `ModConfig.txt` `slaveryMinCha` (SSOT).
+
+- [x] **T1 — Perk Enslave / Free** — PERK `PW_SlaveryActivate` living-only activate choices; fragment → Main → `PickmansWhisperSlaveryScript`.
+- [x] **T2 — Slave-gear gate** — Inventory item name contains `slave` (SSOT on Slavery script). Auto after Force Trade close; manual Enslave also requires calm hunger + CHA ≥ `slaveryMinCha`.
+- [x] **T3 — Follow without companion faction** — `SetPlayerTeammate(True, False, False)`; latch `Slave` FormID; one at a time; never `SetEssential` here.
+- [x] **T4 — Kill / whisper eligibility** — `IsValidTarget` allows our slave teammate; still rejects other teammates and `CurrentCompanionFaction`.
+- [x] **T5 — Cell warp** — PlayerAlias `OnLocationChange` → `WarpSlaveToPlayerIfNeeded` (`MoveTo` if unloaded / far).
+
+**Status: Implemented — awaiting in-game confirm.**
+
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
@@ -248,7 +240,7 @@ Honor direction: editable lines; no essential-NPC pressure; blade still gates ki
 - Named-kill / Necromantic hooks (E): soft stub + CustomEvents; no `Necromantic.esp` master.
 - Corpse sever (F): limb-under-reticule unavailable in Papyrus; MSG menu + `Dismember` must leave gore pieces (no force-explode / no BloodyMess gib).
 - Bed hallucination (G): sleep timing, bed Z clipping, LOS false-triggers on wake camera (see Slice G doc).
-- Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; decay vs M preserve race; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn.
+- Corpse decay (H): unloaded Actor refs; MCM stage change vs KillerScan sync; eat must clear Victims without orphaning place data; slot-54 face ARMO + ESP/builder FormIDs; equip on ragdolls; strip on consume/despawn; preserve left to external mods.
 - Desperate rename (I): GoE2 display names vs Potential Victims overrides; strip cleanly when hunger drops; never touch essentials.
 - Retire KillerScan (J): don’t yank the poller until event-driven notice/decay/bed paths are proven; Main façades and contracts still assume KillerScan cadence today.
 - Main Alias refactor (J): Caprica forbids `Self as SiblingScript` — cast through Quest; ESP VMAD must list every new Alias script.
@@ -258,3 +250,6 @@ Honor direction: editable lines; no essential-NPC pressure; blade still gates ki
 - Infamy (P): define “named” vs display-name / Potential Victim overrides for the higher weight; unnamed still awards a smaller bump; never award infamy for essentials; soft-stack with O rumors without double-counting every ambient toast.
 - Private cells / quests (Q): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs N overlap; Pickman house ownership without breaking Gallery bond trigger.
 - First blade (R): one-shot first-acquire vs inventory churn / legendary instance FormIDs; don’t double-fire with Gallery bond; policy when they stop carrying still undecided.
+- Force Trade (S): perk must stay living-only so it never replaces Eat Corpse; one-time strip latch is session-script state (cap 32) — oldest drops if many victims; slave pacify is name-substring heuristic (mod gear naming).
+- Slavery (T): `SetPlayerTeammate` must stay excepted in `IsValidTarget` or kills/whispers break; never add `CurrentCompanionFaction`; warp is best-effort MoveTo (no Followers quest); one slave at a time; slave-gear name heuristic only.
+

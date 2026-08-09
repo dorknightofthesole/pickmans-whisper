@@ -25,13 +25,16 @@ PickmansWhisperMainQuestScript Function Main()
 EndFunction
 
 Event OnInit()
+	; Blade-drawn sync runs from Main.SyncBladeDrawnDebugLatch; grant if unarmed/other.
 	EnsureTradePerk()
 EndEvent
 
-Function EnsureTradePerk()
+; Grant Force Trade activate choice only when Pickman's Blade is NOT drawn
+; (extra activate choices open a multi-choice menu and block attack).
+Function SyncTradeActivatePerk(Bool abAllowDialog)
 	Actor player = Game.GetPlayer()
 	If !player
-		Debug.Trace("PickmansWhisper: ERROR EnsureTradePerk — no player")
+		Debug.Trace("PickmansWhisper: ERROR SyncTradeActivatePerk — no player")
 		Return
 	EndIf
 	Perk pk = TradeActivatePerk
@@ -39,15 +42,32 @@ Function EnsureTradePerk()
 		pk = Game.GetFormFromFile(FID_TRADE_PERK, "PickmansWhisper.esp") as Perk
 	EndIf
 	If !pk
-		Debug.Trace("PickmansWhisper: ERROR EnsureTradePerk — PERK local FormID " + FID_TRADE_PERK + " missing")
+		Debug.Trace("PickmansWhisper: ERROR SyncTradeActivatePerk — PERK local FormID " + FID_TRADE_PERK + " missing")
 		Debug.Notification("PickmansWhisper: Trade perk missing — rebuild ESP")
 		Return
 	EndIf
-	If player.HasPerk(pk)
-		Return
+	If abAllowDialog
+		If player.HasPerk(pk)
+			Return
+		EndIf
+		player.AddPerk(pk, False)
+		Debug.Trace("PickmansWhisper: Trade activate perk granted")
+	Else
+		If !player.HasPerk(pk)
+			Return
+		EndIf
+		player.RemovePerk(pk)
+		Debug.Trace("PickmansWhisper: Trade activate perk removed | blade drawn")
 	EndIf
-	player.AddPerk(pk, False)
-	Debug.Trace("PickmansWhisper: Trade activate perk granted")
+EndFunction
+
+Function EnsureTradePerk()
+	PickmansWhisperMainQuestScript m = Main()
+	Bool allow = True
+	If m && m.IsBladeEquipped()
+		allow = False
+	EndIf
+	SyncTradeActivatePerk(allow)
 EndFunction
 
 Outfit Function ResolveEmptyOutfit()
@@ -125,26 +145,14 @@ Function MaybeForceStripForTrade(Actor akTarget)
 	ForceStripForTrade(akTarget)
 EndFunction
 
-; True if any inventory item display name contains "slave" (case-insensitive).
+; Forward to Slavery SSOT (inventory name contains "slave").
 Bool Function InventoryHasSlaveItem(Actor akTarget)
-	If !akTarget
+	PickmansWhisperSlaveryScript slavery = (Self as Quest) as PickmansWhisperSlaveryScript
+	If !slavery
+		Debug.Trace("PickmansWhisper: ERROR trade slave scan — SlaveryScript missing")
 		Return False
 	EndIf
-	Int n = GardenOfEden.GetInventoryItemCount(akTarget)
-	If n <= 0
-		Return False
-	EndIf
-	Int i = 0
-	While i < n
-		String itemName = GardenOfEden.GetNthItemName(akTarget, i)
-		; StrFind returns occurrence count (>0 == contains), not a character index.
-		If itemName && GardenOfEden.StrFind(itemName, "slave", 0, False) > 0
-			Debug.Trace("PickmansWhisper: trade slave item | " + itemName + " idx=" + i)
-			Return True
-		EndIf
-		i += 1
-	EndWhile
-	Return False
+	Return slavery.InventoryHasSlaveItem(akTarget)
 EndFunction
 
 ; Best-effort pacify after Force Trade leaves a "slave" item on her.
@@ -168,6 +176,17 @@ Function MaybePacifyIfSlaveGear(Actor akTarget)
 	Debug.Notification("PickmansWhisper: She yields — slave gear")
 EndFunction
 
+; Best-effort — auto-enslave / free via Slavery after Trade close; must not skip pacify.
+Function MaybeSyncSlaveryAfterTrade(Actor akTarget)
+	PickmansWhisperSlaveryScript slavery = (Self as Quest) as PickmansWhisperSlaveryScript
+	If !slavery
+		Debug.Trace("PickmansWhisper: ERROR trade slavery sync — SlaveryScript missing")
+		Debug.Notification("PickmansWhisper: Slavery script missing — rebuild ESP")
+		Return
+	EndIf
+	slavery.SyncSlaveryFromSlaveGear(akTarget)
+EndFunction
+
 ; Called from perk OnEntryRun via Main façade. akTarget is the activate subject.
 Function TryForceVictimTradeFromActivate(Actor akTarget)
 	EnsureTradePerk()
@@ -185,6 +204,11 @@ Function TryForceVictimTradeFromActivate(Actor akTarget)
 	If !m
 		Debug.Trace("PickmansWhisper: ERROR trade — Main missing")
 		Debug.Notification("PickmansWhisper: Trade — Main missing")
+		Return
+	EndIf
+	If m.IsBladeEquipped()
+		Debug.Trace("PickmansWhisper: trade skip | blade drawn")
+		Debug.Notification("PickmansWhisper: Trade — sheath the blade first")
 		Return
 	EndIf
 	; Force Trade may open on hostiles (e.g. after aggro); whisper/scan keep default reject.
@@ -257,6 +281,8 @@ Event OnMenuOpenCloseEvent(String asMenuName, Bool abOpening)
 	EndIf
 	; Do NOT strip on close — keeps gear the player put on her.
 	Debug.Trace("PickmansWhisper: trade ContainerMenu closed id=" + ak.GetFormID())
-	; If any remaining item name contains "slave", stop hostility.
+	; Inventory indexes can lag a beat after ContainerMenu equip — settle, then pacify/sync.
+	Utility.Wait(0.2)
 	MaybePacifyIfSlaveGear(ak)
+	MaybeSyncSlaveryAfterTrade(ak)
 EndEvent

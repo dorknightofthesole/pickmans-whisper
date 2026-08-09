@@ -21,6 +21,7 @@ Float Property EatRipeCorpseEndBuffAmount = -1.0 Auto
 Float Property EatRipeCorpseEndBuffMaxDelta = -1.0 Auto
 Float Property EatRipeCorpseEndBuffHours = -1.0 Auto
 Int Property VictimTradeMinCha = -1 Auto
+Int Property SlaveryMinCha = -1 Auto
 String Property ModConfigLoadStatus = "" Auto
 Bool ModConfigLoadBusy = False
 
@@ -384,6 +385,7 @@ Function LoadModConfig()
 	Float nextEatRipeCorpseEndBuffMaxDelta = -1.0
 	Float nextEatRipeCorpseEndBuffHours = -1.0
 	Int nextVictimTradeMinCha = -1
+	Int nextSlaveryMinCha = -1
 	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = ConfigPath()
@@ -487,6 +489,13 @@ Function LoadModConfig()
 							nextVictimTradeMinCha = minCha
 						EndIf
 					EndIf
+				ElseIf key == "slaveryMinCha"
+					If val && GardenOfEden.StrLength(val) > 0
+						Int slaveryCha = val as Int
+						If slaveryCha > 0
+							nextSlaveryMinCha = slaveryCha
+						EndIf
+					EndIf
 				ElseIf key == "decayStage0"
 					ParseDecayStageValue(0, val)
 				ElseIf key == "decayStage1"
@@ -520,6 +529,7 @@ Function LoadModConfig()
 	EatRipeCorpseEndBuffMaxDelta = nextEatRipeCorpseEndBuffMaxDelta
 	EatRipeCorpseEndBuffHours = nextEatRipeCorpseEndBuffHours
 	VictimTradeMinCha = nextVictimTradeMinCha
+	SlaveryMinCha = nextSlaveryMinCha
 	If !BondIntroGreeting
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bondIntroGreeting missing/empty")
 	EndIf
@@ -534,6 +544,9 @@ Function LoadModConfig()
 	EndIf
 	If VictimTradeMinCha <= 0
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — victimTradeMinCha missing or <=0")
+	EndIf
+	If SlaveryMinCha <= 0
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — slaveryMinCha missing or <=0")
 	EndIf
 	Int filled = 0
 	Int si = 0
@@ -596,6 +609,9 @@ Function LoadModConfig()
 	If VictimTradeMinCha > 0
 		status += "victimTradeCha "
 	EndIf
+	If SlaveryMinCha > 0
+		status += "slaveryCha "
+	EndIf
 	If stagesOk
 		status += "decayStages "
 	EndIf
@@ -644,5 +660,10 @@ EndFunction
 ; Exposed for VictimTradeScript (ModConfig victimTradeMinCha). <=0 = missing/invalid.
 Int Function GetVictimTradeMinCha()
 	Return VictimTradeMinCha
+EndFunction
+
+; Exposed for SlaveryScript (ModConfig slaveryMinCha). <=0 = missing/invalid.
+Int Function GetSlaveryMinCha()
+	Return SlaveryMinCha
 EndFunction
 

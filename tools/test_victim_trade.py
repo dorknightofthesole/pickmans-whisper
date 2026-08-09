@@ -53,10 +53,12 @@ def test_stubs() -> None:
         fail("Actor.psc stub must declare OpenInventory Native")
     if not re.search(r"Function\s+AddPerk\s*\(\s*Perk\s+akPerk", actor):
         fail("Actor.psc stub must declare AddPerk Native")
+    if not re.search(r"Function\s+RemovePerk\s*\(\s*Perk\s+akPerk", actor):
+        fail("Actor.psc stub must declare RemovePerk Native")
     perk = STUB_PERK.read_text(encoding="utf-8", errors="replace")
     if "Event OnEntryRun" not in perk:
         fail("Perk.psc stub must declare OnEntryRun event")
-    ok("stubs: OpenInventory + AddPerk + Perk.OnEntryRun")
+    ok("stubs: OpenInventory + AddPerk + RemovePerk + Perk.OnEntryRun")
 
 
 def test_modconfig() -> None:
@@ -100,8 +102,14 @@ def test_trade_script() -> None:
         fail("ContainerMenu close must not ForceStrip/UnequipAll (keeps gear player put on her)")
     if "InventoryHasSlaveItem" not in text or "MaybePacifyIfSlaveGear" not in text:
         fail("trade must scan for slave-named inventory and pacify")
-    if 'StrFind(itemName, "slave"' not in text:
-        fail('trade must StrFind item names for "slave"')
+    if "PickmansWhisperSlaveryScript" not in text:
+        fail("trade slave scan must forward to SlaveryScript SSOT")
+    if "MaybeSyncSlaveryAfterTrade" not in text:
+        fail("ContainerMenu close must sync slavery after pacify")
+    close_idx2 = text.find("Event OnMenuOpenCloseEvent")
+    close_body2 = text[close_idx2:] if close_idx2 >= 0 else ""
+    if "Utility.Wait" not in close_body2:
+        fail("ContainerMenu close must Wait briefly so worn collar indexes settle before slavery sync")
     if "StopCombat()" not in text or "SetAttackActorOnSight(False)" not in text:
         fail("trade pacify must StopCombat + SetAttackActorOnSight(False)")
     if "MaybePacifyIfSlaveGear(ak)" not in text:
@@ -118,14 +126,14 @@ def test_trade_script() -> None:
         fail("trade must reject dead targets")
     if "Debug.Trace" not in body or "Debug.Notification" not in body:
         fail("trade failures must Trace + Notification (no silent Return)")
-    ensure = extract_function(text, "EnsureTradePerk")
-    if "AddPerk" not in ensure:
-        fail("EnsureTradePerk must AddPerk")
-    if "HasPerk" not in ensure:
-        fail("EnsureTradePerk must HasPerk before AddPerk")
+    sync = extract_function(text, "SyncTradeActivatePerk")
+    if "AddPerk" not in sync or "RemovePerk" not in sync:
+        fail("SyncTradeActivatePerk must AddPerk when allowed and RemovePerk when blade drawn")
+    if "IsBladeEquipped" not in body:
+        fail("trade activate must skip when IsBladeEquipped")
     if f"0x{FID_PERK & 0xFFFFFF:08X}" not in text and "0x00000878" not in text:
         fail("trade script must know local PERK FormID 0x878")
-    ok("VictimTradeScript gates + OpenInventory + strip + EnsureTradePerk")
+    ok("VictimTradeScript gates + OpenInventory + strip + blade-hides perk")
 
 
 def test_perk_script() -> None:
@@ -148,7 +156,13 @@ def test_main_facade() -> None:
         fail("Main façade must cast to VictimTradeScript")
     if "VictimTrade()" not in facade and "as PickmansWhisperVictimTradeScript" not in facade:
         fail("Main façade must resolve VictimTradeScript")
-    ok("Main TryForceVictimTradeFromActivate façade")
+    latch = extract_function(text, "SyncBladeDrawnDebugLatch")
+    if "SyncDialogActivatePerks" not in latch:
+        fail("SyncBladeDrawnDebugLatch must SyncDialogActivatePerks (hide Trade while blade drawn)")
+    sync = extract_function(text, "SyncDialogActivatePerks")
+    if "SyncTradeActivatePerk" not in sync:
+        fail("SyncDialogActivatePerks must sync Trade perk")
+    ok("Main TryForceVictimTradeFromActivate façade + blade perk sync")
 
 
 def test_no_hotkey() -> None:
@@ -167,8 +181,8 @@ def test_esp_builder() -> None:
         fail(f"ESP builder must define FID_PERK_VICTIM_TRADE = 0x{FID_PERK:08X}")
     if "PW_VictimTradeActivate" not in text:
         fail("ESP builder must emit PW_VictimTradeActivate EDID")
-    if 'zstr("Force Trade")' not in text and "zstr('Force Trade')" not in text:
-        fail('ESP builder must set activate label zstr("Force Trade")')
+    if '_activate_choice_entry("Force Trade"' not in text and 'zstr("Force Trade")' not in text:
+        fail('ESP builder must set activate label Force Trade')
     if "0e0902" not in text:
         fail("ESP builder must use Activate/Add Activate Choice DATA 0e0902")
     if "2e000000" not in text:
@@ -183,8 +197,8 @@ def test_esp_builder() -> None:
         fail("ESP builder must bind TradeActivatePerk property")
     if "EmptyOutfit" not in text:
         fail("ESP builder must bind EmptyOutfit property")
-    if "NEXT_OID = 0x0000087A" not in text:
-        fail("ESP builder NEXT_OID must be past empty OTFT")
+    if "NEXT_OID = 0x0000087B" not in text:
+        fail("ESP builder NEXT_OID must be past slavery PERK")
     ok("ESP builder PERK Force Trade (living) + empty OTFT + VMAD wiring")
 
 

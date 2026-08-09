@@ -4,7 +4,7 @@
 Locks:
   - Main declares PW_HitWihPickmansBlade + PW_Credit_For_PickmansBlade_Kill Auto Const
   - ESP emits Variable AVIFs at 0x874 / 0x875 (+ tracker 0x877; reward-check 0x876 separate)
-  - NEXT_OID past empty trade OTFT (0x879) — currently 0x87A
+  - NEXT_OID past slavery PERK (0x87A) — currently 0x87B
   - Main VMAD binds those properties to the AVIF FormIDs
   - Papyrus uses GetValue/SetValue (not Keyword APIs)
 
@@ -111,7 +111,7 @@ def main() -> None:
         ("FID_AV_HIT_WITH_BLADE = 0x01000874", "hit AVIF fid"),
         ("FID_AV_CREDIT_BLADE_KILL = 0x01000875", "credit AVIF fid"),
         ("FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877", "tracker AVIF fid"),
-        ("NEXT_OID = 0x0000087A", "NEXT_OID"),
+        ("NEXT_OID = 0x0000087B", "NEXT_OID"),
         ('"PW_HitWihPickmansBlade", FID_AV_HIT_WITH_BLADE', "hit VMAD bind"),
         (
             '"PW_Credit_For_PickmansBlade_Kill", FID_AV_CREDIT_BLADE_KILL',

@@ -7,7 +7,13 @@ Function SetEssential(Bool abEssential) Native
 Bool Function IsGhost() Native
 Bool Function IsChild() Native
 Bool Function IsPlayerTeammate() Native
+; FO4 native — teammate follow/sneak; not CurrentCompanionFaction / Followers quest.
+Function SetPlayerTeammate(Bool abTeammate = True, Bool abCanDoFavor = True, Bool abGivePlayerXP = False) Native
+Bool Function IsInFaction(Faction akFaction) Native
 Bool Function IsHostileToActor(Actor akActor) Native
+; FO4 native — fires on this actor when their location changes (player alias warp hook).
+Event OnLocationChange(Location akOldLoc, Location akNewLoc)
+EndEvent
 ; HasKeyword / GetValue / SetValue / ModValue / GetHeadingAngle / Is3DLoaded /
 ; Disable / Enable / IsDisabled live on ObjectReference — do not redeclare here.
 Actor Function GetCombatTarget() Native
@@ -16,6 +22,8 @@ Bool Function HasMagicEffect(MagicEffect akEffect) Native
 Bool Function HasPerk(Perk akPerk) Native
 ; FO4 native — abNotify shows the perk unlock UI when true.
 Function AddPerk(Perk akPerk, Bool abNotify = False) Native
+; FO4 native — remove a perk previously added with AddPerk.
+Function RemovePerk(Perk akPerk) Native
 ; FO4 native — opens the barter/trade menu with this actor.
 Function ShowBarterMenu() Native
 ; FO4 native — companion/container inventory UI (not barter prices).
@@ -31,6 +39,8 @@ Function StopCombatAlarm() Native
 Function SetAttackActorOnSight(Bool abAttackOnSight = True) Native
 Function SetRelationshipRank(Actor akOther, Int aiRank) Native
 Function EvaluatePackage(Bool abResetAI = False) Native
+; FO4 native — latent path to a ref. afWalkRunPercent 0..1 (1.0 = run).
+Bool Function PathToReference(ObjectReference aTarget, Float afWalkRunPercent) Native
 Function SetGhost(Bool abIsGhost) Native
 Function SetRestrained(Bool abRestrained) Native
 Function SetUnconscious(Bool abUnconscious) Native

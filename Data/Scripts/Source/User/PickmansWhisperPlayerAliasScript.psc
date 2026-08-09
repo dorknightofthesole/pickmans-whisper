@@ -69,6 +69,14 @@ Event OnPlayerLoadGame()
 	EndIf
 EndEvent
 
+; Slavery — warp enslaved NPC when the player changes cell/location (remote, like equip).
+Event Actor.OnLocationChange(Actor akSender, Location akOldLoc, Location akNewLoc)
+	PickmansWhisperSlaveryScript slavery = GetSlavery()
+	If slavery
+		slavery.WarpSlaveToPlayerIfNeeded()
+	EndIf
+EndEvent
+
 Event Actor.OnItemEquipped(Actor akSender, Form akBaseObject, ObjectReference akReference)
     CheckAndHandleBladeReady(akSender, akBaseObject)
 EndEvent
@@ -240,6 +248,7 @@ Function EnsurePlayerFill()
 	; Add the remote event registrations here
 	RegisterForRemoteEvent(p, "OnItemEquipped")
 	RegisterForRemoteEvent(p, "OnItemUnequipped")
+	RegisterForRemoteEvent(p, "OnLocationChange")
 EndFunction
 
 PickmansWhisperMainQuestScript Function GetMain()
@@ -268,4 +277,12 @@ PickmansWhisperBedGiftScript Function GetBedGift()
 		Debug.Trace("PickmansWhisper: GetBedGift — BedGift script cast failed (is BedGift on Main VMAD?)")
 	EndIf
 	Return bed
+EndFunction
+
+PickmansWhisperSlaveryScript Function GetSlavery()
+	Quest q = Game.GetFormFromFile(FID_MAIN_QUEST, "PickmansWhisper.esp") as Quest
+	If !q
+		Return None
+	EndIf
+	Return q as PickmansWhisperSlaveryScript
 EndFunction
