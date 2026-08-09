@@ -27,6 +27,9 @@ Function DoCombatSpellApply(Spell akSpell, ObjectReference akTarget) Native
 ActorBase Function GetLeveledActorBase() Native
 Function StartCombat(Actor akTarget, Bool abPreferredTarget = False) Native
 Function StopCombat() Native
+Function StopCombatAlarm() Native
+Function SetAttackActorOnSight(Bool abAttackOnSight = True) Native
+Function SetRelationshipRank(Actor akOther, Int aiRank) Native
 Function EvaluatePackage(Bool abResetAI = False) Native
 Function SetGhost(Bool abIsGhost) Native
 Function SetRestrained(Bool abRestrained) Native

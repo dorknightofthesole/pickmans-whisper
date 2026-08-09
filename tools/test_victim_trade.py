@@ -83,12 +83,29 @@ def test_trade_script() -> None:
         fail("TryForceVictimTradeFromActivate must call OpenInventory(True) (companion-style; not vendor ShowBarterMenu)")
     if "ShowBarterMenu()" in body:
         fail("must not use ShowBarterMenu — empty panes on non-vendor NPCs")
-    if "ForceStripForTrade" not in body and "ForceStripForTrade" not in text:
-        fail("trade must strip via ForceStripForTrade before/after inventory")
+    if "MaybeForceStripForTrade(akTarget)" not in body:
+        fail("trade must MaybeForceStripForTrade before OpenInventory (one-time unlock)")
+    if "WasTradeStrippedOnce" not in text or "MarkTradeStrippedOnce" not in text:
+        fail("trade must latch one-time strip per NPC so later Force Trades keep her gear")
     if "SetOutfit" not in text or "UnequipAll" not in text:
         fail("trade strip must SetOutfit + UnequipAll (outfit-locked gear)")
     if 'RegisterForMenuOpenCloseEvent("ContainerMenu")' not in text:
-        fail("trade must watch ContainerMenu close to re-strip")
+        fail("trade must watch ContainerMenu close for slave pacify")
+    # Closing must not re-strip — that unequips player-equipped gear.
+    close_idx = text.find("Event OnMenuOpenCloseEvent")
+    if close_idx < 0:
+        fail("missing OnMenuOpenCloseEvent")
+    close_body = text[close_idx:]
+    if "ForceStripForTrade(ak)" in close_body or "UnequipAll()" in close_body:
+        fail("ContainerMenu close must not ForceStrip/UnequipAll (keeps gear player put on her)")
+    if "InventoryHasSlaveItem" not in text or "MaybePacifyIfSlaveGear" not in text:
+        fail("trade must scan for slave-named inventory and pacify")
+    if 'StrFind(itemName, "slave"' not in text:
+        fail('trade must StrFind item names for "slave"')
+    if "StopCombat()" not in text or "SetAttackActorOnSight(False)" not in text:
+        fail("trade pacify must StopCombat + SetAttackActorOnSight(False)")
+    if "MaybePacifyIfSlaveGear(ak)" not in text:
+        fail("ContainerMenu close must call MaybePacifyIfSlaveGear")
     if "HungerLevel" not in body or "CALM_HUNGER_MAX" not in body:
         fail("trade must gate calm hunger via HungerLevel / CALM_HUNGER_MAX")
     if "GetVictimTradeMinCha()" not in body:

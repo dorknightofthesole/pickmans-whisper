@@ -1,7 +1,8 @@
 Scriptname PickmansWhisperVictimTradeScript extends Quest
 {Force-trade via Talk activate menu — calm hunger + ModConfig CHA gate + OpenInventory.
 ShowBarterMenu is vendor-chest barter (empty on settlers); OpenInventory is companion-style transfer.
-Strip: empty Outfit + UnequipAll (default outfits lock gear out of the container UI).}
+Strip once per NPC: empty Outfit + UnequipAll unlocks default gear; later Force Trades
+skip strip so gear the player put on her stays equipped.}
 
 ; CK/VMAD: bound to PW_VictimTradeActivate PERK / PW_EmptyOutfit OTFT.
 Perk Property TradeActivatePerk Auto Const
@@ -11,9 +12,13 @@ Float CALM_HUNGER_MAX = 25.0
 Int FID_AV_CHA = 0x000002C5
 Int FID_TRADE_PERK = 0x00000878
 Int FID_EMPTY_OUTFIT = 0x00000879
+Int STRIP_ONCE_MAX = 32
 
 Actor PendingTradeStrip
 Bool TradeMenuWatching = False
+; FormIDs of actors we already cleared default outfit for (one-time strip).
+Int[] TradeStripDoneIds
+Int TradeStripDoneCount = 0
 
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
@@ -52,7 +57,46 @@ Outfit Function ResolveEmptyOutfit()
 	Return Game.GetFormFromFile(FID_EMPTY_OUTFIT, "PickmansWhisper.esp") as Outfit
 EndFunction
 
-; Clear default outfit so worn gear is not locked, then unequip for naked + lootable.
+Bool Function WasTradeStrippedOnce(Actor akTarget)
+	If !akTarget || !TradeStripDoneIds || TradeStripDoneCount <= 0
+		Return False
+	EndIf
+	Int id = akTarget.GetFormID()
+	Int i = 0
+	While i < TradeStripDoneCount
+		If TradeStripDoneIds[i] == id
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+Function MarkTradeStrippedOnce(Actor akTarget)
+	If !akTarget
+		Return
+	EndIf
+	If WasTradeStrippedOnce(akTarget)
+		Return
+	EndIf
+	If !TradeStripDoneIds
+		TradeStripDoneIds = new Int[STRIP_ONCE_MAX]
+		TradeStripDoneCount = 0
+	EndIf
+	If TradeStripDoneCount >= STRIP_ONCE_MAX
+		; Drop oldest so new victims can still unlock once.
+		Int i = 0
+		While i < STRIP_ONCE_MAX - 1
+			TradeStripDoneIds[i] = TradeStripDoneIds[i + 1]
+			i += 1
+		EndWhile
+		TradeStripDoneCount = STRIP_ONCE_MAX - 1
+	EndIf
+	TradeStripDoneIds[TradeStripDoneCount] = akTarget.GetFormID()
+	TradeStripDoneCount += 1
+EndFunction
+
+; One-time: clear default outfit so worn gear is not locked, then unequip for lootable naked.
 Function ForceStripForTrade(Actor akTarget)
 	If !akTarget
 		Return
@@ -65,6 +109,63 @@ Function ForceStripForTrade(Actor akTarget)
 		Debug.Notification("PickmansWhisper: Trade strip outfit missing — rebuild ESP")
 	EndIf
 	akTarget.UnequipAll()
+	MarkTradeStrippedOnce(akTarget)
+	Debug.Trace("PickmansWhisper: trade one-time strip id=" + akTarget.GetFormID())
+EndFunction
+
+; Strip only the first Force Trade on this NPC; later opens keep player-equipped gear.
+Function MaybeForceStripForTrade(Actor akTarget)
+	If !akTarget
+		Return
+	EndIf
+	If WasTradeStrippedOnce(akTarget)
+		Debug.Trace("PickmansWhisper: trade skip strip | already cleared once id=" + akTarget.GetFormID())
+		Return
+	EndIf
+	ForceStripForTrade(akTarget)
+EndFunction
+
+; True if any inventory item display name contains "slave" (case-insensitive).
+Bool Function InventoryHasSlaveItem(Actor akTarget)
+	If !akTarget
+		Return False
+	EndIf
+	Int n = GardenOfEden.GetInventoryItemCount(akTarget)
+	If n <= 0
+		Return False
+	EndIf
+	Int i = 0
+	While i < n
+		String itemName = GardenOfEden.GetNthItemName(akTarget, i)
+		; StrFind returns occurrence count (>0 == contains), not a character index.
+		If itemName && GardenOfEden.StrFind(itemName, "slave", 0, False) > 0
+			Debug.Trace("PickmansWhisper: trade slave item | " + itemName + " idx=" + i)
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+	Return False
+EndFunction
+
+; Best-effort pacify after Force Trade leaves a "slave" item on her.
+Function MaybePacifyIfSlaveGear(Actor akTarget)
+	If !akTarget || akTarget.IsDead()
+		Return
+	EndIf
+	If !InventoryHasSlaveItem(akTarget)
+		Return
+	EndIf
+	Actor player = Game.GetPlayer()
+	If !player
+		Return
+	EndIf
+	akTarget.StopCombat()
+	akTarget.StopCombatAlarm()
+	akTarget.SetAttackActorOnSight(False)
+	akTarget.SetRelationshipRank(player, 1)
+	akTarget.EvaluatePackage()
+	Debug.Trace("PickmansWhisper: trade pacify | slave gear on id=" + akTarget.GetFormID())
+	Debug.Notification("PickmansWhisper: She yields — slave gear")
 EndFunction
 
 ; Called from perk OnEntryRun via Main façade. akTarget is the activate subject.
@@ -128,7 +229,7 @@ Function TryForceVictimTradeFromActivate(Actor akTarget)
 	EndIf
 
 	PendingTradeStrip = akTarget
-	ForceStripForTrade(akTarget)
+	MaybeForceStripForTrade(akTarget)
 	If !TradeMenuWatching
 		RegisterForMenuOpenCloseEvent("ContainerMenu")
 		TradeMenuWatching = True
@@ -154,7 +255,8 @@ Event OnMenuOpenCloseEvent(String asMenuName, Bool abOpening)
 	If !ak
 		Return
 	EndIf
-	; Outfit can re-dress on item remove; strip again when the player closes the menu.
-	ForceStripForTrade(ak)
-	Debug.Trace("PickmansWhisper: trade strip after ContainerMenu close id=" + ak.GetFormID())
+	; Do NOT strip on close — keeps gear the player put on her.
+	Debug.Trace("PickmansWhisper: trade ContainerMenu closed id=" + ak.GetFormID())
+	; If any remaining item name contains "slave", stop hostility.
+	MaybePacifyIfSlaveGear(ak)
 EndEvent
