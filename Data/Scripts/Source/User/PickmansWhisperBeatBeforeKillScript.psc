@@ -132,8 +132,8 @@ Bool Function ToggleEssentialForAimed(Actor ak)
 		Debug.Trace("PickmansWhisper: " + m.LastVictimStatus)
 		Return True
 	EndIf
-	; Feature: living + knife friendly-seen; hard gate Traces its own rejects.
-	If ak.IsDead() || !m.IsValidTarget(ak) || !m.WasFriendlySeen(ak)
+	; Feature: living; hard gate (incl. living hostility) Traces its own rejects.
+	If ak.IsDead() || !m.IsValidTarget(ak)
 		m.LastVictimStatus = "toggle essential failed — not a valid target"
 		Debug.Trace("PickmansWhisper: " + m.LastVictimStatus + " id=" + ak.GetFormID())
 		Return False
@@ -186,7 +186,7 @@ Function HandleBeatBeforeKill(Actor akTarget)
 		Debug.Trace("PickmansWhisper: beat-before-kill skip | player does not own Pickman's Blade")
 		Return
 	EndIf
-	If akTarget.IsDead() || !m.IsValidTarget(akTarget) || !m.WasFriendlySeen(akTarget)
+	If akTarget.IsDead() || !m.IsValidTarget(akTarget)
 		Debug.Trace("PickmansWhisper: beat-before-kill skip | not a valid target id=" + akTarget.GetFormID())
 		Return
 	EndIf

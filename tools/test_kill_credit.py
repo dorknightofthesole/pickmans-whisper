@@ -41,29 +41,25 @@ HandleNPCDeath's six sequential rejection gates each repeated the same
 shared RejectKill(reason) helper.
 
 Locks:
-  - HandleBladeHit: dead-at-hit-time routes directly to HandleNPCDeath; a
-    live, not-yet-tagged victim registers OnDeath + marks tagged (deduped);
-    NoteFriendlySeen is stamped on a confirmed non-hostile hit (closes the
-    "ambient scan never saw them" gap for a genuine blade hit); hit-watching
-    re-arms unconditionally so a multi-hit fight keeps working
-  - HandleNPCDeath: cleans up (ForgetBladeTagged) unconditionally up front,
-    before the credit decision; gate is killer==player + IsBladeEquipped +
-    IsValidTarget + cooldown only — no tagged/seenAlive/combatGrace terms
-  - Actor.OnDeath settle is RewardKill (event-driven TrackedNPCs path); legacy
-    HandleNPCDeath remains for HandleBladeHit / KillerScan-era callers
+  - HandleBladeHit: dead-at-hit routes to HandleNPCDeath only if already
+    blade-tagged OR still IsValidTarget (one-shot while non-hostile); live
+    victim arms OnDeath + MarkBladeTagged only when IsValidTarget; hit
+    re-arms unconditionally. No WasFriendlySeen / NoteFriendlySeen.
+  - HandleNPCDeath: cleans up (ForgetBladeTagged) unconditionally up front;
+    gate is killer==player + IsBladeEquipped + cooldown — MUST NOT call
+    IsValidTarget or WasFriendlySeen (sticky arm is the eligibility gate)
+  - Actor.OnDeath settle is RewardKill (event-driven); legacy HandleNPCDeath
+    remains for HandleBladeHit hit-dead
   - MarkBladeTagged / WasBladeTagged / ForgetBladeTagged operate on a single
     Actor[] BladeTagged list; ForgetBladeTagged calls UnregisterForRemoteEvent
-    (the old code never did, anywhere in the file — permanent leak)
   - ReconcileBladeTagged evicts (+ unregisters) tagged actors who wandered
     out of range or were never cleaned up any other way
-  - ProcessKnifeCreditFromKillerScan still feeds TrackLivingNear (still
-    needed for WasFriendlySeen / IsValidTarget) and calls ReconcileBladeTagged
-  - TrackLivingNear no longer touches any kill-watch list — ambient sighting
-    only, still honors IsNonGameplayCorpse + IsValidTarget (hard gate) — AND
-    proactively arms hit detection (WasHitArmed/MarkHitArmed dedup, not
-    IsBladeEquipped-gated) so Actor.OnHit can fire for a fresh target's
-    first strike without re-registering the same actor every tick
+  - ProcessKnifeCreditFromKillerScan still feeds TrackLivingNear (hit-arm /
+    IsValidTarget) and calls ReconcileBladeTagged
+  - TrackLivingNear honors IsNonGameplayCorpse + IsValidTarget and proactively
+    arms hit detection (WasHitArmed/MarkHitArmed dedup) — no friendly-seen stamp
   - HandleNPCDeath's rejection gates all route through RejectKill(reason)
+  - FriendlySeenIds / NoteFriendlySeen / WasFriendlySeen fully removed
   - Fully removed: KillWatchList/KillWatchCount/KILL_WATCH_MAX,
     AliveSeenIds/WasAliveSeen/NoteAliveSeen, PendingKillVictim,
     CombatGraceUntilRealTime, OnPlayerCombatBegan, WatchKillCandidate,
@@ -130,11 +126,15 @@ def main() -> None:
         fail("HandleBladeHit must route an already-dead victim directly to HandleNPCDeath")
     if "MarkBladeTagged(victim)" not in hit or 'RegisterForRemoteEvent(victim, "OnDeath")' not in hit:
         fail("HandleBladeHit must register OnDeath + MarkBladeTagged on a confirmed live blade hit")
-    if "NoteFriendlySeen(victim)" not in hit:
-        fail("HandleBladeHit must stamp NoteFriendlySeen on a confirmed non-hostile hit (closes the ambient-scan-never-saw-them gap)")
+    if "IsValidTarget(victim)" not in hit:
+        fail("HandleBladeHit must gate OnDeath arm / hit-dead credit on IsValidTarget (or WasBladeTagged for post-aggro)")
+    if "WasBladeTagged(victim)" not in hit:
+        fail("HandleBladeHit hit-dead must allow WasBladeTagged without re-requiring friendly disposition")
+    if "NoteFriendlySeen" in hit or "WasFriendlySeen" in hit:
+        fail("HandleBladeHit must not use WasFriendlySeen / NoteFriendlySeen (dropped)")
     if "RegisterForHitEvent(victim, PlayerRef)" not in hit:
         fail("HandleBladeHit must re-arm hit-watching so a multi-hit fight keeps working")
-    ok("HandleBladeHit: dead-at-hit direct credit, live-hit tag+register, friendly-seen stamp, hit re-arm")
+    ok("HandleBladeHit: hit-dead via tagged|valid, live-hit tag+register when valid, hit re-arm")
 
     # --- RejectKill helper ---
     reject = extract_function(text, "RejectKill")
@@ -152,25 +152,34 @@ def main() -> None:
     dedup_idx = death.find("vid == LastHandledKillId")
     if forget_idx < 0 or dedup_idx < 0 or forget_idx > dedup_idx:
         fail("HandleNPCDeath must clean up BEFORE the dedup/credit checks, not scattered across every return path")
-    for banned in ("tagged", "seenAlive", "combatGrace", "CombatGraceUntilRealTime", "WasAliveSeen", "IsInKillWatchList", "PendingKillVictim"):
+    for banned in (
+        "seenAlive",
+        "combatGrace",
+        "CombatGraceUntilRealTime",
+        "WasAliveSeen",
+        "IsInKillWatchList",
+        "PendingKillVictim",
+        "IsValidTarget(",
+        "WasFriendlySeen",
+        "NoteFriendlySeen",
+    ):
         if banned in death:
-            fail(f"HandleNPCDeath must not reference {banned} — credit gate is killer==player + IsBladeEquipped + IsValidTarget + cooldown only")
+            fail(
+                f"HandleNPCDeath must not call/use {banned} — credit gate is "
+                "killer==player + IsBladeEquipped + cooldown only (no IsValidTarget re-check)"
+            )
     if "akKiller != PlayerRef" not in death:
         fail("HandleNPCDeath must reject a non-player killer")
     if "IsBladeEquipped()" not in death:
         fail("HandleNPCDeath must require IsBladeEquipped() live")
-    if "IsValidTarget(victim)" not in death:
-        fail("HandleNPCDeath must gate on IsValidTarget(victim)")
-    if "WasFriendlySeen(victim)" not in death:
-        fail("HandleNPCDeath must compose knife feature WasFriendlySeen after hard gate")
     if "ProcessKnifeKill(victim)" not in death:
         fail("HandleNPCDeath must call ProcessKnifeKill on a valid credited kill")
     reject_calls = death.count("RejectKill(")
-    if reject_calls < 5:
-        fail(f"HandleNPCDeath's rejection gates must route through RejectKill (found {reject_calls} calls, expected at least 5)")
+    if reject_calls < 4:
+        fail(f"HandleNPCDeath's rejection gates must route through RejectKill (found {reject_calls} calls, expected at least 4)")
     if 'ToastDebug("PW debug: kill ignored' in death or 'Debug.Trace("PickmansWhisper: kill ignored' in death:
         fail("HandleNPCDeath must not inline the reason/toast/trace pattern — that's what RejectKill collapses")
-    ok("HandleNPCDeath: upfront cleanup, simplified live gate via RejectKill, no ambient-list terms")
+    ok("HandleNPCDeath: upfront cleanup, settle gate via RejectKill, no IsValidTarget/friendly-seen")
 
     # --- Tagged-list helpers ---
     if "Actor[] BladeTagged" not in text:
@@ -196,12 +205,12 @@ def main() -> None:
     # --- ProcessKnifeCreditFromKillerScan still feeds TrackLivingNear + reconcile ---
     ambient = extract_function(text, "ProcessKnifeCreditFromKillerScan")
     if "TrackLivingNear(" not in ambient:
-        fail("ProcessKnifeCreditFromKillerScan must still feed TrackLivingNear (WasFriendlySeen / IsValidTarget still need ambient sighting)")
+        fail("ProcessKnifeCreditFromKillerScan must still feed TrackLivingNear (hit-arm / IsValidTarget)")
     if "ReconcileBladeTagged()" not in ambient:
         fail("ProcessKnifeCreditFromKillerScan must call ReconcileBladeTagged")
     if "HandlePotentialKnifeKill" in ambient or "KillWatchList" in ambient:
         fail("ProcessKnifeCreditFromKillerScan must not still poll a KillWatchList dead-scan — OnDeath is the credit path now")
-    ok("ProcessKnifeCreditFromKillerScan: ambient sighting kept, dead-scan polling removed, reconcile wired in")
+    ok("ProcessKnifeCreditFromKillerScan: ambient hit-arm kept, dead-scan polling removed, reconcile wired in")
 
     # --- TrackLivingNear no longer touches kill-watch bookkeeping ---
     track = extract_function(text, "TrackLivingNear")
@@ -209,8 +218,8 @@ def main() -> None:
         fail("TrackLivingNear must still honor IsNonGameplayCorpse")
     if "IsValidTarget(ak)" not in track:
         fail("TrackLivingNear must call IsValidTarget (hard gate; includes child override)")
-    if "NoteFriendlySeen" not in track:
-        fail("TrackLivingNear must still stamp NoteFriendlySeen")
+    if "NoteFriendlySeen" in track or "WasFriendlySeen" in track:
+        fail("TrackLivingNear must not stamp WasFriendlySeen (dropped; hostility is IsValidTarget)")
     if "KillWatchList" in track or "KILL_WATCH_MAX" in track:
         fail("TrackLivingNear must not touch KillWatchList — ambient sighting only now")
     if "RegisterForHitEvent(ak, PlayerRef)" not in track or "MarkHitArmed(ak)" not in track:
@@ -247,10 +256,12 @@ def main() -> None:
         "ArmCombatTarget", "HandlePotentialKnifeKill", "BladeTaggedIds",
         "ScanNearbyDeadForKnifeKills", "ScanNearbyLivingCandidates",
         "ReArmHitEventsOnWatched", "PollWatchedForDeath", "EnsureKillWatchList",
+        "FriendlySeenIds", "FriendlySeenCount", "FRIENDLY_SEEN_MAX",
+        "EnsureFriendlySeenList", "NoteFriendlySeen(", "WasFriendlySeen(",
     ):
         if gone in text:
             fail(f"{gone} must be fully removed, not left as dead code")
-    ok("old KillWatchList/AliveSeenIds/BladeTaggedIds/PendingKillVictim/CombatGrace machinery fully removed")
+    ok("old KillWatchList/AliveSeenIds/FriendlySeen/BladeTaggedIds/PendingKillVictim/CombatGrace machinery fully removed")
 
     # --- PlayerAliasScript's now-pointless combat handler removed ---
     alias_text = ALIAS.read_text(encoding="utf-8", errors="replace")

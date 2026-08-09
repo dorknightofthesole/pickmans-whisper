@@ -94,8 +94,8 @@ Actor PendingDismemberStripActor = None
 Int AimedDecayApplyCode = 2 ; bump when apply path changes — prove PEX loaded in log
 
 ; Victims MCM Set/Reset moves the kill clock, then QueueAimedDecayApply paints that corpse
-; after MCM closes. Ambient KillerScan sync remains for natural hour progression.
-; MCM harness: latch aimed corpse; kick NoWait if already out of menus, else OnMCMMenuClose / Sync.
+; after MCM closes. Ambient progression: TargetScan / RegisterTarget → HandleCorpseDecay.
+; MCM harness: latch aimed corpse; kick NoWait if already out of menus, else OnMCMMenuClose.
 Function QueueAimedDecayApply(Actor akCorpse)
 	If !akCorpse
 		Debug.Trace("PickmansWhisper: ERROR QueueAimedDecayApply — no corpse")
@@ -148,15 +148,8 @@ Function RunPendingAimedDecayApply()
 	Debug.Trace("PickmansWhisper: AimedDecayApply done formId=" + formId + " | " + LastCorpseDecayStatus)
 EndFunction
 
-; MCM Set/Reset queues an aimed corpse via QueueAimedDecayApply, then relies on
-; VictimsScript.OnMCMMenuClose (an MCM broadcast event) to fire RunPendingAimedDecayApply
-; once the menu actually closes. That broadcast is not reliably observed firing —
-; confirmed in testing: RunPendingAimedDecayApply never ran even once across a whole
-; session of Set-stage clicks, with zero trace of it (not even its own guard-clause
-; lines). This is the safety net: KillerScan's own tick (see DispatchListeners) calls
-; this every tick regardless of whether the menu-close broadcast ever fires. Cheap
-; when idle (one Bool + one Actor null check) — no LooksMenu work unless a corpse is
-; actually pending.
+; MCM Set/Reset queues via QueueAimedDecayApply; OnMCMMenuClose may fire RunPendingAimedDecayApply.
+; Safety net: HandleCorpseDecay (TargetScan / RegisterTarget) drains pending when menus close.
 Function CheckPendingAimedDecayApply()
 	If !PendingAimedDecayActor || Utility.IsInMenuMode()
 		Return
@@ -165,95 +158,71 @@ Function CheckPendingAimedDecayApply()
 	RunPendingAimedDecayApply()
 EndFunction
 
-; Kicked via KillerScan CallFunctionNoWait — LooksMenu Utility.Wait must not run on voice stack.
-; Consumes KillerScan.ScanDead (TargetSnapshot) — never FindActors here. Dead-only feature.
-; Simplified P2 refactor: no rate-limit/backoff of its own — the KillerScan dispatch tick
-; throttle (every 4th tick) plus OverlaySyncBusy below are the only gates. For each dead
-; corpse this just asks "what stage do you want, what stage did we last paint" and lets
-; SyncDecayForKnifeCorpse (the same function the MCM Set/Reset path calls) apply on a
-; mismatch and no-op when they already match — identical logic, ambient or MCM-driven.
-Function SyncOverlaysFromKillerScanSnapshot()
-	If Utility.IsInMenuMode()
-		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | in menu")
+; Sole gameplay entry for knife-corpse decay check/apply (one Actor).
+; Callers: Main.RegisterTarget (dead+blade) and TargetScan already-tracked dead — always
+; CallFunctionNoWait so LooksMenu Utility.Wait never runs on the scan/register stack.
+Function HandleCorpseDecay(Actor akCorpse)
+	If !akCorpse
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | no corpse")
 		Return
 	EndIf
-	; MCM Set left a pending aimed corpse — paint that one first (bypass ScanDead thrash).
+	If !akCorpse.IsDead()
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | not dead formId=" + akCorpse.GetFormID())
+		Return
+	EndIf
+	If Utility.IsInMenuMode()
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | in menu formId=" + akCorpse.GetFormID())
+		Return
+	EndIf
+	; MCM Set left a pending aimed corpse — paint that one first.
 	If PendingAimedDecayActor
-		Debug.Trace("PickmansWhisper: CorpseDecay sync → AimedDecayApply pending formId=" + PendingAimedDecayActor.GetFormID())
-		RunPendingAimedDecayApply()
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay → AimedDecayApply pending formId=" + PendingAimedDecayActor.GetFormID())
+		CheckPendingAimedDecayApply()
 		Return
 	EndIf
 	PickmansWhisperMainQuestScript m = Main()
 	If !m
-		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — Main missing")
+		Debug.Trace("PickmansWhisper: ERROR HandleCorpseDecay — Main missing")
 		Return
 	EndIf
 	If !m.BondStarted
-		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | not bonded")
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | not bonded")
+		Return
+	EndIf
+	Actor player = Game.GetPlayer()
+	If akCorpse == player || !akCorpse.Is3DLoaded() || akCorpse.IsDisabled()
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | player/unloaded/disabled formId=" + akCorpse.GetFormID())
 		Return
 	EndIf
 	Float now = Utility.GetCurrentRealTime()
-	; Real-time resets to ~0 on every new game process, but this is a saved field —
-	; a stale value from a longer previous session makes (now - stale) negative,
-	; permanently reading as "still within the window" for the rest of THIS session.
 	If OverlaySyncBusySince > now
 		OverlaySyncBusySince = 0.0
 	EndIf
 	If OverlaySyncBusy
 		If (now - OverlaySyncBusySince) < OVERLAY_SYNC_BUSY_MAX_SECONDS
-			Debug.Trace("PickmansWhisper: CorpseDecay sync skip | already running")
+			Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | already running formId=" + akCorpse.GetFormID())
 			Return
 		EndIf
-		Debug.Trace("PickmansWhisper: WARN CorpseDecay OverlaySyncBusy force-clear after " + OVERLAY_SYNC_BUSY_MAX_SECONDS + "s")
+		Debug.Trace("PickmansWhisper: WARN HandleCorpseDecay OverlaySyncBusy force-clear after " + OVERLAY_SYNC_BUSY_MAX_SECONDS + "s")
 		OverlaySyncBusy = False
 	EndIf
 	OverlaySyncBusy = True
 	OverlaySyncBusySince = now
-
-	If !m.VoiceAlias
-		Debug.Trace("PickmansWhisper: ERROR CorpseDecay sync — VoiceAlias unbound")
-		OverlaySyncBusy = False
-		Return
+	Int id = akCorpse.GetFormID()
+	Debug.Trace("PickmansWhisper: HandleCorpseDecay begin formId=" + id + " code=" + AimedDecayApplyCode)
+	If id != 0 && m.FindDecayKillSlot(id) < 0
+		m.EnsureDecayForTrackedVictim(akCorpse, False)
 	EndIf
-	; KillerScan snapshot deprecated — VoiceAlias stubs until corpse bus is rewired.
-	Actor[] dead = m.VoiceAlias.StubScanDead()
-	Int deadCount = m.VoiceAlias.StubScanDeadCount()
-	If !dead || deadCount <= 0
-		Debug.Trace("PickmansWhisper: CorpseDecay sync skip | ScanDead empty (stub)")
-		OverlaySyncBusy = False
-		Return
-	EndIf
-	Actor player = Game.GetPlayer()
-	Int n = deadCount
-	If n > 16
-		n = 16
-	EndIf
-	Debug.Trace("PickmansWhisper: CorpseDecay sync begin dead=" + deadCount + " consider=" + n + " code=" + AimedDecayApplyCode)
-	Int i = 0
-	Int stamped = 0
-	While i < n
-		Actor ak = dead[i]
-		If ak && ak != player && ak.IsDead() && ak.Is3DLoaded() && !ak.IsDisabled()
-			Int id = ak.GetFormID()
-			If m.FindDecayKillSlot(id) < 0
-				m.EnsureDecayForTrackedVictim(ak, False)
-			EndIf
-			If m.FindDecayKillSlot(id) >= 0
-				stamped += 1
-				; want vs last — SyncDecayForKnifeCorpse itself re-resolves both and
-				; no-ops when they already match (see its own "stage==last" skip trace).
-				SyncDecayForKnifeCorpse(ak)
-				; P4 Cannibal nag — independent of the stage-changed gate above; checked
-				; every sweep so it keeps nagging (throttled) for as long as she stays ripe.
-				If m.ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)
-					m.MaybeToastEatRipeCorpse(ak)
-				EndIf
-			EndIf
+	If id != 0 && m.FindDecayKillSlot(id) >= 0
+		SyncDecayForKnifeCorpse(akCorpse)
+		If m.ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)
+			m.MaybeToastEatRipeCorpse(akCorpse)
 		EndIf
-		i += 1
-	EndWhile
-	Debug.Trace("PickmansWhisper: CorpseDecay sync done stamped=" + stamped)
+	Else
+		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | no kill slot formId=" + id)
+	EndIf
 	OverlaySyncBusy = False
+	Debug.Trace("PickmansWhisper: HandleCorpseDecay done formId=" + id + " | " + LastCorpseDecayStatus)
 EndFunction
 
 Function SetCorpseDecayStatus(String reason)

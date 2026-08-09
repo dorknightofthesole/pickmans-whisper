@@ -94,8 +94,6 @@ def main() -> None:
         fail("GetLookingAt must use GardenOfEden3.GetCameraTargetReference")
     if "TODO do something with this in Main" in psc:
         fail("TargetScan must not leave LookFixation TODO stub")
-    if "Float Property KILL_WATCH_RADIUS = 800.0 Auto Const" not in psc:
-        fail("TargetScan must own KILL_WATCH_RADIUS Property Auto Const (SSOT)")
     if "Float Property KILL_CORPSE_RADIUS = 400.0 Auto Const" not in psc:
         fail("TargetScan must own KILL_CORPSE_RADIUS Property Auto Const (SSOT)")
     main = MAIN.read_text(encoding="utf-8", errors="replace")

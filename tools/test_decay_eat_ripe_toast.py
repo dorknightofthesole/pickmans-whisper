@@ -8,8 +8,8 @@ Locks:
     when unnamed, once-per-game-hour shared cooldown, no MCM toggle (ModConfig-only)
   - PlayerHasCannibalPerk checks all three Fallout4.esm Cannibal ranks (additive ranks)
   - ResolveVanillaForms lazy-loads the three Cannibal perk forms from Fallout4.esm
-  - CorpseDecay's ambient KillerScan sweep calls MaybeToastEatRipeCorpse for every
-    tracked corpse currently AT the max decay stage (not gated on stage-changed)
+  - CorpseDecay HandleCorpseDecay calls MaybeToastEatRipeCorpse when the corpse is
+    AT the max decay stage (not gated on stage-changed)
   - tools/stubs/Actor.psc declares HasPerk(Perk) Native; tools/stubs/Perk.psc exists
 
 Usage:
@@ -170,12 +170,12 @@ def test_main_wiring() -> None:
 
 def test_ambient_dispatch() -> None:
     decay = DECAY.read_text(encoding="utf-8", errors="replace")
-    overlay = extract_function(decay, "SyncOverlaysFromKillerScanSnapshot")
-    if "MaybeToastEatRipeCorpse" not in overlay:
-        fail("Ambient sweep must call MaybeToastEatRipeCorpse for corpses at max stage")
-    if "ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)" not in overlay:
-        fail("Ambient sweep must check max decay stage (DECAY_STAGE_COUNT - 1) before nagging")
-    ok("CorpseDecay ambient sweep calls MaybeToastEatRipeCorpse at max stage")
+    handle = extract_function(decay, "HandleCorpseDecay")
+    if "MaybeToastEatRipeCorpse" not in handle:
+        fail("HandleCorpseDecay must call MaybeToastEatRipeCorpse for corpses at max stage")
+    if "ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)" not in handle:
+        fail("HandleCorpseDecay must check max decay stage (DECAY_STAGE_COUNT - 1) before nagging")
+    ok("HandleCorpseDecay calls MaybeToastEatRipeCorpse at max stage")
 
 
 def test_stubs() -> None:

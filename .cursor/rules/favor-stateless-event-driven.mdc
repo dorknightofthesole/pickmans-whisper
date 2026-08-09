@@ -1,0 +1,44 @@
+---
+description: Prefer stateless event-driven design; keeping state is the exception
+alwaysApply: true
+---
+
+# Favor stateless event-driven design
+
+Prefer **stateless, event-driven** flows. Keeping history/state should be the **exception**, not the default.
+
+## Prefer
+
+- Arm once from a valid discovery/hit event (`RegisterForRemoteEvent`, `RegisterForHitEvent`, `RegisterForKey`, timers that only re-arm).
+- Decide eligibility **when arming** (e.g. `IsValidTarget` on `RegisterTarget`), then settle on the event (`OnDeath`, `OnHit`, sleep stop) with **thin** gates (blade drawn, killer==player, cooldown) — do not rebuild identity/hostility history at settle time.
+- Prefer the engine registration itself over FormID “seen while friendly” lists. Leave-range cleanup (`UnRegisterTarget`) should still clear what it armed (`OnDeath`, hits) — do not invent sticky leave-range state to paper over missed arms.
+- Fail loud with `Debug.Trace` / status when an event path bails.
+
+## Avoid (unless explicitly justified)
+
+- Parallel FormID / Actor arrays that mirror “we saw them once” for a check the event registration already encodes.
+- Re-running hard gates (`IsValidTarget`, hostility) on the kill / settle call chain after a prior valid arm.
+- New session-long tracking lists “just in case” when a remote event or alias can own the lifetime.
+
+## When state is justified
+
+State is OK when the engine cannot express the rule as an event (caps, FIFO registries, MCM latches, temp essential tracking you must reverse, decay clocks). Document **why** the list exists and what cleans it up.
+
+## Example
+
+```papyrus
+; BAD — history list + re-check at death
+NoteFriendlySeen(ak) ; ambient
+; ...
+If !WasFriendlySeen(victim) || !IsValidTarget(victim)
+	Return ; settler who aggro'd fails
+EndIf
+
+; GOOD — arm while valid; settle without re-checking identity/hostility
+If IsValidTarget(akTarget)
+	RegisterForRemoteEvent(akTarget, "OnDeath")
+EndIf
+; UnRegisterTarget: clear OnDeath + hits (leave-range cleanup)
+; OnDeath / RewardKill: blade + player killer only — no IsValidTarget
+; (In-range after aggro: prior arm remains until UnRegisterTarget; do not re-gate settle)
+```

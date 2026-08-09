@@ -6,7 +6,7 @@ Actor[] Property TrackedTargets Auto
 PickmansWhisperMainQuestScript Property MainQuest Auto Const Mandatory
 
 ; Scan / eligibility range — single source (other scripts read these Properties).
-Float Property KILL_WATCH_RADIUS = 800.0 Auto Const
+Float Property KILL_WATCH_RADIUS = 500.0 Auto Const ; was 800.0
 Float Property KILL_CORPSE_RADIUS = 400.0 Auto Const
 Float FIVE_FEET_IN_UNITS = 106.65 Const
 
@@ -105,7 +105,16 @@ Function ProcessTargets(Actor[] akTargets, String debugContext)
                 ; Debug.Notification("PW: Now tracking -> " + potentialTarget.GetDisplayName())
                 Debug.Trace("PW: Now tracking -> " + potentialTarget.GetDisplayName())
             Else
-                ; Debug.Notification("PW: Already tracking -> " + potentialTarget.GetDisplayName())
+                ; Already tracked — re-kick Slice H decay for dead so stage can advance
+                ; while she stays in range (RegisterTarget only runs on first add).
+                If potentialTarget.IsDead()
+                    PickmansWhisperCorpseDecayScript decay = (MainQuest as Quest) as PickmansWhisperCorpseDecayScript
+                    If decay
+                        Var[] decayArgs = new Var[1]
+                        decayArgs[0] = potentialTarget
+                        decay.CallFunctionNoWait("HandleCorpseDecay", decayArgs)
+                    EndIf
+                EndIf
                 Debug.Trace("PW: Already tracking -> " + potentialTarget.GetDisplayName())
             EndIf
         EndIf

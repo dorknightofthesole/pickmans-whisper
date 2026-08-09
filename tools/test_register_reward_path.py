@@ -147,6 +147,8 @@ def test_main_register_reward_path() -> None:
         fail("RewardKill must gate on blade equipped")
     if "ProcessKnifeKill(akSender)" not in rew:
         fail("RewardKill must ProcessKnifeKill when eligible")
+    if "IsValidTarget" in rew:
+        fail("RewardKill must not re-check IsValidTarget (OnDeath settle; eligibility was at arm time)")
     if "StartBond" in rew:
         fail("RewardKill must not StartBond (equip path owns bond)")
 

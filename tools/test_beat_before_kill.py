@@ -9,8 +9,8 @@ Design:
     essential=True on (EssentialActors/EssentialCount) via two shared, UI-free helpers,
     AddEssentialTracked/RemoveEssentialTracked, used by both J1's manual toggle and
     J2's auto trigger. Turning essential ON requires passing MainQuestScript.IsValidTarget
-    (same gate as knife-kill crediting — human, adult female, not essential/child/
-    teammate, seen non-hostile, alive). Turning it back OFF only requires being in that
+    (hard gate — human, adult female, not essential/child/teammate, not living-hostile,
+    alive). Turning it back OFF only requires being in that
     tracked list — since IsValidTarget already refuses anyone currently essential,
     nothing not set by this script can ever appear there, so removal never touches an
     NPC essential for any other reason.
@@ -120,8 +120,8 @@ def test_manual_toggle() -> None:
         fail("ToggleEssentialForAimed must gate the ON path on IsValidTarget(ak)")
     if "ak.IsDead()" not in toggle:
         fail("ToggleEssentialForAimed ON path must require living (feature: !IsDead)")
-    if "WasFriendlySeen(ak)" not in toggle:
-        fail("ToggleEssentialForAimed ON path must require WasFriendlySeen (knife feature)")
+    if "WasFriendlySeen" in toggle:
+        fail("ToggleEssentialForAimed must not use WasFriendlySeen (dropped; hostility is IsValidTarget)")
 
     # Ordering: the off-path (tracked-list check) must come BEFORE the eligibility gate,
     # so removing essential from an already-tracked NPC never gets blocked by her now
@@ -162,8 +162,8 @@ def test_auto_trigger() -> None:
         fail("HandleBeatBeforeKill must gate on IsValidTarget(akTarget)")
     if "akTarget.IsDead()" not in handle:
         fail("HandleBeatBeforeKill must require living (feature: !IsDead)")
-    if "WasFriendlySeen(akTarget)" not in handle:
-        fail("HandleBeatBeforeKill must require WasFriendlySeen (knife feature)")
+    if "WasFriendlySeen" in handle:
+        fail("HandleBeatBeforeKill must not use WasFriendlySeen (dropped; hostility is IsValidTarget)")
     if "AddEssentialTracked(akTarget)" not in handle:
         fail("HandleBeatBeforeKill must call AddEssentialTracked(akTarget) on success")
     if "EssentialCount >= ESSENTIAL_MAX" not in handle:

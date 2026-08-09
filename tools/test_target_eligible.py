@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Hard-gate eligibility — single IsValidTarget(Actor) on Main.
 
-Owns the identity checklist. Feature checks (IsDead, WasFriendlySeen, distance,
-notice cooldown) must NOT live in IsValidTarget. No LastKillIgnoreReason Autovar;
-reject reasons go to Debug.Trace only.
+Owns the identity checklist plus living hostility and in-range/loaded
+(TargetScan.KILL_WATCH_RADIUS SSOT — not same-cell). Notice cooldown must NOT
+live in IsValidTarget. Corpses skip IsHostileToActor so decay RegisterTarget
+still works. No LastKillIgnoreReason Autovar; reject reasons go to Debug.Trace only.
 """
 
 from __future__ import annotations
@@ -65,15 +66,24 @@ def main() -> None:
         "IsHumanNpc",
         "IsAdultFemale",
         "IsDisabled",
+        "IsHostileToActor",
     ):
         if needle not in body:
             fail(f"IsValidTarget must check {needle}")
 
+    if "IsDead()" not in body:
+        fail("IsValidTarget must skip hostility for corpses (!IsDead before IsHostileToActor)")
+
+    if "KILL_WATCH_RADIUS" not in body or "TargetScan()" not in body:
+        fail("IsValidTarget must range-gate via TargetScan().KILL_WATCH_RADIUS (SSOT)")
+    if "Is3DLoaded()" not in body:
+        fail("IsValidTarget must reject !Is3DLoaded (far/unloaded refs)")
+    if "GetParentCell()" in body:
+        fail("IsValidTarget must not use GetParentCell same-cell (breaks exterior borders)")
+
     for banned in (
-        "IsDead",
         "WasFriendlySeen",
-        "IsHostileToActor",
-        "KILL_WATCH_RADIUS",
+        "NoteFriendlySeen",
         "IsNoticeOnCooldown",
         "LastKillIgnoreReason",
         "ExplainNonHumanForNotice",
@@ -82,12 +92,12 @@ def main() -> None:
             fail(f"IsValidTarget must not contain feature/soft check {banned}")
 
     reject_traces = body.count('Debug.Trace("PickmansWhisper: target reject')
-    if reject_traces < 6:
+    if reject_traces < 8:
         fail(
             f"IsValidTarget must Trace each reject branch "
-            f'(found {reject_traces} "target reject" traces, expected >= 6)'
+            f'(found {reject_traces} "target reject" traces, expected >= 8)'
         )
-    ok("IsValidTarget: hard gate + Trace, no dead/friendly/distance/cooldown Autovar")
+    ok("IsValidTarget: hard gate + living hostility + range/loaded Trace, no friendly-seen/cooldown Autovar")
 
     if MCM_CFG.is_file():
         mcm = MCM_CFG.read_text(encoding="utf-8", errors="replace")

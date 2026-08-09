@@ -54,11 +54,10 @@ Keyword Property KW_ActorTypeAnimal Auto
 Keyword Property KW_ActorTypeCreature Auto
 Keyword Property KW_ActorTypeTurret Auto
 
-; Blade-tagged victims — a confirmed player+blade hit registers OnDeath and adds here;
-; cleared (with UnregisterForRemoteEvent) the moment their death is processed, or by the
-; periodic reconcile sweep if they wander off / never die. This is the ONLY tracking list
-; the kill-credit path needs — eligibility is decided live at OnDeath (IsBladeEquipped +
-; killer==player + IsValidTarget), not by whether ambient scanning happened to notice them.
+; Blade-tagged victims — a confirmed player+blade hit (while IsValidTarget) registers
+; OnDeath and adds here; cleared (with UnregisterForRemoteEvent) when death is processed,
+; or by reconcile if they wander off / never die. Primary arm is RegisterTarget while
+; valid; kill settle (RewardKill / HandleNPCDeath) must NOT re-run IsValidTarget.
 Actor[] BladeTagged
 Int Property BladeTaggedCount = 0 Auto
 Int BLADE_TAGGED_MAX = 24
@@ -76,11 +75,6 @@ Float KNIFE_KILL_COOLDOWN = 1.5
 Int LastDeathToastId = 0
 Int LastHandledKillId = 0
 Cell LastBladeToastCell
-; FormIDs first seen while NOT hostile to player — settlers you later attack still count.
-; Hostiles (raiders) seen already angry never get this stamp → no satiation.
-Int[] FriendlySeenIds
-Int FriendlySeenCount = 0
-Int FRIENDLY_SEEN_MAX = 32
 Int[] BackgroundDeadIds
 Int BackgroundDeadCount = 0
 Int BACKGROUND_DEAD_MAX = 48
@@ -435,8 +429,9 @@ Function RegisterTarget(Actor akTarget)
 
 	Bool IsTargetDead = akTarget.IsDead()
 
-	; Hard gate + knife feature: must have been seen non-hostile while alive.
-	If !IsValidTarget(akTarget) || !WasFriendlySeen(akTarget)
+	; Hard gate (includes living hostility). Do not re-check on OnDeath / kill settle —
+	; once armed while valid, in-range OnDeath stays until UnRegisterTarget / settle.
+	If !IsValidTarget(akTarget)
 		Debug.Trace("PickmansWhisper: RegisterTarget reject | " + akTarget.GetDisplayName() + " id=" + akTarget.GetFormID())
 		Return
 	EndIf
@@ -472,9 +467,16 @@ Function RegisterTarget(Actor akTarget)
 
 	ElseIf IsTargetDead && isPickmansBladeEquipped
 		Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " is dead. She belongs to the knife now.")
-		; TODO handle dead use cases
-		;     Slice H
-		;     Slice F
+		; Slice H — NoWait so LooksMenu Wait never stalls TargetScan / RegisterTarget.
+		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+		If decay
+			Var[] decayArgs = new Var[1]
+			decayArgs[0] = akTarget
+			decay.CallFunctionNoWait("HandleCorpseDecay", decayArgs)
+		Else
+			Debug.Trace("PickmansWhisper: ERROR RegisterTarget dead — CorpseDecay missing")
+		EndIf
+		; TODO Slice F sever stays key-driven (not RegisterTarget)
 
 	ElseIf !IsTargetDead && PlayerAlias.IsReadyToGiveBeating
 		; Not dead — blade away nudge (ModConfig needsBeatingWhisper).
@@ -3345,14 +3347,9 @@ Function ProcessKnifeCreditFromKillerScan(PickmansWhisperKillerScanScript scan)
 	ReconcileBladeTagged()
 EndFunction
 
-; Overlay sync moved to CorpseDecay (OnKillerScan → CallFunctionNoWait). Kept for MCM/debug callers.
+; Legacy MCM/debug name — ambient decay is per-corpse HandleCorpseDecay (TargetScan / RegisterTarget).
 Function SyncNearbyKnifeDecayOverlays()
-	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
-	If decay
-		decay.SyncOverlaysFromKillerScanSnapshot()
-	Else
-		Debug.Trace("PickmansWhisper: ERROR SyncNearbyKnifeDecayOverlays — CorpseDecay missing")
-	EndIf
+	Debug.Trace("PickmansWhisper: SyncNearbyKnifeDecayOverlays retired — use HandleCorpseDecay(Actor) via TargetScan/RegisterTarget")
 EndFunction
 
 Function EnsureBackgroundDeadList()
@@ -3395,18 +3392,11 @@ Function NoteBackgroundDead(Int id)
 EndFunction
 
 Function TrackLivingNear(Actor ak)
-	; Ambient sighting for WasFriendlySeen (knife feature hostility-history), AND
-	; the ONLY place that proactively arms hit detection. RegisterForHitEvent is otherwise
-	; only ever called reactively, inside HandleBladeHit, to re-arm AFTER a hit already
-	; landed — nothing else registers a fresh, never-hit actor, so without this call here
-	; Actor.OnHit can never fire for a target's first strike (confirmed live: a whole
-	; session produced zero "blade-tagged" traces — HandleBladeHit never ran at all for
-	; any kill, because nothing had armed hit-watching on the victim beforehand). This is
-	; exactly the ambient sweep that already runs for every nearby actor every KillerScan
-	; tick, so it is the natural place to close that gap. Not gated on IsBladeEquipped
-	; here — HandleBladeHit and HandleNPCDeath both independently re-check blade state
-	; live, so gating here would only be an unverified micro-optimization, not a
-	; correctness requirement; HitArmed dedup is what actually keeps this cheap.
+	; Proactively arms hit detection for nearby eligible NPCs. RegisterForHitEvent is
+	; otherwise only called reactively inside HandleBladeHit (re-arm after a hit) —
+	; without this, Actor.OnHit never fires for a fresh target's first strike.
+	; Not gated on IsBladeEquipped — HandleBladeHit / kill settle re-check blade live;
+	; HitArmed dedup keeps this cheap. Hostility lives in IsValidTarget (living only).
 	If !ak || ak == PlayerRef || ak.IsDead() || ak.IsDisabled()
 		Return
 	EndIf
@@ -3416,16 +3406,8 @@ Function TrackLivingNear(Actor ak)
 		Return
 	EndIf
 
-	; Hard gate — stamp friendly / arm hits only for mod-eligible NPCs.
 	If !IsValidTarget(ak)
 		Return
-	EndIf
-
-	; Stamp disposition while still living — before the player turns a settler hostile.
-	If PlayerRef && ak.IsHostileToActor(PlayerRef)
-		; Hostile when first/ongoing seen — do not mark friendly
-	Else
-		NoteFriendlySeen(ak)
 	EndIf
 
 	If !WasHitArmed(ak)
@@ -3433,54 +3415,6 @@ Function TrackLivingNear(Actor ak)
 		RegisterForHitEvent(ak, PlayerRef)
 		MarkHitArmed(ak)
 	EndIf
-EndFunction
-
-Function EnsureFriendlySeenList()
-	If !FriendlySeenIds || FriendlySeenIds.Length == 0
-		FriendlySeenIds = new Int[32]
-		FriendlySeenCount = 0
-	EndIf
-EndFunction
-
-Function NoteFriendlySeen(Actor ak)
-	If !ak
-		Return
-	EndIf
-	EnsureFriendlySeenList()
-	Int id = ak.GetFormID()
-	Int i = 0
-	While i < FriendlySeenCount
-		If FriendlySeenIds[i] == id
-			Return
-		EndIf
-		i += 1
-	EndWhile
-	If FriendlySeenCount >= FRIENDLY_SEEN_MAX
-		Int j = 0
-		While j < FRIENDLY_SEEN_MAX - 1
-			FriendlySeenIds[j] = FriendlySeenIds[j + 1]
-			j += 1
-		EndWhile
-		FriendlySeenCount = FRIENDLY_SEEN_MAX - 1
-	EndIf
-	FriendlySeenIds[FriendlySeenCount] = id
-	FriendlySeenCount += 1
-EndFunction
-
-Bool Function WasFriendlySeen(Actor ak)
-	If !ak
-		Return False
-	EndIf
-	EnsureFriendlySeenList()
-	Int id = ak.GetFormID()
-	Int i = 0
-	While i < FriendlySeenCount
-		If FriendlySeenIds[i] == id
-			Return True
-		EndIf
-		i += 1
-	EndWhile
-	Return False
 EndFunction
 
 ; Children: native IsChild() is incomplete in FO4 — also require ActorTypeChild keyword.
@@ -3756,19 +3690,18 @@ Function HandleBladeHit(ObjectReference akTarget, ObjectReference akAggressor, F
 
 	Debug.Trace("Pickman's Whisper: HandleBladeHit 1")
 
-	; Stamp disposition while we can — same rule as TrackLivingNear (raiders already hostile
-	; at hit-time still fail the knife WasFriendlySeen feature check; a stealth kill on someone
-	; who never got the chance to react correctly passes).
-	If !PlayerRef || !victim.IsHostileToActor(PlayerRef)
-		NoteFriendlySeen(victim)
-	EndIf
 	If victim.IsDead()
 		Debug.Trace("Pickman's Whisper: HandleBladeHit 2")
-
-		HandleNPCDeath(victim, PlayerRef, "hit-dead")
+		; One-shot while still eligible, or already tagged from a prior living hit while valid.
+		; Do not require IsValidTarget alone after aggro — WasBladeTagged covers that case.
+		; Kill settle (HandleNPCDeath) must not re-run IsValidTarget.
+		If WasBladeTagged(victim) || IsValidTarget(victim)
+			HandleNPCDeath(victim, PlayerRef, "hit-dead")
+		EndIf
 		Return
 	EndIf
-	If !WasBladeTagged(victim)
+	; Arm OnDeath only while still a valid (non-hostile) target — raiders never arm.
+	If IsValidTarget(victim) && !WasBladeTagged(victim)
 		Debug.Trace("Pickman's Whisper: HandleBladeHit 3")
 
 		RegisterForRemoteEvent(victim, "OnDeath")
@@ -3885,7 +3818,9 @@ Bool Function IsHumanNpc(Actor ak)
 EndFunction
 
 ; Hard eligibility — "this NPC can never be a Pickman's Whisper target."
-; Feature paths compose their own checks (IsDead, WasFriendlySeen, distance, cooldown).
+; Living hostility + in-range/loaded are part of the gate (raiders fail; corpses skip
+; hostility so decay RegisterTarget still works). Feature paths compose IsDead / cooldown.
+; Do NOT call from OnDeath / RewardKill / HandleNPCDeath — sticky arm is the kill gate.
 ; Bool only; every reject Traces. No Autovar reason side-channel.
 Bool Function IsValidTarget(Actor ak)
 	If !ak || ak == PlayerRef
@@ -3922,6 +3857,30 @@ Bool Function IsValidTarget(Actor ak)
 	If !IsAdultFemale(ak)
 		Debug.Trace("PickmansWhisper: target reject | not adult female id=" + id)
 		; Debug.Notification("PickmansWhisper: target reject | not adult female id=" + id)
+		Return False
+	EndIf
+	; Living only — corpses keep hostility flags; decay / post-kill paths must still pass.
+	If !ak.IsDead()
+		If !PlayerRef
+			PlayerRef = Game.GetPlayer()
+		EndIf
+		If PlayerRef && ak.IsHostileToActor(PlayerRef)
+			Debug.Trace("PickmansWhisper: target reject | hostile id=" + id)
+			Return False
+		EndIf
+	EndIf
+	; Distance / loaded — exterior cells are a grid; same-cell rejects border neighbors
+	; and still allows far same-cell refs. TargetScan radius is the SSOT.
+	If !PlayerRef
+		PlayerRef = Game.GetPlayer()
+	EndIf
+	If !PlayerRef || !ak.Is3DLoaded()
+		Debug.Trace("PickmansWhisper: target reject | not loaded id=" + id)
+		Return False
+	EndIf
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	If !ts || PlayerRef.GetDistance(ak) > ts.KILL_WATCH_RADIUS
+		Debug.Trace("PickmansWhisper: target reject | out of range id=" + id)
 		Return False
 	EndIf
 	Return True
@@ -4002,15 +3961,8 @@ Function HandleNPCDeath(Actor victim, Actor akKiller, String path)
 		RejectKill("not blade; drawn=" + drawn)
 		Return
 	EndIf
-	If !IsValidTarget(victim)
-		RejectKill("not a valid target")
-		Return
-	EndIf
-	; Knife feature: must have been seen non-hostile while alive (raiders fail; settlers you aggro still pass).
-	If !WasFriendlySeen(victim)
-		RejectKill("hostile / not seen friendly")
-		Return
-	EndIf
+	; No IsValidTarget here — eligibility was decided when OnDeath / blade-tag was armed
+	; (while non-hostile). Re-checking would deny settlers who turned hostile mid-fight.
 	Float now = Utility.GetCurrentRealTime()
 	If (now - LastKnifeKillRealTime) < KNIFE_KILL_COOLDOWN
 		RejectKill("cooldown", False)

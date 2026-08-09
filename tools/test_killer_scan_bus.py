@@ -101,15 +101,9 @@ def test_killer_scan_producer() -> None:
         fail("DispatchListeners must CallFunctionNoWait HandleKillerScanKnifeAimWarm")
     if i_cadence < 0:
         fail("DispatchListeners must CallFunctionNoWait OnKillerScanCadence")
-    # Ambient decay dispatch re-enabled (P2 refactor) — throttled to every 4th tick,
-    # calling SyncOverlaysFromKillerScanSnapshot which itself just applies
-    # SyncDecayForKnifeCorpse's want-vs-last comparison per tracked dead corpse.
-    active_overlay_lines = [
-        ln for ln in dispatch.splitlines()
-        if 'CallFunctionNoWait("SyncOverlaysFromKillerScanSnapshot"' in ln and not ln.strip().startswith(";")
-    ]
-    if not active_overlay_lines:
-        fail("DispatchListeners must actively CallFunctionNoWait SyncOverlaysFromKillerScanSnapshot (ambient decay re-enabled)")
+    # Ambient decay moved to TargetScan / RegisterTarget → HandleCorpseDecay.
+    if "SyncOverlaysFromKillerScanSnapshot" in dispatch or "CheckPendingAimedDecayApply" in dispatch:
+        fail("DispatchListeners must not CallFunctionNoWait CorpseDecay sync/pending (HandleCorpseDecay owns ambient)")
     if "NoteFromKillerScanSnapshot" not in dispatch:
         fail("DispatchListeners must CallFunctionNoWait NoteFromKillerScanSnapshot")
     if "OnKillerScanDeadlines" in dispatch or "MaybeWarmBedGiftBody" in dispatch:
@@ -236,8 +230,10 @@ def test_listeners() -> None:
     if "FindActors" in tick:
         fail("LookFixation must not FindActors")
     decay = DECAY.read_text(encoding="utf-8", errors="replace")
-    if "FindActors" in extract_function(decay, "SyncOverlaysFromKillerScanSnapshot"):
-        fail("SyncOverlaysFromKillerScanSnapshot must not FindActors")
+    if "Function SyncOverlaysFromKillerScanSnapshot" in decay:
+        fail("SyncOverlaysFromKillerScanSnapshot retired — HandleCorpseDecay owns ambient")
+    if "FindActors" in extract_function(decay, "HandleCorpseDecay"):
+        fail("HandleCorpseDecay must not FindActors")
     victims = VICTIMS.read_text(encoding="utf-8", errors="replace")
     if "StartTimer(" in victims:
         fail("VictimsScript must not StartTimer (decay nudge parked)")
