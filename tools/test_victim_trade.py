@@ -162,6 +162,10 @@ def test_main_facade() -> None:
     sync = extract_function(text, "SyncDialogActivatePerks")
     if "SyncTradeActivatePerk" not in sync:
         fail("SyncDialogActivatePerks must sync Trade perk")
+    if "DialogActivateChoicesEnabled" not in sync:
+        fail("SyncDialogActivatePerks must require DialogActivateChoicesEnabled toggle")
+    if "Function ToggleDialogActivateChoices" not in text:
+        fail("Main must ToggleDialogActivateChoices for ] key")
     ok("Main TryForceVictimTradeFromActivate façade + blade perk sync")
 
 
@@ -169,10 +173,12 @@ def test_no_hotkey() -> None:
     alias = ALIAS.read_text(encoding="utf-8", errors="replace")
     if "KEY_VICTIM_TRADE" in alias or "TryForceVictimTrade" in alias:
         fail("PlayerAlias must not register a trade hotkey (activate choice only)")
+    if "KEY_DIALOG_ACTIVATE" not in alias or "ToggleDialogActivateChoices" not in alias:
+        fail("PlayerAlias must register ] toggle for Trade/Enslave activate choices")
     trade = TRADE.read_text(encoding="utf-8", errors="replace")
     if "RegisterForKey" in trade:
         fail("VictimTradeScript must not RegisterForKey")
-    ok("no PlayerAlias / trade hotkey path")
+    ok("dialog activate toggle on PlayerAlias; Trade script has no key path")
 
 
 def test_esp_builder() -> None:

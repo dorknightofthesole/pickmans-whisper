@@ -1,6 +1,7 @@
 Scriptname PickmansWhisperSlaveryPerkScript extends Perk
-{PERK PW_SlaveryActivate — Activate choices Enslave (entry 0) / Free (entry 1).
-Forwards to Main façades; keep this fragment path thin.}
+{PERK PW_SlaveryActivate — Activate choices Enslave / Free (labels for menu).
+Both choices toggle: Free if she is already our slave, else Enslave.
+auiEntryID is not trusted (shared EPFB on both entries).}
 
 PickmansWhisperMainQuestScript Property MainQuest Auto Const
 
@@ -11,11 +12,15 @@ Event OnEntryRun(Int auiEntryID, ObjectReference akTarget, Actor akOwner)
 		Return
 	EndIf
 	Actor target = akTarget as Actor
-	If auiEntryID == 0
-		MainQuest.TryEnslaveFromActivate(target)
-	ElseIf auiEntryID == 1
+	If !target
+		Debug.Trace("PickmansWhisper: slavery perk skip | no actor target entry=" + auiEntryID)
+		Debug.Notification("PickmansWhisper: Slavery — no target")
+		Return
+	EndIf
+	; Either menu label — Free when already ours (Trade pacify auto-enslaves).
+	If MainQuest.IsOurSlave(target)
 		MainQuest.TryFreeSlaveFromActivate(target)
 	Else
-		Debug.Trace("PickmansWhisper: slavery perk unknown entry id=" + auiEntryID)
+		MainQuest.TryEnslaveFromActivate(target)
 	EndIf
 EndEvent

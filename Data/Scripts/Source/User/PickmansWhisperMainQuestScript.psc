@@ -1462,6 +1462,10 @@ Bool Function IsBladeEquipped()
 EndFunction
 
 ; PlayerAlias owns drawn detection — keep Main debug latch in sync for GetDrawnWeaponDebugName.
+; Force Trade / Enslave / Free activate choices — OFF by default (multi-choice menu
+; steals attack / beat input). Toggle via PlayerAlias key ]; blade drawn always hides.
+Bool DialogActivateChoicesEnabled = False
+
 Function SyncBladeDrawnDebugLatch()
 	If !PlayerAlias
 		BladeCurrentlyDrawn = False
@@ -1476,9 +1480,9 @@ Function SyncBladeDrawnDebugLatch()
 	SyncDialogActivatePerks()
 EndFunction
 
-; abAllowDialog = blade sheathed / other weapon / unarmed.
+; allow = player toggled choices ON and blade is sheathed.
 Function SyncDialogActivatePerks()
-	Bool allow = !BladeCurrentlyDrawn
+	Bool allow = DialogActivateChoicesEnabled && !BladeCurrentlyDrawn
 	PickmansWhisperVictimTradeScript trade = VictimTrade()
 	If trade
 		trade.SyncTradeActivatePerk(allow)
@@ -1486,6 +1490,24 @@ Function SyncDialogActivatePerks()
 	PickmansWhisperSlaveryScript slavery = Slavery()
 	If slavery
 		slavery.SyncSlaveryActivatePerk(allow)
+	EndIf
+EndFunction
+
+; PlayerAlias ] key — toggle Talk-menu Force Trade / Enslave / Free.
+Function ToggleDialogActivateChoices()
+	DialogActivateChoicesEnabled = !DialogActivateChoicesEnabled
+	SyncDialogActivatePerks()
+	If DialogActivateChoicesEnabled
+		If BladeCurrentlyDrawn
+			Debug.Notification("PickmansWhisper: Trade/Slavery ON — sheath blade to use")
+			Debug.Trace("PickmansWhisper: dialog activate choices ON (hidden while blade drawn)")
+		Else
+			Debug.Notification("PickmansWhisper: Trade/Slavery ON — ] again before fighting")
+			Debug.Trace("PickmansWhisper: dialog activate choices ON")
+		EndIf
+	Else
+		Debug.Notification("PickmansWhisper: Trade/Slavery OFF")
+		Debug.Trace("PickmansWhisper: dialog activate choices OFF")
 	EndIf
 EndFunction
 

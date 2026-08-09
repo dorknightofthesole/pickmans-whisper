@@ -12,7 +12,10 @@ Int FID_MAIN_QUEST = 0x00000800
 ; F4SE RegisterForKey uses Windows VK codes (same as Necromantic N=78), not DX DIK.
 ; /? on US keyboards = VK_OEM_2 = 191 (DIK 53 was wrong and never fired).
 Int KEY_BUTCHER = 191
+; ] — VK_OEM_6 = 221. Toggles Force Trade / Enslave / Free activate choices (default off).
+Int KEY_DIALOG_ACTIVATE = 221
 Bool ButcherKeyRegistered = False
+Bool DialogActivateKeyRegistered = False
 ; Slice H P5 — magic-effect-apply detection lives here, not on the Quest. A Quest-level
 ; RegisterForMagicEffectApplyEvent(PlayerRef, ...) was tried first and confirmed dead
 ; live (an unfiltered sniff variant caught zero effects over two minutes of play, even
@@ -32,6 +35,7 @@ Bool Property IsReadyToGiveBeating = False Auto
 Event OnAliasInit()
 	EnsurePlayerFill()
 	RegisterButcherKey()
+	RegisterDialogActivateKey()
 	RegisterMagicEffectDetect()
 	CheckIfBladeEquipped()
 	PickmansWhisperBedGiftScript bed = GetBedGift()
@@ -53,6 +57,7 @@ EndEvent
 Event OnPlayerLoadGame()
 	EnsurePlayerFill()
 	RegisterButcherKey()
+	RegisterDialogActivateKey()
 	RegisterMagicEffectDetect()
 	CheckIfBladeEquipped()
 	PickmansWhisperBedGiftScript bed = GetBedGift()
@@ -223,7 +228,25 @@ Function RegisterButcherKey()
 	Debug.Trace("PickmansWhisper: alias registered butcher key " + KEY_BUTCHER)
 EndFunction
 
+Function RegisterDialogActivateKey()
+	If DialogActivateKeyRegistered
+		UnregisterForKey(KEY_DIALOG_ACTIVATE)
+	EndIf
+	RegisterForKey(KEY_DIALOG_ACTIVATE)
+	DialogActivateKeyRegistered = True
+	Debug.Trace("PickmansWhisper: alias registered dialog-activate toggle key " + KEY_DIALOG_ACTIVATE)
+EndFunction
+
 Event OnKeyDown(Int keyCode)
+	If keyCode == KEY_DIALOG_ACTIVATE
+		PickmansWhisperMainQuestScript mainToggle = GetMain()
+		If !mainToggle
+			Debug.Notification("PickmansWhisper: Trade/Enslave toggle — main quest missing")
+			Return
+		EndIf
+		mainToggle.ToggleDialogActivateChoices()
+		Return
+	EndIf
 	If keyCode != KEY_BUTCHER
 		Return
 	EndIf

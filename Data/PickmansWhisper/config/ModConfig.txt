@@ -31,6 +31,10 @@
 #   Actor Value (0x2C5) must be >= this. Required; <=0 fails the trade gate loudly.
 # slaveryMinCha — slavery activate choice (Talk menu "Enslave"): same CHA gate. Required.
 #   Auto-enslave after Force Trade already paid victimTradeMinCha (does not re-check this).
+# Trade/Enslave/Free Talk choices are OFF by default (multi-activate menu blocks beat/attack).
+#   Press ] in-game to toggle them on/off. Pickman's Blade drawn always hides them.
+#   Force Trade close with slave gear pacifies AND auto-enslaves. Enslave/Free both toggle:
+#   Free if she is already yours, else Enslave (labels keep the multi-activate dialog).
 # E4/E5 intimacy (named Potential Victim + Necromantic scene):
 #   config/necromantic/Intimacy_Start_Named.txt + Intimacy_Start_Audio.txt
 #   config/necromantic/Intimacy_End_Named.txt + Intimacy_End_Audio.txt

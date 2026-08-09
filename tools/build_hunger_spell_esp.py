@@ -759,7 +759,11 @@ def _ctda_get_dead_eq_0() -> bytes:
 
 
 def _activate_choice_entry(label: str, priority: int = 0) -> list[bytes]:
-    """One Activate / Add Activate Choice entry (living target). priority = PRKE byte2."""
+    """One Activate / Add Activate Choice entry (living target). priority = PRKE byte2.
+
+    EPFB stays 0000 like the working Force Trade build — do not invent entry ids here;
+    SlaveryPerkScript toggles enslave/free in script (does not trust auiEntryID).
+    """
     return [
         field(b"PRKE", bytes([0x02, 0x00, priority & 0xFF])),
         # Activate (0x0E) / Add Activate Choice (0x09) / 2 condition tabs
@@ -803,7 +807,12 @@ def build_victim_trade_perk_payload() -> bytes:
 
 
 def build_slavery_perk_payload() -> bytes:
-    """PERK with Enslave (entry 0) + Free (entry 1) activate choices. Living only."""
+    """PERK with Enslave + Free labels (living). Both run the same script toggle.
+
+    FO4 opens the multi-activate dialog when Talk + Force Trade + these two are present.
+    Collapsing to one "Slavery" choice removed that dialog. auiEntryID is unreliable
+    (shared EPFB) — perk script uses IsOurSlave to Free vs Enslave for either label.
+    """
     perk_vmad = build_vmad_scripts(
         ["PickmansWhisperSlaveryPerkScript"],
         script_properties={
@@ -995,7 +1004,7 @@ def main() -> None:
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
     print(f"  PERK 0x{FID_PERK_VICTIM_TRADE:08X} PW_VictimTradeActivate (Force Trade, living)")
-    print(f"  PERK 0x{FID_PERK_SLAVERY:08X} PW_SlaveryActivate (Enslave/Free, living)")
+    print(f"  PERK 0x{FID_PERK_SLAVERY:08X} PW_SlaveryActivate (Enslave/Free labels, toggle script)")
     print(f"  OTFT 0x{FID_OTFT_EMPTY:08X} PW_EmptyOutfit")
     print("  Proximity cloak MGEF/SPEL chain retired (0x870-0x873 gap)")
     print(

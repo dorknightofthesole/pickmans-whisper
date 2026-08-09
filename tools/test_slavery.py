@@ -142,10 +142,10 @@ def test_perk_script() -> None:
     if "extends Perk" not in text:
         fail("SlaveryPerkScript must extend Perk")
     if "TryEnslaveFromActivate" not in text or "TryFreeSlaveFromActivate" not in text:
-        fail("perk must route Enslave and Free by entry id")
-    if "auiEntryID" not in text:
-        fail("perk must branch on auiEntryID")
-    ok("SlaveryPerkScript OnEntryRun -> Main Enslave/Free")
+        fail("perk must route Enslave and Free")
+    if "IsOurSlave" not in text:
+        fail("perk must toggle Free when IsOurSlave (single Slavery activate choice)")
+    ok("SlaveryPerkScript OnEntryRun -> toggle Enslave/Free")
 
 
 def test_trade_glue() -> None:
@@ -175,6 +175,8 @@ def test_main_isvalidtarget() -> None:
     sync = extract_function(text, "SyncDialogActivatePerks")
     if "SyncSlaveryActivatePerk" not in sync:
         fail("SyncDialogActivatePerks must sync Slavery perk")
+    if "DialogActivateChoicesEnabled" not in sync:
+        fail("Slavery activate perk must honor DialogActivateChoicesEnabled toggle")
     ok("IsValidTarget teammate exception + companion faction reject + blade perk sync")
 
 
@@ -186,7 +188,11 @@ def test_player_alias_warp() -> None:
         fail("PlayerAlias must RegisterForRemoteEvent OnLocationChange")
     if "WarpSlaveToPlayerIfNeeded" not in text:
         fail("PlayerAlias OnLocationChange must call WarpSlaveToPlayerIfNeeded")
-    ok("PlayerAlias location change warps slave")
+    if "KEY_DIALOG_ACTIVATE" not in text or "221" not in text:
+        fail("PlayerAlias must bind dialog-activate toggle key VK 221 (])")
+    if "ToggleDialogActivateChoices" not in text:
+        fail("PlayerAlias OnKeyDown must ToggleDialogActivateChoices")
+    ok("PlayerAlias location warp + dialog activate toggle key")
 
 
 def test_esp_builder() -> None:
@@ -196,9 +202,11 @@ def test_esp_builder() -> None:
     if "PW_SlaveryActivate" not in text:
         fail("ESP builder must emit PW_SlaveryActivate EDID")
     if '_activate_choice_entry("Enslave"' not in text and 'zstr("Enslave")' not in text:
-        fail('ESP builder must set activate label Enslave')
+        fail('ESP builder must set activate label Enslave (multi-activate dialog budget)')
     if '_activate_choice_entry("Free"' not in text and 'zstr("Free")' not in text:
-        fail('ESP builder must set activate label Free')
+        fail('ESP builder must set activate label Free (multi-activate dialog budget)')
+    if '_activate_choice_entry("Slavery"' in text:
+        fail("ESP must not use single Slavery label — breaks multi-activate dialog")
     if '"PickmansWhisperSlaveryScript"' not in text:
         fail("ESP builder must attach SlaveryScript to Main VMAD")
     if "PickmansWhisperSlaveryPerkScript" not in text:

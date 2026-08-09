@@ -68,12 +68,13 @@ Function SyncSlaveryActivatePerk(Bool abAllowDialog)
 EndFunction
 
 Function EnsureSlaveryPerk()
+	; Honor Main toggle + blade gate (default OFF so beat/attack keep a clean activate).
 	PickmansWhisperMainQuestScript m = Main()
-	Bool allow = True
-	If m && m.IsBladeEquipped()
-		allow = False
+	If m
+		m.SyncDialogActivatePerks()
+	Else
+		SyncSlaveryActivatePerk(False)
 	EndIf
-	SyncSlaveryActivatePerk(allow)
 EndFunction
 
 ; True if any inventory/worn item display name contains "slave" (case-insensitive). SSOT.
@@ -266,10 +267,15 @@ Function StartSlavery(Actor akTarget)
 	If Slave && Slave != akTarget
 		ClearSlave("replaced")
 	EndIf
-	If IsOurSlave(akTarget) && akTarget.IsPlayerTeammate()
+	If IsOurSlave(akTarget)
+		; Refresh pacify/follow; always toast so activate/"Enslave" never looks dead.
 		PacifyForSlavery(akTarget)
+		If !akTarget.IsPlayerTeammate()
+			akTarget.SetPlayerTeammate(True, False, False)
+		EndIf
 		StartSlaveFollowLoop()
 		Debug.Trace("PickmansWhisper: slavery already active id=" + akTarget.GetFormID())
+		Debug.Notification("PickmansWhisper: Already enslaved — she follows")
 		Return
 	EndIf
 	Slave = akTarget

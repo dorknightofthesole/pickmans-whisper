@@ -62,12 +62,13 @@ Function SyncTradeActivatePerk(Bool abAllowDialog)
 EndFunction
 
 Function EnsureTradePerk()
+	; Honor Main toggle + blade gate (default OFF so beat/attack keep a clean activate).
 	PickmansWhisperMainQuestScript m = Main()
-	Bool allow = True
-	If m && m.IsBladeEquipped()
-		allow = False
+	If m
+		m.SyncDialogActivatePerks()
+	Else
+		SyncTradeActivatePerk(False)
 	EndIf
-	SyncTradeActivatePerk(allow)
 EndFunction
 
 Outfit Function ResolveEmptyOutfit()
@@ -173,7 +174,8 @@ Function MaybePacifyIfSlaveGear(Actor akTarget)
 	akTarget.SetRelationshipRank(player, 1)
 	akTarget.EvaluatePackage()
 	Debug.Trace("PickmansWhisper: trade pacify | slave gear on id=" + akTarget.GetFormID())
-	Debug.Notification("PickmansWhisper: She yields — slave gear")
+	; Enslave toast comes from SyncSlaveryFromSlaveGear → StartSlavery (same close).
+	Debug.Notification("PickmansWhisper: She yields — enslaving")
 EndFunction
 
 ; Best-effort — auto-enslave / free via Slavery after Trade close; must not skip pacify.
