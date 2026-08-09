@@ -4,12 +4,13 @@
 Locks:
   - ModConfig eatRipeCorpseToast ships with {name} support
   - LoadModConfig parses eatRipeCorpseToast
-  - MainQuestScript.MaybeToastEatRipeCorpse: Cannibal-perk gate, {name} -> "her" fallback
-    when unnamed, once-per-game-hour shared cooldown, no MCM toggle (ModConfig-only)
-  - PlayerHasCannibalPerk checks all three Fallout4.esm Cannibal ranks (additive ranks)
+  - CorpseDecayScript.MaybeToastEatRipeCorpse: Cannibal-perk gate via Main,
+    {name} -> "her" fallback when unnamed, once-per-game-hour shared cooldown,
+    MessageBox delivery, no MCM toggle (ModConfig-only)
+  - Main.PlayerHasCannibalPerk checks all three Fallout4.esm Cannibal ranks
   - ResolveVanillaForms lazy-loads the three Cannibal perk forms from Fallout4.esm
-  - CorpseDecay HandleCorpseDecay calls MaybeToastEatRipeCorpse when the corpse is
-    AT the max decay stage (not gated on stage-changed)
+  - HandleCorpseDecay calls MaybeToastEatRipeCorpse locally at max decay stage
+  - Main must NOT own MaybeToastEatRipeCorpse / eat-ripe cooldown vars
   - tools/stubs/Actor.psc declares HasPerk(Perk) Native; tools/stubs/Perk.psc exists
 
 Usage:
@@ -93,14 +94,19 @@ def test_modconfig() -> None:
     ok("ModConfig eatRipeCorpseToast ships with {name}")
 
 
-def test_main_wiring() -> None:
+def test_main_shared_helpers() -> None:
     text = MAIN.read_text(encoding="utf-8", errors="replace")
     modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
     load_cfg = extract_function(modcfg, "LoadModConfig")
     if 'key == "eatRipeCorpseToast"' not in load_cfg:
         fail("LoadModConfig must parse eatRipeCorpseToast")
 
-    for name in ("PlayerHasCannibalPerk", "MaybeToastEatRipeCorpse", "ResolveVanillaForms"):
+    if "Function MaybeToastEatRipeCorpse" in text:
+        fail("MaybeToastEatRipeCorpse must live on CorpseDecayScript, not Main")
+    if "LastEatRipeCorpseToastGameTime" in text or "EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS" in text:
+        fail("eat-ripe cooldown vars must live on CorpseDecayScript, not Main")
+
+    for name in ("PlayerHasCannibalPerk", "ResolveVanillaForms"):
         extract_function(text, name)
 
     resolve = extract_function(text, "ResolveVanillaForms")
@@ -120,9 +126,22 @@ def test_main_wiring() -> None:
         if f"HasPerk({perk})" not in has_perk:
             fail(f"PlayerHasCannibalPerk must check HasPerk({perk}) (ranks are additive)")
 
-    toast = extract_function(text, "MaybeToastEatRipeCorpse")
-    if "PlayerHasCannibalPerk()" not in toast:
-        fail("MaybeToastEatRipeCorpse must gate on PlayerHasCannibalPerk")
+    if "EatRipeCorpseToast = \"\"" not in load_cfg:
+        fail("LoadModConfig must reset EatRipeCorpseToast at the top like the other ModConfig strings")
+
+    ok("Main keeps Cannibal helpers; eat-ripe toast not on Main")
+
+
+def test_corpse_decay_toast() -> None:
+    decay = DECAY.read_text(encoding="utf-8", errors="replace")
+    if "EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0" not in decay:
+        fail("EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS must be 1.0 on CorpseDecayScript")
+    if "LastEatRipeCorpseToastGameTime" not in decay:
+        fail("CorpseDecayScript must own LastEatRipeCorpseToastGameTime")
+
+    toast = extract_function(decay, "MaybeToastEatRipeCorpse")
+    if "m.PlayerHasCannibalPerk()" not in toast:
+        fail("MaybeToastEatRipeCorpse must gate on Main.PlayerHasCannibalPerk")
     if "GetVictimOverrideName" not in toast:
         fail("MaybeToastEatRipeCorpse must resolve the victim's override name")
     if '= "her"' not in toast:
@@ -135,47 +154,33 @@ def test_main_wiring() -> None:
         fail("MaybeToastEatRipeCorpse must gate on EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS")
     if "GetCurrentGameTime" not in toast:
         fail("MaybeToastEatRipeCorpse cooldown must use game time (Utility.GetCurrentGameTime)")
-    if "Debug.Notification" not in toast:
-        fail("MaybeToastEatRipeCorpse must Debug.Notification the toast")
-    if "EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0" not in text:
-        fail("EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS must be 1.0 (once per game-hour)")
+    if "Debug.MessageBox(line)" not in toast:
+        fail("MaybeToastEatRipeCorpse must Debug.MessageBox the eat urge")
+    if "Debug.Notification(line)" in toast:
+        fail("MaybeToastEatRipeCorpse must not use bare Notification for the eat urge")
 
-    # Every early-return must Trace why — silent skips cost a full log-archaeology round
-    # trip to diagnose (see: the ModConfig-not-reloaded bug this locked down).
     for needle in (
         "eat-ripe-corpse skip | no eatRipeCorpseToast",
         "eat-ripe-corpse skip | player lacks Cannibal perk",
         "eat-ripe-corpse skip | cooldown",
         "eat-ripe-corpse skip | empty line after placeholder",
+        "eat-ripe-corpse skip | Main missing",
     ):
         if needle not in toast:
             fail(f"MaybeToastEatRipeCorpse must Trace {needle!r} (no silent skip)")
 
-    if 'MCM.GetModSettingBool(MOD_NAME, "bEatRipeCorpseToast' in text:
+    if 'MCM.GetModSettingBool(MOD_NAME, "bEatRipeCorpseToast' in decay:
         fail("P4 toast is ModConfig-only (empty key = off) — no MCM toggle expected")
 
-    # EnsureDecayStagesLoaded short-circuits LoadModConfig once decay stages already look
-    # "ready" (persisted from an earlier load) — a brand-new ModConfig key added later in
-    # the same save never gets read until something forces LoadModConfig to run again
-    # (MCM Voice > Reload line banks, or a fresh load). LoadModConfig's own reset block
-    # must clear EatRipeCorpseToast like every other ModConfig string, so a key removed
-    # on a later reload doesn't leave a stale toast behind.
-    modcfg = MODCFG.read_text(encoding="utf-8", errors="replace")
-    load_cfg = extract_function(modcfg, "LoadModConfig")
-    if "EatRipeCorpseToast = \"\"" not in load_cfg:
-        fail("LoadModConfig must reset EatRipeCorpseToast at the top like the other ModConfig strings")
-
-    ok("MainQuestScript ModConfig parse + Cannibal perk gate + {name}/her toast wiring")
-
-
-def test_ambient_dispatch() -> None:
-    decay = DECAY.read_text(encoding="utf-8", errors="replace")
     handle = extract_function(decay, "HandleCorpseDecay")
-    if "MaybeToastEatRipeCorpse" not in handle:
-        fail("HandleCorpseDecay must call MaybeToastEatRipeCorpse for corpses at max stage")
+    if "MaybeToastEatRipeCorpse(akCorpse)" not in handle:
+        fail("HandleCorpseDecay must call MaybeToastEatRipeCorpse locally")
+    if "m.MaybeToastEatRipeCorpse" in handle:
+        fail("HandleCorpseDecay must not call Main.MaybeToastEatRipeCorpse")
     if "ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)" not in handle:
         fail("HandleCorpseDecay must check max decay stage (DECAY_STAGE_COUNT - 1) before nagging")
-    ok("HandleCorpseDecay calls MaybeToastEatRipeCorpse at max stage")
+
+    ok("CorpseDecayScript owns MaybeToastEatRipeCorpse + HandleCorpseDecay wiring")
 
 
 def test_stubs() -> None:
@@ -255,8 +260,8 @@ def main() -> int:
     if not MAIN.is_file() or not DECAY.is_file():
         fail("missing MainQuestScript or CorpseDecayScript PSC")
     test_modconfig()
-    test_main_wiring()
-    test_ambient_dispatch()
+    test_main_shared_helpers()
+    test_corpse_decay_toast()
     test_stubs()
     test_deploy_gate()
     test_esm(find_esm(args.esm))

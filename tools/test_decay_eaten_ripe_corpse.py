@@ -55,6 +55,7 @@ from _env import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 MODCFG = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperModConfigScript.psc"
 ALIAS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
@@ -185,22 +186,30 @@ def test_main_wiring() -> None:
     if 'id == "bSniffMagicEffects:Debug"' not in extract_function(text, "OnMCMSettingChange"):
         fail("OnMCMSettingChange must dispatch bSniffMagicEffects:Debug to SyncMagicEffectSniffer")
 
-    reward = extract_function(text, "MaybeRewardEatenRipeCorpse")
+    facade = extract_function(text, "MaybeRewardEatenRipeCorpse")
+    if "CorpseDecay()" not in facade:
+        fail("Main MaybeRewardEatenRipeCorpse must facade via CorpseDecay()")
+    decay_txt = DECAY.read_text(encoding="utf-8", errors="replace")
+    reward = extract_function(decay_txt, "MaybeRewardEatenRipeCorpse")
     if "PlayerHasCannibalPerk()" not in reward:
         fail("MaybeRewardEatenRipeCorpse must gate on PlayerHasCannibalPerk (RestoreHealthGeneric is not cannibal-exclusive)")
     if "scan.ScanDead" not in reward or "KillerScan()" not in reward:
         fail("MaybeRewardEatenRipeCorpse must resolve nearest corpse from KillerScan().ScanDead")
     if "FindActors" in reward:
         fail("MaybeRewardEatenRipeCorpse must not FindActors (reuse ScanDead)")
-    if "BUTCHER_CORPSE_RADIUS" not in reward:
-        fail("MaybeRewardEatenRipeCorpse must cap nearest-corpse search at BUTCHER_CORPSE_RADIUS")
+    if "butcherR" not in reward and "BUTCHER_CORPSE_RADIUS" not in reward:
+        fail("MaybeRewardEatenRipeCorpse must cap nearest-corpse search at butcher range (500)")
     if "PlayerRef.GetDistance(ak)" not in reward:
         fail("MaybeRewardEatenRipeCorpse must pick the nearest corpse via GetDistance (two ripe corpses in one room must disambiguate)")
     if "FindDecayKillSlot(formId)" not in reward:
         fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be tracked")
     stage_check_idx = reward.find(
-        "ResolveDecayStageForKill(formId) != (ModConfigAlias.DECAY_STAGE_COUNT - 1)"
+        "ResolveDecayStageForKill(formId) != (m.ModConfigAlias.DECAY_STAGE_COUNT - 1)"
     )
+    if stage_check_idx < 0:
+        stage_check_idx = reward.find(
+            "ResolveDecayStageForKill(formId) != (ModConfigAlias.DECAY_STAGE_COUNT - 1)"
+        )
     if stage_check_idx < 0:
         fail("MaybeRewardEatenRipeCorpse must require the nearest corpse be at max decay stage")
     if "ToastAteRipeCorpse(nearest)" not in reward or "ApplyEatRipeCorpseBonus(nearest)" not in reward:
@@ -225,7 +234,7 @@ def test_main_wiring() -> None:
         if needle not in reward:
             fail(f"MaybeRewardEatenRipeCorpse must Trace {needle!r} (no silent skip)")
 
-    toast = extract_function(text, "ToastAteRipeCorpse")
+    toast = extract_function(decay_txt, "ToastAteRipeCorpse")
     if "GetVictimOverrideName" not in toast:
         fail("ToastAteRipeCorpse must resolve the victim's override name")
     if '= "She"' not in toast:
@@ -241,7 +250,7 @@ def test_main_wiring() -> None:
         if needle not in toast:
             fail(f"ToastAteRipeCorpse must Trace {needle!r} (no silent skip)")
 
-    bonus = extract_function(text, "ApplyEatRipeCorpseBonus")
+    bonus = extract_function(decay_txt, "ApplyEatRipeCorpseBonus")
     if "BuffTracker()" not in bonus or "ApplyEatRipeCorpseEndBuff()" not in bonus:
         fail("ApplyEatRipeCorpseBonus must delegate to BuffTracker().ApplyEatRipeCorpseEndBuff")
 

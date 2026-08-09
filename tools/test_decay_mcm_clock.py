@@ -134,7 +134,10 @@ def test_reset_is_now_then_apply_subtracts_start_hours() -> None:
 
 def test_force_clock_uses_exact_start_hours() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    force = extract_function(main, "ForceDecayKillClockToStage")
+    decay = (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc").read_text(encoding="utf-8", errors="replace")
+    if "CorpseDecay()" not in extract_function(main, "ForceDecayKillClockToStage"):
+        fail("Main ForceDecayKillClockToStage must facade via CorpseDecay()")
+    force = extract_function(decay, "ForceDecayKillClockToStage")
     if "GetDecayStageStartHours" not in force:
         fail("ForceDecayKillClockToStage must read GetDecayStageStartHours")
     if "elapsedH / 24.0" not in force and "needH / 24.0" not in force:

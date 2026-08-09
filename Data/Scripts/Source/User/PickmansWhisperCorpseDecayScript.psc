@@ -59,6 +59,10 @@ Bool FaceArmorBanksLoaded = False
 String FaceArmorLoadStatus = ""
 String Property LastCorpseDecayStatus = "" Auto
 
+; Slice H P4 — eat-ripe nag cooldown (shared across all ripe corpses).
+Float LastEatRipeCorpseToastGameTime = 0.0
+Float EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS = 1.0
+
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
 EndFunction
@@ -143,7 +147,7 @@ Function RunPendingAimedDecayApply()
 	OverlaySyncBusy = False
 	PickmansWhisperMainQuestScript m = Main()
 	If m
-		m.WriteDecayStageStatusToMcmForActor(ak, False)
+		WriteDecayStageStatusToMcmForActor(ak, False)
 	EndIf
 	Debug.Trace("PickmansWhisper: AimedDecayApply done formId=" + formId + " | " + LastCorpseDecayStatus)
 EndFunction
@@ -210,13 +214,13 @@ Function HandleCorpseDecay(Actor akCorpse)
 	OverlaySyncBusySince = now
 	Int id = akCorpse.GetFormID()
 	Debug.Trace("PickmansWhisper: HandleCorpseDecay begin formId=" + id + " code=" + AimedDecayApplyCode)
-	If id != 0 && m.FindDecayKillSlot(id) < 0
-		m.EnsureDecayForTrackedVictim(akCorpse, False)
+	If id != 0 && FindDecayKillSlot(id) < 0
+		EnsureDecayForTrackedVictim(akCorpse, False)
 	EndIf
-	If id != 0 && m.FindDecayKillSlot(id) >= 0
+	If id != 0 && FindDecayKillSlot(id) >= 0
 		SyncDecayForKnifeCorpse(akCorpse)
-		If m.ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)
-			m.MaybeToastEatRipeCorpse(akCorpse)
+		If ResolveDecayStageForKill(id) == (DECAY_STAGE_COUNT - 1)
+			MaybeToastEatRipeCorpse(akCorpse)
 		EndIf
 	Else
 		Debug.Trace("PickmansWhisper: HandleCorpseDecay skip | no kill slot formId=" + id)
@@ -225,12 +229,478 @@ Function HandleCorpseDecay(Actor akCorpse)
 	Debug.Trace("PickmansWhisper: HandleCorpseDecay done formId=" + id + " | " + LastCorpseDecayStatus)
 EndFunction
 
+; Slice H P4 — Cannibal-perk nag at Black Putrefaction. Once-per-game-hour shared
+; cooldown across all ripe corpses (not gated on stage-changed). Shared helpers via Main().
+Function MaybeToastEatRipeCorpse(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | Main missing")
+		Return
+	EndIf
+	If !m.ModConfigAlias || !m.ModConfigAlias.EatRipeCorpseToast || GardenOfEden.StrLength(m.ModConfigAlias.EatRipeCorpseToast) < 1
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | no eatRipeCorpseToast (ModConfig not loaded / key empty)")
+		Return
+	EndIf
+	If !m.PlayerHasCannibalPerk()
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | player lacks Cannibal perk")
+		Return
+	EndIf
+	Float now = Utility.GetCurrentGameTime()
+	If (now - LastEatRipeCorpseToastGameTime) < (EAT_RIPE_CORPSE_TOAST_MIN_GAME_HOURS / 24.0)
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | cooldown formId=" + akCorpse.GetFormID())
+		Return
+	EndIf
+	String overrideName = m.GetVictimOverrideName(akCorpse)
+	If !overrideName
+		overrideName = "her"
+	EndIf
+	If !m.VoiceAlias
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | VoiceAlias unbound")
+		Return
+	EndIf
+	String line = m.VoiceAlias.ApplyNamePlaceholder(m.ModConfigAlias.EatRipeCorpseToast, overrideName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		Debug.Trace("PickmansWhisper: eat-ripe-corpse skip | empty line after placeholder")
+		Return
+	EndIf
+	LastEatRipeCorpseToastGameTime = now
+	; MessageBox — Notification was easy to miss under LooksMenu decay spam (confirmed live).
+	Debug.MessageBox(line)
+	Debug.Trace("PickmansWhisper: eat-ripe-corpse toast | " + line)
+EndFunction
+
+; Named/tracked victim with no decay clock → stamp Freshly Deceased.
+; Kill registry lives on this script; Victims list stays on Main.
+; abApplyOverlays=False from HandleCorpseDecay / MCM format; True for explicit apply paths.
+Bool Function EnsureDecayForTrackedVictim(Actor ak, Bool abApplyOverlays = True)
+	If !ak || !ak.IsDead()
+		Return False
+	EndIf
+	Actor player = Game.GetPlayer()
+	If ak == player
+		Return False
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Debug.Trace("PickmansWhisper: ERROR EnsureDecayForTrackedVictim — Main missing")
+		Return False
+	EndIf
+	If m.IsNonGameplayCorpse(ak)
+		Return False
+	EndIf
+	Int formId = ak.GetFormID()
+	If formId == 0 || m.FindVictimSlot(formId) < 0
+		Return False
+	EndIf
+	If FindDecayKillSlot(formId) >= 0
+		Return False
+	EndIf
+	StampDecayKill(ak)
+	; Never LooksMenu-apply from MCM / hot TargetScan — stalls voice + menu.
+	If !abApplyOverlays || Utility.IsInMenuMode()
+		Debug.Trace("PickmansWhisper: decay clock stamped (tracked victim, overlays deferred) id=0x" + GardenOfEden.GetHexFormID(ak))
+		Return True
+	EndIf
+	SyncDecayForKnifeCorpse(ak)
+	If GetDecayKillLastStage(formId) < 0
+		Debug.Notification("Pickman's Whisper: Freshly Deceased overlays failed — " + LastCorpseDecayStatus)
+		Debug.Trace("PickmansWhisper: ERROR EnsureDecayForTrackedVictim overlays pending id=0x" + GardenOfEden.GetHexFormID(ak) + " | " + LastCorpseDecayStatus)
+	Else
+		Debug.Trace("PickmansWhisper: decay clock + stage overlays started (tracked victim) id=0x" + GardenOfEden.GetHexFormID(ak) + " applied=" + GetDecayKillLastStage(formId))
+	EndIf
+	Return True
+EndFunction
+
+
+; Knife-kill decay registry (credited ProcessKnifeKill only). Cap + FIFO eviction.
+Int DECAY_KILL_MAX = 32
+Int[] DecayKillIds
+Float[] DecayKillGameTime
+Int[] DecayKillLastStage ; -1 = never applied
+Int DecayKillSlotCount = 0
+
+Int Function GetDecayKillSlotCount()
+	EnsureDecayKillLists()
+	Return DecayKillSlotCount
+EndFunction
+
+
+String Function FormatNoAimVictimsAimLine()
+	EnsureDecayKillLists()
+	If DecayKillSlotCount < 1
+		Return ""
+	EndIf
+	Int lastId = DecayKillIds[DecayKillSlotCount - 1]
+	String hexId = "" + lastId
+	Form lastForm = Game.GetForm(lastId)
+	If lastForm
+		hexId = GardenOfEden.GetHexFormID(lastForm)
+	EndIf
+	Return "(no aim cache) last knife kill id=0x" + hexId
+EndFunction
+
+
+Function WriteDecayStageStatusToMcmForActor(Actor ak, Bool abSyncStepper = True)
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	If ak
+		String line = FormatDecayStageStatusForActor(ak)
+		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", line)
+		Debug.Trace("PickmansWhisper: WriteDecayStageStatus aim id=0x" + GardenOfEden.GetHexFormID(ak) + " syncStepper=" + abSyncStepper + " | " + line)
+		If abSyncStepper
+			SyncVictimDecayStageStepper(ak.GetFormID())
+		EndIf
+		Return
+	EndIf
+	EnsureDecayKillLists()
+	If DecayKillSlotCount > 0
+		Int lastId = DecayKillIds[DecayKillSlotCount - 1]
+		String line = FormatDecayStageStatusForFormId(lastId, "last kill") + " (no aim)"
+		MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", line)
+		Debug.Trace("PickmansWhisper: WriteDecayStageStatus no-aim lastId=" + lastId + " syncStepper=" + abSyncStepper + " | " + line)
+		If abSyncStepper
+			SyncVictimDecayStageStepper(lastId)
+		EndIf
+		Return
+	EndIf
+	MCM.SetModSettingString(MOD_NAME, "sDecayStage:Victims", "(no aim / no knife kills tracked)")
+	Debug.Trace("PickmansWhisper: WriteDecayStageStatus empty (no aim / no knife kills)")
+EndFunction
+
+
+Function EnsureDecayKillLists()
+	If !DecayKillIds || DecayKillIds.Length != DECAY_KILL_MAX
+		DecayKillIds = new Int[32]
+		DecayKillGameTime = new Float[32]
+		DecayKillLastStage = new Int[32]
+		DecayKillSlotCount = 0
+	EndIf
+EndFunction
+
+
+Int Function FindDecayKillSlot(Int formId)
+	If formId == 0
+		Return -1
+	EndIf
+	EnsureDecayKillLists()
+	Int i = 0
+	While i < DecayKillSlotCount
+		If DecayKillIds[i] == formId
+			Return i
+		EndIf
+		i += 1
+	EndWhile
+	Return -1
+EndFunction
+
+
+Function EvictOldestDecayKill()
+	EnsureDecayKillLists()
+	If DecayKillSlotCount <= 0
+		Return
+	EndIf
+	Int j = 0
+	While j < DecayKillSlotCount - 1
+		DecayKillIds[j] = DecayKillIds[j + 1]
+		DecayKillGameTime[j] = DecayKillGameTime[j + 1]
+		DecayKillLastStage[j] = DecayKillLastStage[j + 1]
+		j += 1
+	EndWhile
+	DecayKillSlotCount -= 1
+EndFunction
+
+
+Function StampDecayKill(Actor victim)
+	If !victim
+		Return
+	EndIf
+	Int formId = victim.GetFormID()
+	If formId == 0
+		Return
+	EndIf
+	EnsureDecayKillLists()
+	Float now = Utility.GetCurrentGameTime()
+	Int slot = FindDecayKillSlot(formId)
+	If slot >= 0
+		DecayKillGameTime[slot] = now
+		DecayKillLastStage[slot] = -1
+		Return
+	EndIf
+	If DecayKillSlotCount >= DECAY_KILL_MAX
+		EvictOldestDecayKill()
+	EndIf
+	If DecayKillSlotCount >= DECAY_KILL_MAX
+		Return
+	EndIf
+	DecayKillIds[DecayKillSlotCount] = formId
+	DecayKillGameTime[DecayKillSlotCount] = now
+	DecayKillLastStage[DecayKillSlotCount] = -1
+	DecayKillSlotCount += 1
+EndFunction
+
+
+Float Function GetDecayKillGameTime(Int formId)
+	Int slot = FindDecayKillSlot(formId)
+	If slot < 0
+		Return -1.0
+	EndIf
+	Return DecayKillGameTime[slot]
+EndFunction
+
+
+Int Function GetDecayKillLastStage(Int formId)
+	Int slot = FindDecayKillSlot(formId)
+	If slot < 0
+		Return -1
+	EndIf
+	Return DecayKillLastStage[slot]
+EndFunction
+
+
+Function SetDecayKillLastStage(Int formId, Int aiStage)
+	Int slot = FindDecayKillSlot(formId)
+	If slot < 0
+		Return
+	EndIf
+	DecayKillLastStage[slot] = aiStage
+EndFunction
+
+
+Function SyncVictimDecayStageStepper(Int formId)
+	If !MCM.IsInstalled() || formId == 0
+		Return
+	EndIf
+	If FindDecayKillSlot(formId) < 0
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.ModConfigAlias || !m.ModConfigAlias.DecayStagesReady()
+		Return
+	EndIf
+	Int resolved = ResolveDecayStageForKill(formId)
+	Int applied = GetDecayKillLastStage(formId)
+	Int visual = resolved
+	If visual < 0
+		visual = applied
+	EndIf
+	If visual < 0
+		visual = 0
+	ElseIf visual > 4
+		visual = 4
+	EndIf
+	MCM.SetModSettingInt(MOD_NAME, "iVictimDecayStage:Victims", visual)
+EndFunction
+
+Bool Function ForceDecayKillClockToStage(Int formId, Int aiStage)
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.ModConfigAlias || formId == 0 || aiStage < 0 || aiStage >= m.ModConfigAlias.DECAY_STAGE_COUNT
+		Return False
+	EndIf
+	If !m.ModConfigAlias.DecayStagesReady()
+		Return False
+	EndIf
+	Int slot = FindDecayKillSlot(formId)
+	If slot < 0
+		Return False
+	EndIf
+	Float needH = m.ModConfigAlias.GetDecayStageStartHours(aiStage)
+	If needH < 0.0
+		Return False
+	EndIf
+	; Subtract startHours from now. Tiny pad when > 0 so Float round-trip still
+	; lands at/above the threshold (ResolveDecayStage uses elapsed >= startHours).
+	Float elapsedH = needH
+	If needH > 0.0
+		elapsedH = needH + 0.001
+	EndIf
+	DecayKillGameTime[slot] = Utility.GetCurrentGameTime() - (elapsedH / 24.0)
+	Return True
+EndFunction
+
+String Function FormatDecayStageStatusForFormId(Int formId, String label)
+	If formId == 0 || FindDecayKillSlot(formId) < 0
+		If label
+			Return label + " — no decay clock (Name her, then Refresh)"
+		EndIf
+		Return "(no decay clocks yet)"
+	EndIf
+	If !label
+		label = "kill"
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.ModConfigAlias || !m.ModConfigAlias.DecayStagesReady()
+		Return label + " — ModConfig stages missing"
+	EndIf
+	Int stage = ResolveDecayStageForKill(formId)
+	If stage < 0
+		Return label + " — resolve failed"
+	EndIf
+	Float killTime = GetDecayKillGameTime(formId)
+	Float elapsedH = (Utility.GetCurrentGameTime() - killTime) * 24.0
+	If elapsedH < 0.0
+		elapsedH = 0.0
+	EndIf
+	Int applied = GetDecayKillLastStage(formId)
+	String stageName = m.ModConfigAlias.GetDecayStageName(stage)
+	String line = stage + " " + stageName + " | " + elapsedH + "h"
+	If applied < 0
+		line = line + " | overlays pending"
+	ElseIf applied != stage
+		line = line + " | applied " + applied + " (stale)"
+	Else
+		line = line + " | applied " + applied
+	EndIf
+	Return line
+EndFunction
+
+String Function FormatDecayStageStatusForActor(Actor ak)
+	If !ak
+		Return "(face a corpse, then open MCM)"
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Return "(Main missing)"
+	EndIf
+	If ak == m.PlayerRef
+		Return "(player)"
+	EndIf
+	String label = ""
+	If m.VoiceAlias
+		label = m.VoiceAlias.GetActorDisplayName(ak)
+	EndIf
+	If !label
+		label = "corpse"
+	EndIf
+	If !ak.IsDead()
+		Return label + " — alive (decay starts when she dies)"
+	EndIf
+	; Stamp only while MCM open; overlays sync in-world after voice.
+	EnsureDecayForTrackedVictim(ak, False)
+	Return FormatDecayStageStatusForFormId(ak.GetFormID(), label)
+EndFunction
+
+Function WriteDecayStageStatusToMcm()
+	PickmansWhisperMainQuestScript m = Main()
+	Actor aimed = None
+	If m
+		aimed = m.ResolveVictimsAimActor()
+	EndIf
+	WriteDecayStageStatusToMcmForActor(aimed)
+EndFunction
+
+Int Function ResolveDecayStageForKill(Int formId)
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.ModConfigAlias || !m.ModConfigAlias.DecayStagesReady()
+		Return -1
+	EndIf
+	Float killTime = GetDecayKillGameTime(formId)
+	If killTime < 0.0
+		Return -1
+	EndIf
+	Float elapsedHours = (Utility.GetCurrentGameTime() - killTime) * 24.0
+	Return m.ModConfigAlias.ResolveDecayStageFromElapsedHours(elapsedHours)
+EndFunction
+
+Function MaybeRewardEatenRipeCorpse()
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.PlayerRef || !m.PlayerHasCannibalPerk()
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no Cannibal perk (heal was not from eating)")
+		Return
+	EndIf
+	PickmansWhisperKillerScanScript scan = m.KillerScan()
+	If !scan
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | KillerScan missing")
+		Return
+	EndIf
+	Actor[] dead = scan.ScanDead
+	Int deadCount = scan.ScanDeadCount
+	If !dead || deadCount <= 0
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | ScanDead empty")
+		Return
+	EndIf
+	Int n = deadCount
+	If n > 16
+		n = 16
+	EndIf
+	Actor nearest = None
+	; Match Main BUTCHER_CORPSE_RADIUS (shared butcher/eat range).
+	Float butcherR = 500.0
+	Float nearestDist = butcherR + 1.0
+	Int i = 0
+	While i < n
+		Actor ak = dead[i]
+		If ak && ak != m.PlayerRef
+			Float d = m.PlayerRef.GetDistance(ak)
+			If d < nearestDist
+				nearestDist = d
+				nearest = ak
+			EndIf
+		EndIf
+		i += 1
+	EndWhile
+	If !nearest
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no corpse within " + butcherR)
+		Return
+	EndIf
+	Int formId = nearest.GetFormID()
+	If FindDecayKillSlot(formId) < 0
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse untracked formId=" + formId)
+		Return
+	EndIf
+	If !m.ModConfigAlias || ResolveDecayStageForKill(formId) != (m.ModConfigAlias.DECAY_STAGE_COUNT - 1)
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | nearest corpse not max stage formId=" + formId)
+		Return
+	EndIf
+	ToastAteRipeCorpse(nearest)
+	ApplyEatRipeCorpseBonus(nearest)
+EndFunction
+
+Function ToastAteRipeCorpse(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.ModConfigAlias || !m.ModConfigAlias.AteRipeCorpseToast || GardenOfEden.StrLength(m.ModConfigAlias.AteRipeCorpseToast) < 1
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | no ateRipeCorpseToast (ModConfig not loaded / key empty)")
+		Return
+	EndIf
+	String overrideName = m.GetVictimOverrideName(akCorpse)
+	If !overrideName
+		overrideName = "She"
+	EndIf
+	If !m.VoiceAlias
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | VoiceAlias unbound")
+		Return
+	EndIf
+	String line = m.VoiceAlias.ApplyNamePlaceholder(m.ModConfigAlias.AteRipeCorpseToast, overrideName)
+	If !line || GardenOfEden.StrLength(line) < 1
+		Debug.Trace("PickmansWhisper: eaten-ripe-corpse skip | empty line after placeholder")
+		Return
+	EndIf
+	Debug.Notification(line)
+	Debug.Trace("PickmansWhisper: eaten-ripe-corpse toast | " + line + " formId=" + akCorpse.GetFormID())
+EndFunction
+
+Function ApplyEatRipeCorpseBonus(Actor akCorpse)
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		Debug.Trace("PickmansWhisper: ERROR ApplyEatRipeCorpseBonus — Main missing")
+		Return
+	EndIf
+	PickmansWhisperBuffTrackerScript buffs = m.BuffTracker()
+	If !buffs
+		Debug.Trace("PickmansWhisper: ERROR ApplyEatRipeCorpseBonus — BuffTracker missing")
+		Return
+	EndIf
+	buffs.ApplyEatRipeCorpseEndBuff()
+EndFunction
+
 Function SetCorpseDecayStatus(String reason)
 	LastCorpseDecayStatus = reason
-	PickmansWhisperMainQuestScript m = Main()
-	If m
-		m.LastCorpseDecayStatus = reason
-	EndIf
 	; Status is Trace + MCM string only — overlay Apply must not spam the HUD.
 	Debug.Trace("PickmansWhisper: corpse decay | " + reason)
 EndFunction
@@ -1725,7 +2195,7 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 		Return
 	EndIf
 	Int formId = akCorpse.GetFormID()
-	If formId == 0 || m.FindDecayKillSlot(formId) < 0
+	If formId == 0 || FindDecayKillSlot(formId) < 0
 		Debug.Trace("PickmansWhisper: SyncDecay skip | no kill slot formId=" + formId)
 		Return
 	EndIf
@@ -1739,12 +2209,12 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 		Debug.Trace("PickmansWhisper: ERROR SyncDecayForKnifeCorpse — " + LastCorpseDecayStatus)
 		Return
 	EndIf
-	Int stage = m.ResolveDecayStageForKill(formId)
+	Int stage = ResolveDecayStageForKill(formId)
 	If stage < 0
 		Debug.Trace("PickmansWhisper: SyncDecay skip | resolve failed formId=" + formId)
 		Return
 	EndIf
-	Int last = m.GetDecayKillLastStage(formId)
+	Int last = GetDecayKillLastStage(formId)
 	If stage == last
 		Debug.Trace("PickmansWhisper: SyncDecay skip | stage==last stage=" + stage + " formId=" + formId)
 		Return
@@ -1763,9 +2233,9 @@ Function SyncDecayForKnifeCorpse(Actor akCorpse)
 	EndIf
 	If ApplyDecayStageOverlays(akCorpse, stage)
 		; MCM may ForceDecay mid-LooksMenu Wait — only stamp LastStage if clock still matches.
-		Int stageNow = m.ResolveDecayStageForKill(formId)
+		Int stageNow = ResolveDecayStageForKill(formId)
 		If stageNow == stage
-			m.SetDecayKillLastStage(formId, stage)
+			SetDecayKillLastStage(formId, stage)
 			SetCorpseDecayStatus("knife sync stage " + stage + " " + cfg.GetDecayStageName(stage) + " formId=" + formId + " | " + LastCorpseDecayStatus)
 			Debug.Trace("PickmansWhisper: " + LastCorpseDecayStatus)
 		Else

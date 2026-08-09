@@ -42,10 +42,13 @@ def extract_function(src: str, name: str) -> str:
 
 def test_registry_and_stamp() -> None:
     main = MAIN.read_text(encoding="utf-8", errors="replace")
-    if "DECAY_KILL_MAX = 32" not in main:
-        fail("Main must DECAY_KILL_MAX = 32")
-    if "DecayKillIds" not in main or "DecayKillGameTime" not in main or "DecayKillLastStage" not in main:
-        fail("Main must declare DecayKillIds / GameTime / LastStage")
+    decay = DECAY.read_text(encoding="utf-8", errors="replace")
+    if "DECAY_KILL_MAX = 32" not in decay:
+        fail("CorpseDecay must DECAY_KILL_MAX = 32")
+    if "DecayKillIds" not in decay or "DecayKillGameTime" not in decay or "DecayKillLastStage" not in decay:
+        fail("CorpseDecay must declare DecayKillIds / GameTime / LastStage")
+    if "DecayKillIds" in main or "DECAY_KILL_MAX" in main:
+        fail("Main must not own DecayKill registry arrays (CorpseDecay SSOT)")
     for name in (
         "StampDecayKill",
         "FindDecayKillSlot",
@@ -55,8 +58,13 @@ def test_registry_and_stamp() -> None:
         "ResolveDecayStageForKill",
         "EvictOldestDecayKill",
     ):
-        extract_function(main, name)
-    stamp = extract_function(main, "StampDecayKill")
+        extract_function(decay, name)
+    # Main keeps thin façades for Victims / ProcessKnifeKill.
+    for name in ("StampDecayKill", "FindDecayKillSlot", "ResolveDecayStageForKill"):
+        facade = extract_function(main, name)
+        if "CorpseDecay()" not in facade:
+            fail(f"Main.{name} must façade via CorpseDecay()")
+    stamp = extract_function(decay, "StampDecayKill")
     if "GetCurrentGameTime" not in stamp:
         fail("StampDecayKill must stamp Utility.GetCurrentGameTime")
     if "LastKnifeActivityGameTime" in stamp:
@@ -99,17 +107,25 @@ def test_killscan_sync() -> None:
         fail("HandleKillerScanKnifeAimWarm must not own voice (VoiceAlias does)")
     if "StartDecaySyncLoop" in main:
         fail("retire StartDecaySyncLoop — overlays via HandleCorpseDecay")
-    if "Function SyncOverlaysFromKillerScanSnapshot" in main or "SyncOverlaysFromKillerScanSnapshot" in extract_function(main, "SyncNearbyKnifeDecayOverlays"):
-        fail("Main SyncNearbyKnifeDecayOverlays must not call SyncOverlaysFromKillerScanSnapshot (retired)")
+    if "SyncNearbyKnifeDecayOverlays" in main:
+        fail("SyncNearbyKnifeDecayOverlays must be fully removed (HandleCorpseDecay owns ambient)")
+    if "Function SyncOverlaysFromKillerScanSnapshot" in main:
+        fail("SyncOverlaysFromKillerScanSnapshot must stay retired")
 
-    ensure = extract_function(main, "EnsureDecayForTrackedVictim")
+    if "Function EnsureDecayForTrackedVictim" in main:
+        fail("EnsureDecayForTrackedVictim must live on CorpseDecayScript, not Main")
+    decay = DECAY.read_text(encoding="utf-8", errors="replace")
+    ensure = extract_function(decay, "EnsureDecayForTrackedVictim")
     if "FindVictimSlot" not in ensure or "StampDecayKill" not in ensure:
-        fail("EnsureDecayForTrackedVictim must FindVictimSlot + StampDecayKill")
+        fail("EnsureDecayForTrackedVictim must FindVictimSlot (Main) + StampDecayKill (local)")
     if "abApplyOverlays" not in ensure:
         fail("EnsureDecayForTrackedVictim must take abApplyOverlays (NoWait stamps without LooksMenu)")
     if "IsNonGameplayCorpse" not in ensure:
         fail("EnsureDecayForTrackedVictim must skip bed/lab corpses")
-    decay = DECAY.read_text(encoding="utf-8", errors="replace")
+    if "IsInMenuMode" not in ensure:
+        fail("EnsureDecayForTrackedVictim must defer overlays while MCM open")
+    if "SyncDecayForKnifeCorpse" not in ensure:
+        fail("EnsureDecayForTrackedVictim must SyncDecayForKnifeCorpse when overlays allowed")
     if "Function SyncOverlaysFromKillerScanSnapshot" in decay:
         fail("SyncOverlaysFromKillerScanSnapshot retired — use HandleCorpseDecay(Actor)")
     handle = extract_function(decay, "HandleCorpseDecay")
@@ -121,8 +137,10 @@ def test_killscan_sync() -> None:
         fail("HandleCorpseDecay must not FindActors")
     if "StubScanDead" in handle or "KillerScan" in handle:
         fail("HandleCorpseDecay must not reference KillerScan / StubScanDead")
-    if "EnsureDecayForTrackedVictim" not in handle:
-        fail("HandleCorpseDecay must stamp tracked victims without overlays first")
+    if "EnsureDecayForTrackedVictim(akCorpse, False)" not in handle:
+        fail("HandleCorpseDecay must stamp tracked victims without overlays first (local call)")
+    if "m.EnsureDecayForTrackedVictim" in handle:
+        fail("HandleCorpseDecay must not call Main.EnsureDecayForTrackedVictim")
     for needle in (
         "HandleCorpseDecay skip | in menu",
         "HandleCorpseDecay skip | already running",
@@ -162,12 +180,15 @@ def test_killscan_sync() -> None:
         fail("MCMRefreshVictimsPanel must FormatDecayStageStatusForActor for dialog (fresh line)")
     if "CallFunctionNoWait(\"WriteVictimsMcmAuxRows\"" in refresh:
         fail("MCMRefreshVictimsPanel must not NoWait aux rows (decay looked empty until later poll)")
-    fmt = extract_function(main, "FormatDecayStageStatusForActor")
+    fmt_main = extract_function(main, "FormatDecayStageStatusForActor")
+    if "CorpseDecay()" not in fmt_main:
+        fail("Main FormatDecayStageStatusForActor must façade via CorpseDecay()")
+    fmt = extract_function(decay, "FormatDecayStageStatusForActor")
     if "EnsureDecayForTrackedVictim(ak, False)" not in fmt:
         fail("FormatDecayStageStatusForActor must stamp without overlays in MCM")
     if "not knife-tracked" in main:
         fail("retire unclear 'not knife-tracked' MCM copy")
-    if "no decay clock" not in extract_function(main, "FormatDecayStageStatusForFormId"):
+    if "no decay clock" not in extract_function(decay, "FormatDecayStageStatusForFormId"):
         fail("untracked corpses must say 'no decay clock'")
     sync = extract_function(decay, "SyncDecayForKnifeCorpse")
     if "ResolveDecayStageForKill" not in sync:
@@ -209,27 +230,28 @@ def test_mcm_decay_stage_row() -> None:
     if not victims_path.is_file():
         fail(f"missing {victims_path}")
     victims = victims_path.read_text(encoding="utf-8", errors="replace")
+    decay = DECAY.read_text(encoding="utf-8", errors="replace")
     if "WriteDecayStageStatusToMcm" not in main:
-        fail("Main must WriteDecayStageStatusToMcm")
+        fail("Main must WriteDecayStageStatusToMcm façade")
     if "WriteDecayStageStatusToMcmForActor" not in main:
-        fail("Main must WriteDecayStageStatusToMcmForActor")
+        fail("Main must WriteDecayStageStatusToMcmForActor façade")
     if "FormatDecayStageStatusForActor" not in main:
-        fail("Main must FormatDecayStageStatusForActor")
-    if "sDecayStage:Victims" not in main:
-        fail("Main must write MCM sDecayStage:Victims")
-    if "sDecayStage:Debug" in main:
+        fail("Main must FormatDecayStageStatusForActor façade")
+    if "sDecayStage:Victims" not in decay:
+        fail("CorpseDecay must write MCM sDecayStage:Victims")
+    if "sDecayStage:Debug" in main or "sDecayStage:Debug" in decay:
         fail("Decay stage row moved off Debug — must not write sDecayStage:Debug")
     push = extract_function(victims, "PushVictimsPanelStrings")
     if "WriteVictimsMcmAuxRows" not in push and "PushVictimsAimedOnly" not in push:
         fail("PushVictimsPanelStrings must PushVictimsAimedOnly + WriteVictimsMcmAuxRows")
     if "WriteVictimsMcmAuxRows" not in main:
         fail("Main must WriteVictimsMcmAuxRows for Victims NoWait aux push")
-    write = extract_function(main, "WriteDecayStageStatusToMcmForActor")
+    write = extract_function(decay, "WriteDecayStageStatusToMcmForActor")
     if "FormatDecayStageStatusForActor" not in write:
         fail("WriteDecayStageStatusToMcmForActor must FormatDecayStageStatusForActor")
     if "last kill" not in write and "DecayKillSlotCount" not in write:
         fail("WriteDecayStageStatusToMcmForActor must fall back to last stamped knife kill")
-    write_wrap = extract_function(main, "WriteDecayStageStatusToMcm")
+    write_wrap = extract_function(decay, "WriteDecayStageStatusToMcm")
     if "ResolveVictimsAimActor" not in write_wrap:
         fail("WriteDecayStageStatusToMcm must ResolveVictimsAimActor (MCM-open aim cache)")
     if "TickVictimsAimCache" not in main:
@@ -243,12 +265,10 @@ def test_mcm_decay_stage_row() -> None:
         fail("ResolveVictimsAimActor must not GetFacedSeverCorpse (MCM Refresh FindActors hitch)")
     if "OnKillerScanVictimsAim" not in main:
         fail("Main must OnKillerScanVictimsAim (fills aim cache from KillerScan event)")
-    if "IsInMenuMode" not in extract_function(main, "EnsureDecayForTrackedVictim"):
-        fail("EnsureDecayForTrackedVictim must defer overlays while MCM open")
     if "NoteVictimsAimActor" not in extract_function(main, "ProcessKnifeKill"):
         fail("ProcessKnifeKill must NoteVictimsAimActor")
-    if "FormatDecayStageStatusForFormId" not in main:
-        fail("Main must FormatDecayStageStatusForFormId (decay row without aim)")
+    if "FormatDecayStageStatusForFormId" not in decay:
+        fail("CorpseDecay must FormatDecayStageStatusForFormId (decay row without aim)")
     cfg = (ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json").read_text(
         encoding="utf-8"
     )
@@ -283,16 +303,18 @@ def test_mcm_decay_stage_row() -> None:
         fail("settings.ini iVictimDecayStage must live under [Victims]")
 
     if "ForceDecayKillClockToStage" not in main:
-        fail("Main must ForceDecayKillClockToStage (backdate clock for MCM set stage)")
-    force = extract_function(main, "ForceDecayKillClockToStage")
+        fail("Main must ForceDecayKillClockToStage façade")
+    if "CorpseDecay()" not in extract_function(main, "ForceDecayKillClockToStage"):
+        fail("Main ForceDecayKillClockToStage must façade via CorpseDecay()")
+    force = extract_function(decay, "ForceDecayKillClockToStage")
     if "DecayKillGameTime" not in force or "GetDecayStageStartHours" not in force:
         fail("ForceDecayKillClockToStage must set DecayKillGameTime from startHours")
     if "elapsedH / 24.0" not in force and "needH / 24.0" not in force:
         fail("ForceDecayKillClockToStage must subtract startHours/24 from now")
     if "needH + 0.001" not in force:
         fail("ForceDecayKillClockToStage must pad startHours>0 by 0.001h")
-    if "SyncVictimDecayStageStepper" not in main:
-        fail("Main must SyncVictimDecayStageStepper (keep Victims stepper current)")
+    if "SyncVictimDecayStageStepper" not in decay:
+        fail("CorpseDecay must SyncVictimDecayStageStepper (keep Victims stepper current)")
     # PrepAimedDecayStage / ResetAimedDecayKillClock share aim+validity checks via
     # ResolveValidDecayTarget instead of duplicating ResolveVictimsAimActor/IsDead()/
     # IsNonGameplayCorpse in each.

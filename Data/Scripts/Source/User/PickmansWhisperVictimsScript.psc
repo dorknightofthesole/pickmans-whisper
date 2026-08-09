@@ -3,7 +3,7 @@ Scriptname PickmansWhisperVictimsScript extends Quest
 
 ; MCM buttons CallFunction this script (not MainQuestScript).
 ; Aim cache filled from KillerScan / knife / Tick via Main façades → NoteVictimsAimActor.
-; Naming table + decay clocks stay on Main; this script owns aim + MCM push.
+; Naming table stays on Main; decay clocks live on CorpseDecay; this script owns aim + MCM push.
 ; Decay advance timer still cancelled (no StartTimer here). H P2: Set/Reset only
 ; move the kill clock; KillerScan → CorpseDecay SyncOverlays owns LooksMenu apply.
 
