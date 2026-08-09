@@ -20,6 +20,7 @@ String Property AteRipeCorpseToast = "" Auto
 Float Property EatRipeCorpseEndBuffAmount = -1.0 Auto
 Float Property EatRipeCorpseEndBuffMaxDelta = -1.0 Auto
 Float Property EatRipeCorpseEndBuffHours = -1.0 Auto
+Int Property VictimTradeMinCha = -1 Auto
 String Property ModConfigLoadStatus = "" Auto
 Bool ModConfigLoadBusy = False
 
@@ -382,6 +383,7 @@ Function LoadModConfig()
 	Float nextEatRipeCorpseEndBuffAmount = -1.0
 	Float nextEatRipeCorpseEndBuffMaxDelta = -1.0
 	Float nextEatRipeCorpseEndBuffHours = -1.0
+	Int nextVictimTradeMinCha = -1
 	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = ConfigPath()
@@ -478,6 +480,13 @@ Function LoadModConfig()
 							nextEatRipeCorpseEndBuffHours = endHours
 						EndIf
 					EndIf
+				ElseIf key == "victimTradeMinCha"
+					If val && GardenOfEden.StrLength(val) > 0
+						Int minCha = val as Int
+						If minCha > 0
+							nextVictimTradeMinCha = minCha
+						EndIf
+					EndIf
 				ElseIf key == "decayStage0"
 					ParseDecayStageValue(0, val)
 				ElseIf key == "decayStage1"
@@ -510,6 +519,7 @@ Function LoadModConfig()
 	EatRipeCorpseEndBuffAmount = nextEatRipeCorpseEndBuffAmount
 	EatRipeCorpseEndBuffMaxDelta = nextEatRipeCorpseEndBuffMaxDelta
 	EatRipeCorpseEndBuffHours = nextEatRipeCorpseEndBuffHours
+	VictimTradeMinCha = nextVictimTradeMinCha
 	If !BondIntroGreeting
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bondIntroGreeting missing/empty")
 	EndIf
@@ -521,6 +531,9 @@ Function LoadModConfig()
 	EndIf
 	If BedGiftWoundAlpha < 0.0
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bedGiftWoundAlpha missing or out of 0..1")
+	EndIf
+	If VictimTradeMinCha <= 0
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — victimTradeMinCha missing or <=0")
 	EndIf
 	Int filled = 0
 	Int si = 0
@@ -580,6 +593,9 @@ Function LoadModConfig()
 	If NamedKillToast
 		status += "namedKill "
 	EndIf
+	If VictimTradeMinCha > 0
+		status += "victimTradeCha "
+	EndIf
 	If stagesOk
 		status += "decayStages "
 	EndIf
@@ -623,5 +639,10 @@ EndFunction
 
 Float Function GetEatRipeCorpseEndBuffHours()
 	Return EatRipeCorpseEndBuffHours
+EndFunction
+
+; Exposed for VictimTradeScript (ModConfig victimTradeMinCha). <=0 = missing/invalid.
+Int Function GetVictimTradeMinCha()
+	Return VictimTradeMinCha
 EndFunction
 

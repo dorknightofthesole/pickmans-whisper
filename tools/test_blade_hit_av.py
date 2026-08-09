@@ -4,7 +4,7 @@
 Locks:
   - Main declares PW_HitWihPickmansBlade + PW_Credit_For_PickmansBlade_Kill Auto Const
   - ESP emits Variable AVIFs at 0x874 / 0x875 (+ tracker 0x877; reward-check 0x876 separate)
-  - NEXT_OID past 0x877
+  - NEXT_OID past empty trade OTFT (0x879) — currently 0x87A
   - Main VMAD binds those properties to the AVIF FormIDs
   - Papyrus uses GetValue/SetValue (not Keyword APIs)
 
@@ -111,7 +111,7 @@ def main() -> None:
         ("FID_AV_HIT_WITH_BLADE = 0x01000874", "hit AVIF fid"),
         ("FID_AV_CREDIT_BLADE_KILL = 0x01000875", "credit AVIF fid"),
         ("FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877", "tracker AVIF fid"),
-        ("NEXT_OID = 0x00000878", "NEXT_OID"),
+        ("NEXT_OID = 0x0000087A", "NEXT_OID"),
         ('"PW_HitWihPickmansBlade", FID_AV_HIT_WITH_BLADE', "hit VMAD bind"),
         (
             '"PW_Credit_For_PickmansBlade_Kill", FID_AV_CREDIT_BLADE_KILL',
@@ -127,7 +127,7 @@ def main() -> None:
     ]:
         if needle not in builder:
             fail(f"builder must declare {label}: {needle}")
-    ok("builder declares blade/tracker AVIF FormIDs + Main VMAD binds + NEXT_OID=0x878")
+    ok("builder declares blade/tracker AVIF FormIDs + Main VMAD binds + NEXT_OID past AVIFs")
 
     psc = MAIN_PSC.read_text(encoding="utf-8", errors="replace")
     if f"ActorValue Property {PROP_HIT} Auto Const" not in psc:

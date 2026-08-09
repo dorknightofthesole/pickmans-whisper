@@ -51,11 +51,14 @@ def main() -> None:
     if "sLastKill" in text:
         fail("Main must not write sLastKill MCM")
 
-    # Signature: hard gate only — no abRequireAlive
-    if re.search(r"Bool Function IsValidTarget\s*\(\s*Actor ak\s*,", text):
+    # Signature: optional abAllowHostile (default False). Alive/dead stays feature-side.
+    if re.search(r"\babRequireAlive\b", text):
         fail("IsValidTarget must not take abRequireAlive (alive/dead is feature-side)")
-    if not re.search(r"Bool Function IsValidTarget\s*\(\s*Actor ak\s*\)", text):
-        fail("IsValidTarget(Actor ak) hard-gate signature missing")
+    if not re.search(
+        r"Bool Function IsValidTarget\s*\(\s*Actor ak\s*,\s*Bool abAllowHostile\s*=\s*False\s*\)",
+        text,
+    ):
+        fail("IsValidTarget(Actor ak, Bool abAllowHostile = False) signature missing")
 
     body = extract_function(text, "IsValidTarget")
     for needle in (
@@ -73,6 +76,8 @@ def main() -> None:
 
     if "IsDead()" not in body:
         fail("IsValidTarget must skip hostility for corpses (!IsDead before IsHostileToActor)")
+    if "!abAllowHostile" not in body and "abAllowHostile ==" not in body:
+        fail("IsValidTarget must gate living hostility with !abAllowHostile (Force Trade override)")
 
     if "KILL_WATCH_RADIUS" not in body or "TargetScan()" not in body:
         fail("IsValidTarget must range-gate via TargetScan().KILL_WATCH_RADIUS (SSOT)")

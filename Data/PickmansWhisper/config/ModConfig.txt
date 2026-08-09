@@ -27,6 +27,8 @@
 #   clamped so the total delta from this buff never exceeds MaxDelta (e.g. already +3,
 #   Amount=2 -> only +1 applied). Hours is game-time; eating again refreshes the timer.
 #   BuffTrackerScript removes the full applied delta on expiry.
+# victimTradeMinCha — force-trade activate choice (Talk menu "Trade"): player Charisma
+#   Actor Value (0x2C5) must be >= this. Required; <=0 fails the trade gate loudly.
 # E4/E5 intimacy (named Potential Victim + Necromantic scene):
 #   config/necromantic/Intimacy_Start_Named.txt + Intimacy_Start_Audio.txt
 #   config/necromantic/Intimacy_End_Named.txt + Intimacy_End_Audio.txt
@@ -57,6 +59,7 @@ ateRipeCorpseToast={name} was delicious, though a bit ripe.
 ateRipeCorpseEndBuffAmount=2
 ateRipeCorpseEndBuffMaxDelta=4
 ateRipeCorpseEndBuffHours=2
+victimTradeMinCha=6
 
 # skins=none → no body LooksMenu overlays (default body). Face masks: DecayFaceStages.txt.
 # Back to porcOverlays SkinTexture_16 (tintable dirt carrier — ROF DeadOverlays wound

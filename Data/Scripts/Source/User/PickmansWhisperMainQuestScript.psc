@@ -2313,6 +2313,21 @@ PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
 	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
 EndFunction
 
+PickmansWhisperVictimTradeScript Function VictimTrade()
+	Return (Self as Quest) as PickmansWhisperVictimTradeScript
+EndFunction
+
+; Perk OnEntryRun → feature script (activate choice Trade).
+Function TryForceVictimTradeFromActivate(Actor akTarget)
+	PickmansWhisperVictimTradeScript trade = VictimTrade()
+	If !trade
+		Debug.Trace("PickmansWhisper: ERROR TryForceVictimTradeFromActivate — VictimTradeScript missing")
+		Debug.Notification("PickmansWhisper: Trade script missing")
+		Return
+	EndIf
+	trade.TryForceVictimTradeFromActivate(akTarget)
+EndFunction
+
 ; --- Slice H P0.1 — decay wound lab (façade) ------------------------------------
 
 PickmansWhisperDecayWoundLabScript Function DecayWoundLab()
@@ -3135,9 +3150,10 @@ EndFunction
 ; Hard eligibility — "this NPC can never be a Pickman's Whisper target."
 ; Living hostility + in-range/loaded are part of the gate (raiders fail; corpses skip
 ; hostility so decay RegisterTarget still works). Feature paths compose IsDead / cooldown.
+; abAllowHostile: Force Trade (etc.) may pass True; default False keeps whisper/scan gates.
 ; Do NOT call from OnDeath / RewardKill — sticky arm (RegisterTarget while valid) is the kill gate.
 ; Bool only; every reject Traces. No Autovar reason side-channel.
-Bool Function IsValidTarget(Actor ak)
+Bool Function IsValidTarget(Actor ak, Bool abAllowHostile = False)
 	If !ak || ak == PlayerRef
 		Debug.Trace("PickmansWhisper: target reject | no actor")
 		; Debug.Notification("PickmansWhisper: target reject | no actor")
@@ -3175,7 +3191,7 @@ Bool Function IsValidTarget(Actor ak)
 		Return False
 	EndIf
 	; Living only — corpses keep hostility flags; decay / post-kill paths must still pass.
-	If !ak.IsDead()
+	If !ak.IsDead() && !abAllowHostile
 		If !PlayerRef
 			PlayerRef = Game.GetPlayer()
 		EndIf

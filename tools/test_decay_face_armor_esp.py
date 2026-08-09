@@ -130,10 +130,11 @@ def main() -> None:
     ):
         if needle not in src:
             fail(f"build_hunger_spell_esp.py missing {needle!r}")
-    if "NEXT_OID = 0x00000878" not in src and "NEXT_OID = 0x878" not in src:
+    if "NEXT_OID = 0x0000087A" not in src and "NEXT_OID = 0x87A" not in src:
         fail(
             "NEXT_OID must sit past decay-face (0x850..0x86F), proximity cloak "
-            "(0x870..0x873), and blade/reward AVIFs (0x874..0x876)"
+            "(0x870..0x873), blade/reward AVIFs (0x874..0x877), trade PERK (0x878), "
+            "and empty OTFT (0x879)"
         )
     ok("builder declares decay-face ARMA/ARMO (slot 54, color variants)")
 
@@ -212,9 +213,9 @@ def main() -> None:
     ok("deploy gate includes decay-face armor contract")
 
     audio = AUDIO_POC.read_text(encoding="utf-8", errors="replace")
-    if "NEXT_OID = 0x00000878" not in audio:
-        fail("test_audio_poc.py must expect NEXT_OID = 0x00000878")
-    ok("audio POC NEXT_OID aligned with decay-face / cloak / blade AVIF headroom")
+    if "NEXT_OID = 0x0000087A" not in audio:
+        fail("test_audio_poc.py must expect NEXT_OID = 0x0000087A")
+    ok("audio POC NEXT_OID aligned with decay-face / cloak / blade AVIF / trade headroom")
 
     print("All decay-face-armor ESP contracts passed.")
 

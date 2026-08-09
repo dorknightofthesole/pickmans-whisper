@@ -49,6 +49,12 @@ EndEvent
 Function RegisterForPlayerSleep() Native
 Function UnregisterForPlayerSleep() Native
 
+; FO4 UI — menu open/close (e.g. "ContainerMenu" after OpenInventory).
+Function RegisterForMenuOpenCloseEvent(String asMenuName) Native
+Function UnRegisterForMenuOpenCloseEvent(String asMenuName) Native
+Event OnMenuOpenCloseEvent(String asMenuName, Bool abOpening)
+EndEvent
+
 ; FO4 LOS — single-shot Direct/Detection gain/lost (no Skyrim RegisterForLOS / HasLOS).
 Function RegisterForDetectionLOSGain(Actor akViewer, ObjectReference akTarget) Native
 Function RegisterForDetectionLOSLost(Actor akViewer, ObjectReference akTarget) Native

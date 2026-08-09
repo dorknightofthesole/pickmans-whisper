@@ -7,6 +7,8 @@ SPEL_FID = 0x01000801
 QUEST_FID = 0x01000800
 PLAYER_COMBAT_FID = 0x01000805
 SEVER_MSG_FID = 0x01000806
+VICTIM_TRADE_PERK_FID = 0x01000878
+EMPTY_OUTFIT_FID = 0x01000879
 ESP_MIN_BYTES = 400
 
 
@@ -87,9 +89,31 @@ def main() -> int:
     if b"TrackedNPCs\x00" in data:
         print("FAIL TrackedNPCs alias EDID must be retired from Main quest")
         return 11
+    if not find_record(data, b"PERK", VICTIM_TRADE_PERK_FID):
+        print(f"FAIL PERK 0x{VICTIM_TRADE_PERK_FID:08X} PW_VictimTradeActivate missing")
+        return 12
+    if b"PW_VictimTradeActivate\x00" not in data:
+        print("FAIL PW_VictimTradeActivate EDID missing")
+        return 13
+    if b"Force Trade\x00" not in data:
+        print("FAIL Force Trade activate-choice label missing")
+        return 14
+    if b"PickmansWhisperVictimTradeScript" not in data:
+        print("FAIL VictimTradeScript missing from Main quest VMAD")
+        return 15
+    if b"PickmansWhisperVictimTradePerkScript" not in data:
+        print("FAIL VictimTradePerkScript missing from PERK VMAD")
+        return 16
+    if not find_record(data, b"OTFT", EMPTY_OUTFIT_FID):
+        print(f"FAIL OTFT 0x{EMPTY_OUTFIT_FID:08X} PW_EmptyOutfit missing")
+        return 17
+    if b"PW_EmptyOutfit\x00" not in data:
+        print("FAIL PW_EmptyOutfit EDID missing")
+        return 18
     print(
         f"OK size={len(data)} SPEL+Main+BedGift+DesperateRename+CorpseDecay+"
-        f"PlayerCombat+PlayerAlias+SeverMSG present (TrackedNPCs retired)"
+        f"PlayerCombat+PlayerAlias+SeverMSG+VictimTradePERK+EmptyOTFT present "
+        f"(TrackedNPCs retired)"
     )
     return 0
 

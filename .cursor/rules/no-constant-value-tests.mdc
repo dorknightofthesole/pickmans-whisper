@@ -1,0 +1,37 @@
+---
+description: Do not write contract tests that assert literal constant/default values
+alwaysApply: true
+---
+
+# No tests for constants
+
+Do **not** add or keep contract tests that pin literal constant or default values.
+
+## Forbidden
+
+- Asserting a ModConfig default (`victimTradeMinCha=8`, `bedGiftCooldownDays=0.5`, …)
+- Asserting magic numbers in scripts (`HungerLevel < 25.0`, `minCha = 8`, cooldown seconds, array caps) **as the value itself**
+- Asserting toast/copy string literals “must equal exactly this phrase” when the behavior is what matters
+
+Those values are data/tuning. Changing them should not fail the gate.
+
+## Allowed (behavior / wiring / SSOT)
+
+- Key **exists** and is **parsed** / exposed (`victimTradeMinCha=` present; getter called)
+- Script **reads** the config or named constant (`GetVictimTradeMinCha()`, `CALM_HUNGER_MAX`) instead of a hard-coded duplicate
+- FormIDs / EDIDs that must match an external record (ESP, Fallout4.esm) — that is SSOT sync, not “default tuning”
+- Structural wiring (ShowBarterMenu called, perk attached, deploy compiles script)
+
+## Example
+
+```python
+# BAD — pins a tunable default
+if not re.search(r"(?m)^victimTradeMinCha=8\s*$", txt):
+    fail("must default victimTradeMinCha=8")
+
+# GOOD — key + parse path only
+if "victimTradeMinCha=" not in txt:
+    fail("ModConfig.txt must ship victimTradeMinCha=")
+if "GetVictimTradeMinCha()" not in body:
+    fail("trade must read GetVictimTradeMinCha()")
+```

@@ -66,8 +66,10 @@ FID_AV_HIT_WITH_BLADE = 0x01000874  # PW_HitWihPickmansBlade
 FID_AV_CREDIT_BLADE_KILL = 0x01000875  # PW_Credit_For_PickmansBlade_Kill
 FID_AV_KILL_REWARD_CHECK_TIME = 0x01000876  # PW_KillRewardCheckTime
 FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877  # PW_TargetTrackerExpiration
+FID_PERK_VICTIM_TRADE = 0x01000878  # PW_VictimTradeActivate (Talk + Force Trade)
+FID_OTFT_EMPTY = 0x01000879  # PW_EmptyOutfit — strip default outfits for Force Trade
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
-NEXT_OID = 0x00000878  # == (FID_AV_TARGET_TRACKER_EXPIRATION & 0xFFFFFF) + 1
+NEXT_OID = 0x0000087A  # == (FID_OTFT_EMPTY & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
@@ -345,7 +347,14 @@ def build_main_quest_payload() -> bytes:
         "PickmansWhisperBuffTrackerScript",
         "PickmansWhisperBeatBeforeKillScript",
         "PickmansWhisperTargetScanScript",
+        "PickmansWhisperVictimTradeScript",
     ]
+    trade_perk_prop = build_vmad_object_form_property(
+        "TradeActivatePerk", FID_PERK_VICTIM_TRADE
+    )
+    trade_outfit_prop = build_vmad_object_form_property(
+        "EmptyOutfit", FID_OTFT_EMPTY
+    )
     # CK-style: Main.PlayerAlias → PickmansWhisperPlayerCombat ALST 0 (script host).
     player_alias_prop = build_vmad_object_alias_property(
         "PlayerAlias", 0, FID_PLAYER_QUEST
@@ -388,6 +397,10 @@ def build_main_quest_payload() -> bytes:
                 ],
                 "PickmansWhisperTargetScanScript": [
                     target_scan_main_prop,
+                ],
+                "PickmansWhisperVictimTradeScript": [
+                    trade_perk_prop,
+                    trade_outfit_prop,
                 ],
             },
             alias_scripts=[
@@ -720,6 +733,58 @@ def collect_decay_face_armor_records() -> tuple[list[bytes], list[bytes]]:
     return armas, armos
 
 
+def build_empty_outfit_payload() -> bytes:
+    """OTFT with zero items — clears ActorBase default outfit for Force Trade strip."""
+    return b"".join(
+        [
+            field(b"EDID", zstr("PW_EmptyOutfit")),
+            field(b"INAM", b""),  # no armor pieces
+        ]
+    )
+
+
+def build_victim_trade_perk_payload() -> bytes:
+    """PERK Activate / Add Activate Choice labeled Force Trade (beside Talk).
+
+    Mirrors Fallout4.esm activate-choice layout (e.g. Cannibal / HC_FillWaterBottle):
+    PRKE type=EntryPoint, DATA entry=0x0E func=0x09 tabs=2, EPFT=4 text, EPF3=0
+    (additional choice, not Replace Default). Target GetDead==0 so we do not steal
+    Cannibal Eat Corpse's secondary activate slot on corpses. VMAD → MainQuest.
+    """
+    perk_vmad = build_vmad_scripts(
+        ["PickmansWhisperVictimTradePerkScript"],
+        script_properties={
+            "PickmansWhisperVictimTradePerkScript": [
+                build_vmad_object_form_property("MainQuest", FID_QUEST),
+            ],
+        },
+    )
+    # Vanilla GetDead == 0 (func 0x2E) — from WastelandWhisperer / Intimidation PERKs.
+    ctda_get_dead_eq_0 = bytes.fromhex(
+        "00c0c967000000002e00000000000000000000000000000000000000ffffffff"
+    )
+    parts = [
+        field(b"EDID", zstr("PW_VictimTradeActivate")),
+        field(b"VMAD", perk_vmad),
+        field(b"FULL", zstr("Pickman's Whisper Trade")),
+        # Trait=0, level=0, ranks=1, playable=1, hidden=0
+        field(b"DATA", bytes.fromhex("0000010100")),
+        # Entry Point rank0 priority0
+        field(b"PRKE", bytes.fromhex("020000")),
+        # Activate (0x0E) / Add Activate Choice (0x09) / 2 condition tabs
+        field(b"DATA", bytes.fromhex("0e0902")),
+        field(b"PRKC", bytes.fromhex("00")),  # Perk Owner tab (empty)
+        field(b"PRKC", bytes.fromhex("01")),  # Target tab
+        field(b"CTDA", ctda_get_dead_eq_0),  # living only — leave corpses to Cannibal
+        field(b"EPFT", bytes.fromhex("04")),  # Activate text
+        field(b"EPFB", bytes.fromhex("0000")),
+        field(b"EPF2", zstr("Force Trade")),
+        field(b"EPF3", bytes.fromhex("0000")),  # not Replace Default / not Run Immediately
+        field(b"PRKF", b""),
+    ]
+    return b"".join(parts)
+
+
 def build_sever_limb_menu_payload() -> bytes:
     """MESG message-box with limb buttons. DNAM bit0 = Message Box.
 
@@ -823,6 +888,10 @@ def main() -> None:
         ),
     )
     msg_rec = record(b"MESG", FID_SEVER_MSG, build_sever_limb_menu_payload())
+    perk_trade = record(
+        b"PERK", FID_PERK_VICTIM_TRADE, build_victim_trade_perk_payload()
+    )
+    otft_empty = record(b"OTFT", FID_OTFT_EMPTY, build_empty_outfit_payload())
     avif_hit = record(
         b"AVIF",
         FID_AV_HIT_WITH_BLADE,
@@ -857,9 +926,9 @@ def main() -> None:
     arma_blob = b"".join(arma_recs)
     armo_blob = b"".join(armo_recs)
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + MESG + 4 AVIF + N SNDR + N ARMA + N ARMO
+    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + MESG + PERK + OTFT + 4 AVIF + N SNDR + N ARMA + N ARMO
     # (proximity cloak MGEF/SPEL chain retired)
-    num_records = 11 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
+    num_records = 13 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
@@ -871,6 +940,8 @@ def main() -> None:
         + group(b"MGEF", mgef_agi + mgef_cha)
         + group(b"SPEL", spel_rec)
         + group(b"MESG", msg_rec)
+        + group(b"PERK", perk_trade)
+        + group(b"OTFT", otft_empty)
         + group(b"ARMA", arma_blob)
         + group(b"ARMO", armo_blob)
         + group(b"QUST", main_q + player_q)
@@ -882,6 +953,8 @@ def main() -> None:
     print(f"  MGEF 0x{FID_MGEF_AGI:08X} / 0x{FID_MGEF_CHA:08X} ValueMod AGI/CHA")
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
+    print(f"  PERK 0x{FID_PERK_VICTIM_TRADE:08X} PW_VictimTradeActivate (Force Trade, living)")
+    print(f"  OTFT 0x{FID_OTFT_EMPTY:08X} PW_EmptyOutfit")
     print("  Proximity cloak MGEF/SPEL chain retired (0x870-0x873 gap)")
     print(
         f"  AVIF 0x{FID_AV_HIT_WITH_BLADE:08X} PW_HitWihPickmansBlade / "

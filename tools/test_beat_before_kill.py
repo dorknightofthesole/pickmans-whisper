@@ -374,16 +374,15 @@ def test_esp_builder() -> None:
         # script_properties dict entry
         if "PickmansWhisperBeatBeforeKillScript" not in text or "player_alias_prop" not in text:
             fail("ESP builder must wire PlayerAlias onto BeatBeforeKillScript VMAD")
-    beat_props = text.find("PickmansWhisperBeatBeforeKillScript")
-    window = text[beat_props : beat_props + 200]
-    if "player_alias_prop" not in window and "PlayerAlias" not in window:
-        # look in script_properties block for Beat
-        idx = text.find('"PickmansWhisperBeatBeforeKillScript"')
-        if idx < 0:
-            fail("ESP builder must list BeatBeforeKillScript in script_properties with PlayerAlias")
-        chunk = text[idx : idx + 180]
-        if "player_alias_prop" not in chunk:
-            fail("ESP builder must bind player_alias_prop on BeatBeforeKillScript")
+    # script_properties entry (not the main_scripts list row)
+    idx = text.find('"PickmansWhisperBeatBeforeKillScript": [')
+    if idx < 0:
+        idx = text.find('"PickmansWhisperBeatBeforeKillScript":[')
+    if idx < 0:
+        fail("ESP builder must list BeatBeforeKillScript in script_properties with PlayerAlias")
+    chunk = text[idx : idx + 180]
+    if "player_alias_prop" not in chunk:
+        fail("ESP builder must bind player_alias_prop on BeatBeforeKillScript")
     ok("ESP builder attaches BeatBeforeKillScript + PlayerAlias property")
 
 

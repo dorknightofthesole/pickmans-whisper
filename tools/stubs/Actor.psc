@@ -14,6 +14,12 @@ Actor Function GetCombatTarget() Native
 Bool Function HasSpell(Form akSpell) Native
 Bool Function HasMagicEffect(MagicEffect akEffect) Native
 Bool Function HasPerk(Perk akPerk) Native
+; FO4 native — abNotify shows the perk unlock UI when true.
+Function AddPerk(Perk akPerk, Bool abNotify = False) Native
+; FO4 native — opens the barter/trade menu with this actor.
+Function ShowBarterMenu() Native
+; FO4 native — companion/container inventory UI (not barter prices).
+Function OpenInventory(Bool abForceOpen = False) Native
 Bool Function AddSpell(Spell akSpell, Bool abVerbose = True) Native
 Bool Function RemoveSpell(Spell akSpell) Native
 Function DispelSpell(Spell akSpell) Native
@@ -54,6 +60,8 @@ Function EquipItem(Form akItem, Bool abPreventRemoval = False, Bool abSilent = F
 ; FO4 native — unequip worn gear (pair with RemoveAllItems to strip corpses).
 Function UnequipAll() Native
 Function UnequipItem(Form akItem, Bool abPreventEquip = False, Bool abSilent = False) Native
+; FO4 native — set this actor's worn outfit (ref-level; prefer over ActorBase.SetOutfit).
+Function SetOutfit(Outfit akOutfit, Bool abSleepOutfit = False) Native
 ; FO4 native — true if any currently worn/equipped item has the keyword (incl. OMOD-injected).
 Bool Function WornHasKeyword(Keyword akKeyword) Native
 Event OnItemEquipped(Form akBaseObject, ObjectReference akReference)
