@@ -17,9 +17,16 @@ Design:
   - Gameplay entry is HandleBeatBeforeKill(Actor) on BeatBeforeKillScript, using a
     wired PlayerAlias (blade equipped → clear her if tracked; IsReadyToGiveBeating →
     apply + needsBeatingWhisper). Main OnCombatStateChanged + RegisterTarget call it.
-  - REMOVED — "out of combat -> clear" (both the direct aeCombatState==0 handler and
-    TickEssentialReconcile's !IsInCombat() check): confirmed live in the Papyrus log.
-    Weapon-equip is the only full reversal now.
+  - REMOVED — "out of combat -> clear ESSENTIAL" (both the direct aeCombatState==0
+    handler and TickEssentialReconcile's !IsInCombat() check): confirmed live this
+    raced with an essential actor's own protected-collapse moment. Weapon-equip is
+    the only essential reversal.
+  - RE-ADDED, narrower — aeCombatState==0 now calls HandleCombatEnd, but only to
+    apply the beat-face outcome (ApplyBeatFaceOverlays, SFT Damage/Boxer headparts
+    via CorpseDecayScript — same DecayFaceOverlays.txt bank Wound Lab's "Apply all
+    face overlays" uses). Purely cosmetic; never calls SetEssential or any
+    essential-tracking function, so it doesn't share the race that got the original
+    handler removed. Gated on IsTrackedEssential (only NPCs actually beaten unarmed).
   - J5 weapon-equip clear-all lives on PlayerAlias CheckAndHandleBladeReady (any weapon
     → !IsReadyToGiveBeating → ClearAllEssentialOnWeaponEquip). Not on Main OnItemEquipped.
   - The debug dialog (Debug.MessageBox) is scoped to the AUTOMATIC path only —
@@ -43,6 +50,7 @@ BEAT = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperBeatBefor
 VICTIMS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVictimsScript.psc"
 MAIN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
 TARGET_SCAN = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperTargetScanScript.psc"
+DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 MCM_CONFIG = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "config.json"
 MCM_SETTINGS = ROOT / "Data" / "MCM" / "Config" / "PickmansWhisper" / "settings.ini"
 SETTINGS_LEGACY = ROOT / "Data" / "MCM" / "Settings" / "PickmansWhisper.ini"
@@ -210,7 +218,20 @@ def test_auto_trigger() -> None:
     if "IsInCombat()" in reconcile:
         fail("TickEssentialReconcile must NOT re-check combat state — confirmed live this stripped essential within ~3s of an MCM toggle, before combat even started, because 'not currently fighting' raced with the essential-collapse moment it's supposed to protect")
 
-    ok("BeatBeforeKillScript HandleBeatBeforeKill + weapon-equip clear-all + dialog scoped to auto path")
+    # Slice K continuation — combat-end beat-face outcome. Cosmetic only: gated on
+    # IsTrackedEssential (only NPCs actually beaten unarmed get marked up) and must
+    # never call an essential mutator itself.
+    combat_end = extract_function(text, "HandleCombatEnd")
+    if "IsTrackedEssential(akTarget)" not in combat_end:
+        fail("HandleCombatEnd must gate on IsTrackedEssential — only apply to NPCs actually beaten unarmed")
+    if "ApplyBeatFaceOverlays(akTarget)" not in combat_end:
+        fail("HandleCombatEnd must call decay.ApplyBeatFaceOverlays(akTarget)")
+    essential_mutators = ("SetEssential(", "RemoveEssentialTracked(", "AddEssentialTracked(", "ClearAllEssentialOnWeaponEquip(")
+    hit = [m for m in essential_mutators if m in combat_end]
+    if hit:
+        fail(f"HandleCombatEnd must NOT call any essential-mutating function (found {hit}) — cosmetic outcome only")
+
+    ok("BeatBeforeKillScript HandleBeatBeforeKill + HandleCombatEnd (cosmetic only) + weapon-equip clear-all + dialog scoped to auto path")
 
 
 def test_main_wiring() -> None:
@@ -222,12 +243,41 @@ def test_main_wiring() -> None:
     combat_evt = extract_event(
         text, "Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatState)"
     )
-    if "HandleBeatBeforeKill(akTarget)" not in combat_evt:
-        fail("Actor.OnCombatStateChanged must call BeatBeforeKill().HandleBeatBeforeKill on aeCombatState==1")
     if "aeCombatState == 1" not in combat_evt:
         fail("Actor.OnCombatStateChanged must branch on aeCombatState==1 (verified against real FO4 Actor.psc: 0=not in combat, 1=in combat, 2=searching)")
-    if "OnPlayerExitCombatWith" in combat_evt or "aeCombatState == 0" in combat_evt:
-        fail("Actor.OnCombatStateChanged must NOT handle aeCombatState==0 for Slice K — confirmed live this raced with an essential actor's own protected-collapse moment and broke the feature; weapon-equip is the only reversal now")
+
+    # Split into the two branches so each can be checked in isolation — the
+    # aeCombatState==1 branch (the core essential-toggle feature) must stay exactly
+    # as it was; only the aeCombatState==0 branch is new, and it may ONLY apply the
+    # cosmetic beat-face outcome, never touch essential state.
+    split_m = re.search(r"ElseIf\s+aeCombatState\s*==\s*0\b", combat_evt)
+    if not split_m:
+        fail(
+            "Actor.OnCombatStateChanged must handle aeCombatState==0 (ElseIf branch) to apply the "
+            "beat-face outcome — this is allowed now: the prior removal was specifically about "
+            "SetEssential(False) racing an essential actor's protected-collapse moment, and a purely "
+            "cosmetic ChangeHeadPart call doesn't touch essential state"
+        )
+    branch1 = combat_evt[: split_m.start()]
+    branch0 = combat_evt[split_m.start() :]
+
+    if "HandleBeatBeforeKill(akTarget)" not in branch1:
+        fail("aeCombatState==1 branch must still call BeatBeforeKill().HandleBeatBeforeKill")
+    if "TrackLivingNear(akTarget)" not in branch1:
+        fail("aeCombatState==1 branch must still call TrackLivingNear — must not have been touched by the combat-end addition")
+
+    if "HandleCombatEnd(akTarget)" not in branch0:
+        fail("aeCombatState==0 branch must call BeatBeforeKill().HandleCombatEnd(akTarget)")
+    essential_mutators = ("SetEssential(", "RemoveEssentialTracked(", "AddEssentialTracked(", "ClearAllEssentialOnWeaponEquip(")
+    hit = [m for m in essential_mutators if m in branch0]
+    if hit:
+        fail(
+            f"aeCombatState==0 branch must NOT call any essential-mutating function (found {hit}) — "
+            "this is exactly the race that broke the feature before; only HandleCombatEnd's cosmetic "
+            "face-overlay call belongs here"
+        )
+    if "OnPlayerExitCombatWith" in branch0:
+        fail("aeCombatState==0 branch must not reintroduce the old OnPlayerExitCombatWith essential-clear path")
 
     reg = extract_function(text, "RegisterTarget")
     if "HandleBeatBeforeKill(akTarget)" not in reg:
@@ -396,6 +446,18 @@ def test_deploy_gate() -> None:
     ok("deploy gate compiles BeatBeforeKillScript + runs this contract test")
 
 
+def test_beat_face_overlays() -> None:
+    if not DECAY.is_file():
+        fail(f"missing {DECAY}")
+    text = DECAY.read_text(encoding="utf-8", errors="replace")
+    fn = extract_function(text, "ApplyBeatFaceOverlays")
+    if "EnsureFaceBank()" not in fn:
+        fail("ApplyBeatFaceOverlays must EnsureFaceBank() before applying (loads DecayFaceOverlays.txt into the production FaceTemplates bank)")
+    if "ApplyTintedAllFaceTemplates(akTarget, FaceTemplates, FaceTemplateCount" not in fn:
+        fail("ApplyBeatFaceOverlays must call ApplyTintedAllFaceTemplates with the production FaceTemplates/FaceTemplateCount bank (not the lab's separate copy)")
+    ok("CorpseDecayScript.ApplyBeatFaceOverlays wraps EnsureFaceBank + ApplyTintedAllFaceTemplates")
+
+
 def main() -> int:
     if not MAIN.is_file():
         fail("missing MainQuestScript PSC")
@@ -407,6 +469,7 @@ def main() -> int:
     test_victims_wiring()
     test_mcm_config()
     test_status_row()
+    test_beat_face_overlays()
     test_esp_builder()
     test_deploy_gate()
     print("All beat-before-kill (Slice K) contracts passed.")

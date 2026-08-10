@@ -1002,15 +1002,23 @@ Event Actor.OnCombatStateChanged(Actor akSender, Actor akTarget, Int aeCombatSta
 	If akSender != PlayerRef
 		Return
 	EndIf
+	Debug.Trace("OnCombatStateChanged state == " + aeCombatState)
 	If aeCombatState == 1 && akTarget
 		TrackLivingNear(akTarget)
 		PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
 		If beat
 			beat.HandleBeatBeforeKill(akTarget)
 		EndIf
+	ElseIf aeCombatState == 0 && akTarget
+		; Visual-only outcome (beat-face overlays) — never essential state. Slice K's
+		; essential reversal stays weapon-equip only (PlayerAlias → ClearAllEssentialOnWeaponEquip);
+		; HandleCombatEnd doesn't touch essential and so doesn't share the protected-
+		; collapse race that got the old essential-clearing aeCombatState==0 handler removed.
+		PickmansWhisperBeatBeforeKillScript beat = BeatBeforeKill()
+		If beat
+			beat.HandleCombatEnd(akTarget)
+		EndIf
 	EndIf
-	; No aeCombatState==0 handling here — Slice K essential reversal is weapon-equip
-	; only (PlayerAlias → ClearAllEssentialOnWeaponEquip).
 EndEvent
 
 Function ResolveVanillaForms()
@@ -2491,6 +2499,15 @@ Function DebugApplyAllFaceLabOverlays()
 	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
 	If lab
 		lab.DebugApplyAllFaceLabOverlays()
+	Else
+		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
+	EndIf
+EndFunction
+
+Function DebugApplyTattooLabOverlay()
+	PickmansWhisperDecayWoundLabScript lab = DecayWoundLab()
+	If lab
+		lab.DebugApplyTattooLabOverlay()
 	Else
 		DiagNotify("Pickman's Whisper\n\nDecayWoundLab script missing on Main quest.")
 	EndIf

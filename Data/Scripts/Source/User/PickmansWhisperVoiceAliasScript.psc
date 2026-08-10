@@ -1990,12 +1990,15 @@ Int Function LoadStageBankAt(String fileName, String[] bank, String path)
 EndFunction
 
 
-; Copy trimmed, non-comment, non-blank lines into bank (max 64). Returns count.
+; Copy trimmed, non-comment, non-blank lines into bank. Capacity is whatever the
+; caller allocated (bank.Length) — not a fixed constant — so callers needing more
+; than the historical 64 (e.g. Captive Tattoo chunk banks) just allocate bigger,
+; up to Papyrus's own 128-element dynamic-array ceiling.
 ; Comment check uses GoE SubStr — FO4 has no StringUtil (see no-fake-native-stubs).
 Int Function ParseRawIntoBank(String[] raw, String[] bank)
 	Int n = 0
 	Int i = 0
-	While i < raw.Length && n < 64
+	While i < raw.Length && n < bank.Length
 		String line = TrimString(raw[i])
 		i += 1
 		If line == ""

@@ -192,6 +192,12 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_decay_wound_lab.py failed with exit code $LASTEXITCODE"
 }
 
+Write-Host "==> Captive Tattoos lab contract test"
+& python (Join-Path $Root "tools\test_captive_tattoo_lab.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_captive_tattoo_lab.py failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "==> Decay stage ModConfig parse contract test"
 & python (Join-Path $Root "tools\test_decay_stage_modconfig.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
@@ -451,6 +457,9 @@ Copy-Item -Force (Join-Path $Src $PscSlaveryPerk) (Join-Path $Deploy "Scripts\So
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\config.json") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join-Path $Deploy "MCM\Settings\")
+# Game-data config bank files (wound/skin/face/tattoo .txt banks, ModConfig.txt, etc.) —
+# recursive so new subfolders (e.g. tattoos\) ship without another wiring point per file.
+Copy-Item -Recurse -Force (Join-Path $Root "Data\PickmansWhisper\config") (Join-Path $Deploy "PickmansWhisper\")
 
 # Full mod data trees (config + whispers; decay Materials/Meshes/Textures; F4SE when present).
 function Sync-DataTree([string]$Rel) {

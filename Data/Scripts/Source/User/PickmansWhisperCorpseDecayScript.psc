@@ -12,6 +12,7 @@ String PLUGIN_LOOKSMENU = "LooksMenu.esp"
 String PLUGIN_DEAD_OVERLAYS = "INVB_OverlayFramework_DeadOverlays.esp"
 String PLUGIN_PORC_OVERLAYS = "porcOverlays.esl"
 String PLUGIN_SFT = "SFT.esp"
+String PLUGIN_TATTOOS = "SlaveTattoos.esp"
 String PLUGIN_PW = "PickmansWhisper.esp"
 ; SFT.esp FormLists of Damage / Boxer headparts (female / male). Soft dep — no ESP master.
 Int FID_SFT_DAMAGE_F = 0x000008D ; SFT_Damage
@@ -29,6 +30,7 @@ Int BED_GIFT_WOUND_COUNT = 6 ; doubled for coverage / progression look-test (was
 Int BED_GIFT_DECAY_STAGE = 4
 Int WOUND_PRIORITY = 40
 Int SKIN_PRIORITY = 30 ; under wounds so DeathMarks stay readable
+Int TATTOO_PRIORITY = 20 ; under skin/wounds — tattoos are the base body-art layer
 ; Locked P1 tint — lighten dark DeathMarks (LooksMenu Entry RGB/A). DebugForce pale path only.
 Float WOUND_TINT_R = 1.0
 Float WOUND_TINT_G = 0.92
@@ -49,6 +51,16 @@ Bool CumBankLoaded = False
 String[] FaceTemplates
 Int FaceTemplateCount = 0
 Bool FaceBankLoaded = False
+; Captive Tattoos lab — multi-select: the player can set an item on any number of
+; the 20 category chunks (not just one), and Apply applies every chunk that isn't
+; left at its "(none)" default. Tracked per-chunk-index UID (not a bank clear) since
+; the catalog is split across 20 chunk banks — no single array can hold every id to
+; check membership against for a clear pass. Re-applying replaces exactly what this
+; script itself applied last time (only for the same target); it never touches
+; overlays it didn't add.
+Actor LastTattooTarget = None
+Int[] LastTattooUids
+Int TATTOO_CHUNK_COUNT = 20
 ; Slice I — color label → local ARMO FormID (from DecayFaceArmorIds.txt).
 String[] FaceArmorLabels
 Int[] FaceArmorArmoFids
@@ -1309,6 +1321,21 @@ Bool Function SoftSkinDepsReady()
 	Return True
 EndFunction
 
+; Soft dep Captive Tattoos (SlaveTattoos.esp) — same shape as SoftSkinDepsReady, own plugin gate
+; so tattoo apply never wrongly requires porcOverlays.esl (or vice versa).
+Bool Function SoftTattooDepsReady()
+	If !SoftLooksMenuReady()
+		Return False
+	EndIf
+	If !Game.IsPluginInstalled(PLUGIN_TATTOOS)
+		SetCorpseDecayStatus("skip: SlaveTattoos.esp not installed")
+		Debug.Notification("Pickman's Whisper: Captive Tattoos (SlaveTattoos.esp) required")
+		Debug.Trace("PickmansWhisper: ERROR SlaveTattoos.esp missing — tattoo overlay skipped")
+		Return False
+	EndIf
+	Return True
+EndFunction
+
 ; Soft dep Scripted Face Tints — same path SFT itself uses: GoE2 FULL-name lookup + ChangeHeadPart.
 ; Sex FormLists filter so we do not slap male HDPTs onto female lab corpses (and vice versa).
 Bool Function IsFemaleActor(Actor akActor)
@@ -1768,6 +1795,67 @@ Function ApplyTintedSkinTemplateN(Actor akCorpse, String templateId, Int aiCount
 	ApplyTintedTemplateN(akCorpse, templateId, aiCount, afR, afG, afB, afA, SKIN_PRIORITY, clearBank, clearCount, "lab skin")
 EndFunction
 
+; Captive Tattoos lab — multi-select apply, three calls bracketing the caller's
+; per-chunk loop (caller owns reading the 20 MCM steppers and resolving each
+; chunk's bank; this owns LooksMenu bookkeeping):
+;   BeginTattooApply   — remove whatever this script applied last time (same
+;                         target only), reset per-chunk UID tracking
+;   ApplyOneTattooChunk — add one chunk's selected overlay, record its UID
+;   FinishTattooApply  — the double-Update render-refresh + status message
+; Splitting the Update out of the per-chunk call matters: it must run once after
+; every selected chunk is added, not once per chunk (matches ApplyTintedAllTemplates).
+Bool Function BeginTattooApply(Actor akCorpse)
+	If !akCorpse
+		SetCorpseDecayStatus("skip: no corpse")
+		Return False
+	EndIf
+	If !SoftTattooDepsReady()
+		Return False
+	EndIf
+	If LastTattooTarget == akCorpse && LastTattooUids
+		Bool wasFemale = IsFemaleActor(akCorpse)
+		Int r = 0
+		While r < LastTattooUids.Length
+			If LastTattooUids[r] >= 0
+				Overlays.Remove(akCorpse, wasFemale, LastTattooUids[r])
+			EndIf
+			r += 1
+		EndWhile
+	EndIf
+	LastTattooTarget = akCorpse
+	LastTattooUids = new Int[TATTOO_CHUNK_COUNT]
+	Int z = 0
+	While z < LastTattooUids.Length
+		LastTattooUids[z] = -1
+		z += 1
+	EndWhile
+	PrepareCorpseForOverlays(akCorpse)
+	Return True
+EndFunction
+
+Function ApplyOneTattooChunk(Actor akCorpse, Int chunkIdx, String templateId)
+	If !akCorpse || !templateId || templateId == ""
+		Return
+	EndIf
+	Bool isFemale = IsFemaleActor(akCorpse)
+	Int uid = AddTintedOverlay(akCorpse, templateId, 1.0, 1.0, 1.0, 1.0, isFemale, TATTOO_PRIORITY)
+	If chunkIdx >= 0 && chunkIdx < LastTattooUids.Length
+		LastTattooUids[chunkIdx] = uid
+	EndIf
+EndFunction
+
+Function FinishTattooApply(Actor akCorpse, Int appliedCount)
+	Overlays.Update(akCorpse)
+	; A single Update right after Add has been caught (see TraceCorpseOverlayState)
+	; reporting success with nothing visually changed — same second-Update-after-a-
+	; short-wait workaround ApplyTintedTemplateN already relies on for Wound/Skin/Face.
+	If !Utility.IsInMenuMode()
+		Utility.Wait(0.1)
+		Overlays.Update(akCorpse)
+	EndIf
+	SetCorpseDecayStatus("lab tattoo: " + appliedCount + " applied")
+EndFunction
+
 Int Function ApplyTintedAllSkinTemplates(Actor akCorpse, String[] templates, Int aiTemplateCount, Int aiTimesEach, Float afR, Float afG, Float afB, Float afA)
 	If !SoftSkinDepsReady()
 		Return 0
@@ -1874,6 +1962,19 @@ Function ApplyTintedAllFaceTemplates(Actor akCorpse, String[] templates, Int aiT
 	EndWhile
 	FinalizeActorAfterSFTFace(akCorpse, wasDead)
 	SetCorpseDecayStatus("lab face SFT ALL " + applied + "/" + aiTemplateCount + " (GoE2 Boxer)")
+EndFunction
+
+; Slice K beat-before-kill outcome — every SFT Damage/Boxer face overlay
+; (DecayFaceOverlays.txt, same bank + call Wound Lab's "Apply all face overlays"
+; button uses, confirmed rendering correctly in-game) applied to a living NPC.
+; wasDead is always False here in practice (target is alive, mid/post-fight), so
+; PrepareActorForSFTFace never Resurrects — this is just ApplyTintedAllFaceTemplates
+; with the production FaceTemplates bank instead of the lab's separate copy.
+Function ApplyBeatFaceOverlays(Actor akTarget)
+	If !EnsureFaceBank()
+		Return
+	EndIf
+	ApplyTintedAllFaceTemplates(akTarget, FaceTemplates, FaceTemplateCount, 1, 1.0, 0.92, 0.88, 0.75)
 EndFunction
 
 ; Apply up to aiCount random DeathMarks wound templates; then Overlays.Update.

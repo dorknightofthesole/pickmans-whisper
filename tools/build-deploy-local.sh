@@ -139,6 +139,9 @@ python "$ROOT/tools/test_corpse_decay.py" || exit 1
 echo "==> Decay wound lab (Slice H P0.1) contract test"
 python "$ROOT/tools/test_decay_wound_lab.py" || exit 1
 
+echo "==> Captive Tattoos lab contract test"
+python "$ROOT/tools/test_captive_tattoo_lab.py" || exit 1
+
 echo "==> Decay stage ModConfig parse contract test"
 python "$ROOT/tools/test_decay_stage_modconfig.py" || exit 1
 
@@ -286,6 +289,9 @@ cp -f "$SRC/PickmansWhisperKillRewardScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"
+# Game-data config bank files (wound/skin/face/tattoo .txt banks, ModConfig.txt, etc.) —
+# recursive so new subfolders (e.g. tattoos/) ship without another wiring point per file.
+cp -rf "$ROOT/Data/PickmansWhisper/config" "$DEPLOY/PickmansWhisper/"
 
 sync_data_tree() {
   local rel="$1"

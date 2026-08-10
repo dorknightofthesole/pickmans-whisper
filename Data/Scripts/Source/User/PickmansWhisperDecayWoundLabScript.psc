@@ -24,6 +24,7 @@ String WOUND_FILE = "DecayWoundOverlays.txt"
 String SKIN_FILE = "DecaySkinOverlays.txt"
 String FACE_FILE = "DecayFaceOverlays.txt"
 String CONFIG_PATH = ".\\Data\\PickmansWhisper\\config\\"
+String TATTOO_CONFIG_PATH = ".\\Data\\PickmansWhisper\\config\\tattoos\\"
 Float BED_SPAWN_OFFSET_X = 0.0
 Float BED_SPAWN_OFFSET_Y = 8.0
 Float BED_SPAWN_OFFSET_Z = 36.0
@@ -41,6 +42,74 @@ String[] LabFaceTemplates
 Int LabFaceTemplateCount = 0
 Bool LabFaceBankLoaded = False
 String Property LastWoundLabStatus = "" Auto
+
+; Captive Tattoos lab — 20 chunk banks (catalog is 1,025 ids; Papyrus dynamic
+; arrays cap at 128, so it's split by the mod's own overlay category into chunks
+; well under that cap). iTattooCategory:WoundLab picks which chunk is active;
+; the matching iTattooItem_<Slug>:WoundLab stepper picks the item within it.
+; Regenerate the .txt files via tools/build_captive_tattoo_bank.py if the
+; Captive Tattoos catalog ever changes — this block's chunk list must then be
+; re-synced by hand against Data/PickmansWhisper/config/tattoos/_manifest.json.
+String[] Tattoo0Bank ; $Hands (CaptiveTattoo_Hands.txt)
+Int Tattoo0Count = 0
+Bool Tattoo0Loaded = False
+String[] Tattoo1Bank ; Arm Left (CaptiveTattoo_ArmLeft.txt)
+Int Tattoo1Count = 0
+Bool Tattoo1Loaded = False
+String[] Tattoo2Bank ; Arm Right (CaptiveTattoo_ArmRight.txt)
+Int Tattoo2Count = 0
+Bool Tattoo2Loaded = False
+String[] Tattoo3Bank ; Back A (CaptiveTattoo_Back_A.txt)
+Int Tattoo3Count = 0
+Bool Tattoo3Loaded = False
+String[] Tattoo4Bank ; Back B (CaptiveTattoo_Back_B.txt)
+Int Tattoo4Count = 0
+Bool Tattoo4Loaded = False
+String[] Tattoo5Bank ; Back Butt (CaptiveTattoo_BackButt.txt)
+Int Tattoo5Count = 0
+Bool Tattoo5Loaded = False
+String[] Tattoo6Bank ; Back Hip (CaptiveTattoo_BackHip.txt)
+Int Tattoo6Count = 0
+Bool Tattoo6Loaded = False
+String[] Tattoo7Bank ; Back Low (CaptiveTattoo_BackLow.txt)
+Int Tattoo7Count = 0
+Bool Tattoo7Loaded = False
+String[] Tattoo8Bank ; Back Neck (CaptiveTattoo_BackNeck.txt)
+Int Tattoo8Count = 0
+Bool Tattoo8Loaded = False
+String[] Tattoo9Bank ; Back Thigh (CaptiveTattoo_BackThigh.txt)
+Int Tattoo9Count = 0
+Bool Tattoo9Loaded = False
+String[] Tattoo10Bank ; Front A (CaptiveTattoo_Front_A.txt)
+Int Tattoo10Count = 0
+Bool Tattoo10Loaded = False
+String[] Tattoo11Bank ; Front B (CaptiveTattoo_Front_B.txt)
+Int Tattoo11Count = 0
+Bool Tattoo11Loaded = False
+String[] Tattoo12Bank ; Front Belly A (CaptiveTattoo_FrontBelly_A.txt)
+Int Tattoo12Count = 0
+Bool Tattoo12Loaded = False
+String[] Tattoo13Bank ; Front Belly B (CaptiveTattoo_FrontBelly_B.txt)
+Int Tattoo13Count = 0
+Bool Tattoo13Loaded = False
+String[] Tattoo14Bank ; Front Breast (CaptiveTattoo_FrontBreast.txt)
+Int Tattoo14Count = 0
+Bool Tattoo14Loaded = False
+String[] Tattoo15Bank ; Front Hip (CaptiveTattoo_FrontHip.txt)
+Int Tattoo15Count = 0
+Bool Tattoo15Loaded = False
+String[] Tattoo16Bank ; Front Thigh (CaptiveTattoo_FrontThigh.txt)
+Int Tattoo16Count = 0
+Bool Tattoo16Loaded = False
+String[] Tattoo17Bank ; Thigh Inner (CaptiveTattoo_ThighInner.txt)
+Int Tattoo17Count = 0
+Bool Tattoo17Loaded = False
+String[] Tattoo18Bank ; Under Arm Right (CaptiveTattoo_UnderArmRight.txt)
+Int Tattoo18Count = 0
+Bool Tattoo18Loaded = False
+String[] Tattoo19Bank ; Misc (CaptiveTattoo_Misc.txt)
+Int Tattoo19Count = 0
+Bool Tattoo19Loaded = False
 
 PickmansWhisperMainQuestScript Function Main()
 	; Caprica forbids Self-as-sibling; Quest intermediate is the FO4 co-script cast.
@@ -123,6 +192,469 @@ Bool Function EnsureLabFaceBank()
 		Return False
 	EndIf
 	Return True
+EndFunction
+
+; Lazily loads the chunk bank at chunkIdx (0..19); returns True if it has usable ids.
+Bool Function EnsureTattooChunk(Int chunkIdx)
+	PickmansWhisperMainQuestScript m = Main()
+	If !m || !m.VoiceAlias
+		SetWoundLabStatus("ERROR: Main/VoiceAlias missing — cannot load tattoo chunk " + chunkIdx)
+		Return False
+	EndIf
+	If chunkIdx == 0
+		If Tattoo0Loaded && Tattoo0Count > 0
+			Return True
+		EndIf
+		Tattoo0Bank = new String[10]
+		Tattoo0Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_Hands.txt", Tattoo0Bank, TATTOO_CONFIG_PATH)
+		Tattoo0Loaded = True
+		If Tattoo0Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_Hands.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 1
+		If Tattoo1Loaded && Tattoo1Count > 0
+			Return True
+		EndIf
+		Tattoo1Bank = new String[16]
+		Tattoo1Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_ArmLeft.txt", Tattoo1Bank, TATTOO_CONFIG_PATH)
+		Tattoo1Loaded = True
+		If Tattoo1Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_ArmLeft.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 2
+		If Tattoo2Loaded && Tattoo2Count > 0
+			Return True
+		EndIf
+		Tattoo2Bank = new String[17]
+		Tattoo2Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_ArmRight.txt", Tattoo2Bank, TATTOO_CONFIG_PATH)
+		Tattoo2Loaded = True
+		If Tattoo2Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_ArmRight.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 3
+		If Tattoo3Loaded && Tattoo3Count > 0
+			Return True
+		EndIf
+		Tattoo3Bank = new String[88]
+		Tattoo3Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_Back_A.txt", Tattoo3Bank, TATTOO_CONFIG_PATH)
+		Tattoo3Loaded = True
+		If Tattoo3Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_Back_A.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 4
+		If Tattoo4Loaded && Tattoo4Count > 0
+			Return True
+		EndIf
+		Tattoo4Bank = new String[87]
+		Tattoo4Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_Back_B.txt", Tattoo4Bank, TATTOO_CONFIG_PATH)
+		Tattoo4Loaded = True
+		If Tattoo4Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_Back_B.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 5
+		If Tattoo5Loaded && Tattoo5Count > 0
+			Return True
+		EndIf
+		Tattoo5Bank = new String[88]
+		Tattoo5Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_BackButt.txt", Tattoo5Bank, TATTOO_CONFIG_PATH)
+		Tattoo5Loaded = True
+		If Tattoo5Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_BackButt.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 6
+		If Tattoo6Loaded && Tattoo6Count > 0
+			Return True
+		EndIf
+		Tattoo6Bank = new String[23]
+		Tattoo6Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_BackHip.txt", Tattoo6Bank, TATTOO_CONFIG_PATH)
+		Tattoo6Loaded = True
+		If Tattoo6Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_BackHip.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 7
+		If Tattoo7Loaded && Tattoo7Count > 0
+			Return True
+		EndIf
+		Tattoo7Bank = new String[64]
+		Tattoo7Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_BackLow.txt", Tattoo7Bank, TATTOO_CONFIG_PATH)
+		Tattoo7Loaded = True
+		If Tattoo7Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_BackLow.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 8
+		If Tattoo8Loaded && Tattoo8Count > 0
+			Return True
+		EndIf
+		Tattoo8Bank = new String[30]
+		Tattoo8Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_BackNeck.txt", Tattoo8Bank, TATTOO_CONFIG_PATH)
+		Tattoo8Loaded = True
+		If Tattoo8Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_BackNeck.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 9
+		If Tattoo9Loaded && Tattoo9Count > 0
+			Return True
+		EndIf
+		Tattoo9Bank = new String[45]
+		Tattoo9Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_BackThigh.txt", Tattoo9Bank, TATTOO_CONFIG_PATH)
+		Tattoo9Loaded = True
+		If Tattoo9Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_BackThigh.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 10
+		If Tattoo10Loaded && Tattoo10Count > 0
+			Return True
+		EndIf
+		Tattoo10Bank = new String[69]
+		Tattoo10Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_Front_A.txt", Tattoo10Bank, TATTOO_CONFIG_PATH)
+		Tattoo10Loaded = True
+		If Tattoo10Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_Front_A.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 11
+		If Tattoo11Loaded && Tattoo11Count > 0
+			Return True
+		EndIf
+		Tattoo11Bank = new String[69]
+		Tattoo11Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_Front_B.txt", Tattoo11Bank, TATTOO_CONFIG_PATH)
+		Tattoo11Loaded = True
+		If Tattoo11Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_Front_B.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 12
+		If Tattoo12Loaded && Tattoo12Count > 0
+			Return True
+		EndIf
+		Tattoo12Bank = new String[96]
+		Tattoo12Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_FrontBelly_A.txt", Tattoo12Bank, TATTOO_CONFIG_PATH)
+		Tattoo12Loaded = True
+		If Tattoo12Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_FrontBelly_A.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 13
+		If Tattoo13Loaded && Tattoo13Count > 0
+			Return True
+		EndIf
+		Tattoo13Bank = new String[95]
+		Tattoo13Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_FrontBelly_B.txt", Tattoo13Bank, TATTOO_CONFIG_PATH)
+		Tattoo13Loaded = True
+		If Tattoo13Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_FrontBelly_B.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 14
+		If Tattoo14Loaded && Tattoo14Count > 0
+			Return True
+		EndIf
+		Tattoo14Bank = new String[35]
+		Tattoo14Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_FrontBreast.txt", Tattoo14Bank, TATTOO_CONFIG_PATH)
+		Tattoo14Loaded = True
+		If Tattoo14Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_FrontBreast.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 15
+		If Tattoo15Loaded && Tattoo15Count > 0
+			Return True
+		EndIf
+		Tattoo15Bank = new String[48]
+		Tattoo15Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_FrontHip.txt", Tattoo15Bank, TATTOO_CONFIG_PATH)
+		Tattoo15Loaded = True
+		If Tattoo15Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_FrontHip.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 16
+		If Tattoo16Loaded && Tattoo16Count > 0
+			Return True
+		EndIf
+		Tattoo16Bank = new String[45]
+		Tattoo16Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_FrontThigh.txt", Tattoo16Bank, TATTOO_CONFIG_PATH)
+		Tattoo16Loaded = True
+		If Tattoo16Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_FrontThigh.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 17
+		If Tattoo17Loaded && Tattoo17Count > 0
+			Return True
+		EndIf
+		Tattoo17Bank = new String[15]
+		Tattoo17Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_ThighInner.txt", Tattoo17Bank, TATTOO_CONFIG_PATH)
+		Tattoo17Loaded = True
+		If Tattoo17Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_ThighInner.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 18
+		If Tattoo18Loaded && Tattoo18Count > 0
+			Return True
+		EndIf
+		Tattoo18Bank = new String[16]
+		Tattoo18Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_UnderArmRight.txt", Tattoo18Bank, TATTOO_CONFIG_PATH)
+		Tattoo18Loaded = True
+		If Tattoo18Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_UnderArmRight.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	ElseIf chunkIdx == 19
+		If Tattoo19Loaded && Tattoo19Count > 0
+			Return True
+		EndIf
+		Tattoo19Bank = new String[69]
+		Tattoo19Count = m.VoiceAlias.LoadStageBankAt("CaptiveTattoo_Misc.txt", Tattoo19Bank, TATTOO_CONFIG_PATH)
+		Tattoo19Loaded = True
+		If Tattoo19Count <= 0
+			SetWoundLabStatus("ERROR: CaptiveTattoo_Misc.txt — " + m.VoiceAlias.GetLastStageLoadStatus())
+			Return False
+		EndIf
+		Return True
+	EndIf
+	SetWoundLabStatus("ERROR: unknown tattoo chunk index " + chunkIdx)
+	Return False
+EndFunction
+
+String[] Function TattooChunkBank(Int chunkIdx)
+	If chunkIdx == 0
+		Return Tattoo0Bank
+	ElseIf chunkIdx == 1
+		Return Tattoo1Bank
+	ElseIf chunkIdx == 2
+		Return Tattoo2Bank
+	ElseIf chunkIdx == 3
+		Return Tattoo3Bank
+	ElseIf chunkIdx == 4
+		Return Tattoo4Bank
+	ElseIf chunkIdx == 5
+		Return Tattoo5Bank
+	ElseIf chunkIdx == 6
+		Return Tattoo6Bank
+	ElseIf chunkIdx == 7
+		Return Tattoo7Bank
+	ElseIf chunkIdx == 8
+		Return Tattoo8Bank
+	ElseIf chunkIdx == 9
+		Return Tattoo9Bank
+	ElseIf chunkIdx == 10
+		Return Tattoo10Bank
+	ElseIf chunkIdx == 11
+		Return Tattoo11Bank
+	ElseIf chunkIdx == 12
+		Return Tattoo12Bank
+	ElseIf chunkIdx == 13
+		Return Tattoo13Bank
+	ElseIf chunkIdx == 14
+		Return Tattoo14Bank
+	ElseIf chunkIdx == 15
+		Return Tattoo15Bank
+	ElseIf chunkIdx == 16
+		Return Tattoo16Bank
+	ElseIf chunkIdx == 17
+		Return Tattoo17Bank
+	ElseIf chunkIdx == 18
+		Return Tattoo18Bank
+	ElseIf chunkIdx == 19
+		Return Tattoo19Bank
+	EndIf
+	Return None
+EndFunction
+
+Int Function TattooChunkCount(Int chunkIdx)
+	If chunkIdx == 0
+		Return Tattoo0Count
+	ElseIf chunkIdx == 1
+		Return Tattoo1Count
+	ElseIf chunkIdx == 2
+		Return Tattoo2Count
+	ElseIf chunkIdx == 3
+		Return Tattoo3Count
+	ElseIf chunkIdx == 4
+		Return Tattoo4Count
+	ElseIf chunkIdx == 5
+		Return Tattoo5Count
+	ElseIf chunkIdx == 6
+		Return Tattoo6Count
+	ElseIf chunkIdx == 7
+		Return Tattoo7Count
+	ElseIf chunkIdx == 8
+		Return Tattoo8Count
+	ElseIf chunkIdx == 9
+		Return Tattoo9Count
+	ElseIf chunkIdx == 10
+		Return Tattoo10Count
+	ElseIf chunkIdx == 11
+		Return Tattoo11Count
+	ElseIf chunkIdx == 12
+		Return Tattoo12Count
+	ElseIf chunkIdx == 13
+		Return Tattoo13Count
+	ElseIf chunkIdx == 14
+		Return Tattoo14Count
+	ElseIf chunkIdx == 15
+		Return Tattoo15Count
+	ElseIf chunkIdx == 16
+		Return Tattoo16Count
+	ElseIf chunkIdx == 17
+		Return Tattoo17Count
+	ElseIf chunkIdx == 18
+		Return Tattoo18Count
+	ElseIf chunkIdx == 19
+		Return Tattoo19Count
+	EndIf
+	Return 0
+EndFunction
+
+String Function TattooItemSettingId(Int chunkIdx)
+	If chunkIdx == 0
+		Return "iTattooItem_Hands:WoundLab"
+	ElseIf chunkIdx == 1
+		Return "iTattooItem_ArmLeft:WoundLab"
+	ElseIf chunkIdx == 2
+		Return "iTattooItem_ArmRight:WoundLab"
+	ElseIf chunkIdx == 3
+		Return "iTattooItem_Back_A:WoundLab"
+	ElseIf chunkIdx == 4
+		Return "iTattooItem_Back_B:WoundLab"
+	ElseIf chunkIdx == 5
+		Return "iTattooItem_BackButt:WoundLab"
+	ElseIf chunkIdx == 6
+		Return "iTattooItem_BackHip:WoundLab"
+	ElseIf chunkIdx == 7
+		Return "iTattooItem_BackLow:WoundLab"
+	ElseIf chunkIdx == 8
+		Return "iTattooItem_BackNeck:WoundLab"
+	ElseIf chunkIdx == 9
+		Return "iTattooItem_BackThigh:WoundLab"
+	ElseIf chunkIdx == 10
+		Return "iTattooItem_Front_A:WoundLab"
+	ElseIf chunkIdx == 11
+		Return "iTattooItem_Front_B:WoundLab"
+	ElseIf chunkIdx == 12
+		Return "iTattooItem_FrontBelly_A:WoundLab"
+	ElseIf chunkIdx == 13
+		Return "iTattooItem_FrontBelly_B:WoundLab"
+	ElseIf chunkIdx == 14
+		Return "iTattooItem_FrontBreast:WoundLab"
+	ElseIf chunkIdx == 15
+		Return "iTattooItem_FrontHip:WoundLab"
+	ElseIf chunkIdx == 16
+		Return "iTattooItem_FrontThigh:WoundLab"
+	ElseIf chunkIdx == 17
+		Return "iTattooItem_ThighInner:WoundLab"
+	ElseIf chunkIdx == 18
+		Return "iTattooItem_UnderArmRight:WoundLab"
+	ElseIf chunkIdx == 19
+		Return "iTattooItem_Misc:WoundLab"
+	EndIf
+	Return ""
+EndFunction
+
+; Captive Tattoos lab — exactly one overlay at a time, always on whatever the
+; player is looking at (GardenOfEden3.GetCameraTargetReference via TargetScan's
+; GetLookingAt, same wrapper VictimsScript/TargetScanScript already use) — not the
+; sticky LabCorpse the other Wound Lab buttons prefer. iTattooCategory:WoundLab
+; selects the chunk; that chunk's own iTattooItem_<Slug>:WoundLab stepper selects
+; the item within it. Applying replaces whatever tattoo was applied last (see
+; ApplyTintedTattooOverlay's UID-tracked single-slot design).
+; Multi-select: every one of the 20 iTattooItem_<Slug>:WoundLab steppers defaults
+; to option 0 = "(none)" (skip). Apply walks all 20, applies whichever chunks were
+; actually changed away from "(none)" (any number, not just one), and leaves the
+; rest alone. There is no separate "category" selector — the item steppers ARE the
+; selection; a prior version gated everything through one category menu, which
+; silently ignored every stepper except whichever chunk that menu happened to be
+; set to (reported: "only applying the first stepper, hand, and ignoring the rest").
+Function DebugApplyTattooLabOverlay()
+	If !MCM.IsInstalled()
+		DiagNotify("Pickman's Whisper\n\nMCM not installed.")
+		Return
+	EndIf
+	PickmansWhisperTargetScanScript ts = TargetScan()
+	Actor target = None
+	If ts
+		target = ts.GetLookingAt()
+	EndIf
+	If !target
+		DiagNotify("Pickman's Whisper\n\nNo actor in crosshair. Look at an NPC/corpse, then Apply tattoo.")
+		Return
+	EndIf
+	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+	If !decay
+		SetWoundLabStatus("ERROR: CorpseDecay script missing")
+		DiagNotify("Pickman's Whisper\n\nCorpseDecay script missing on Main quest.")
+		Return
+	EndIf
+	; Body-slot overlays render under worn clothing — every other Wound Lab apply
+	; strips the target first (StripLabCorpse) for exactly this reason.
+	StripLabCorpse(target)
+	If !decay.BeginTattooApply(target)
+		DiagNotify("Pickman's Whisper\n\n" + decay.LastCorpseDecayStatus)
+		Return
+	EndIf
+	Int appliedCount = 0
+	String appliedSummary = ""
+	Int chunkIdx = 0
+	While chunkIdx < 20
+		String itemSettingId = TattooItemSettingId(chunkIdx)
+		Int rawIdx = MCM.GetModSettingInt(MOD_NAME, itemSettingId)
+		If rawIdx > 0
+			If EnsureTattooChunk(chunkIdx)
+				Int bankCount = TattooChunkCount(chunkIdx)
+				Int itemIdx = rawIdx - 1
+				If itemIdx >= bankCount
+					itemIdx = bankCount - 1
+				EndIf
+				If itemIdx >= 0
+					String[] bank = TattooChunkBank(chunkIdx)
+					String templateId = bank[itemIdx]
+					If templateId && templateId != ""
+						decay.ApplyOneTattooChunk(target, chunkIdx, templateId)
+						appliedCount += 1
+						appliedSummary += "\n" + templateId
+					EndIf
+				EndIf
+			EndIf
+		EndIf
+		chunkIdx += 1
+	EndWhile
+	decay.FinishTattooApply(target, appliedCount)
+	SetWoundLabStatus(decay.LastCorpseDecayStatus)
+	If appliedCount <= 0
+		DiagNotify("Pickman's Whisper\n\nNo tattoo selected. Set at least one Item (...) stepper to something other than (none), then Apply.")
+		Return
+	EndIf
+	DiagNotify("Pickman's Whisper\n\nTattoo(s) applied (" + appliedCount + "):" + appliedSummary)
 EndFunction
 
 ; --- Spawn block: copied from PickmansWhisperBedGiftScript (Force path), Lab* names, sticky ---

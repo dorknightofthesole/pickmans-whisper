@@ -6,13 +6,24 @@ Weapon-equip clear-all also from PlayerAlias (any weapon) + TargetScan TickEssen
 
 REMOVED — "out of combat -> clear essential" (both the direct OnCombatStateChanged(0)
 handler and the reconcile poll's !IsInCombat() check): confirmed via live log evidence
-this actively broke the feature. Weapon-equip is the only reversal now.}
+this actively broke the feature. Weapon-equip is the only reversal now.
+
+aeCombatState==0 IS handled again (HandleCombatEnd, wired from Main's
+OnCombatStateChanged) — but only to apply the beat-face outcome (Slice K
+continuation), never essential state. The prior removal was specifically about
+SetEssential(False) racing an essential actor's own protected-collapse moment;
+a purely cosmetic ChangeHeadPart call doesn't touch essential state and isn't
+part of that race.}
 
 ; CK/VMAD: bound to PickmansWhisperPlayerCombat ALST 0 (same as Main.PlayerAlias).
 PickmansWhisperPlayerAliasScript Property PlayerAlias Auto Const
 
 PickmansWhisperMainQuestScript Function Main()
 	Return (Self as Quest) as PickmansWhisperMainQuestScript
+EndFunction
+
+PickmansWhisperCorpseDecayScript Function CorpseDecay()
+	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
 EndFunction
 
 ; Actors WE set essential=True on via this system (J1's manual toggle or J2's auto
@@ -26,9 +37,9 @@ Int EssentialCount = 0
 Int ESSENTIAL_MAX = 16
 
 ; Compat wrapper — combat enter / older call sites.
-Function OnPlayerEnterCombatWith(Actor target)
-	HandleBeatBeforeKill(target)
-EndFunction
+;Function OnPlayerEnterCombatWith(Actor target)
+;	HandleBeatBeforeKill(target)
+;EndFunction
 
 ; Single gameplay entry — akTarget is the NPC. Uses wired PlayerAlias for blade/unarmed:
 ;   blade equipped → clear essential on her if WE tracked her
@@ -86,6 +97,29 @@ Function HandleBeatBeforeKill(Actor akTarget)
 	AddEssentialTracked(akTarget)
 	Debug.Trace("PickmansWhisper: beat-before-kill essential ON (auto, unarmed) id=0x" + GardenOfEden.GetHexFormID(akTarget))
 	ToastEssentialChange(akTarget, True)
+EndFunction
+
+; Combat-end outcome — purely visual, never touches essential state. akTarget only
+; gets marked up if WE tracked her (unarmed beating happened); this is deliberately
+; the ONLY thing Main.OnCombatStateChanged's aeCombatState==0 branch is allowed to
+; do — the essential reversal itself stays weapon-equip only (ClearAllEssentialOnWeaponEquip).
+; Applying face overlays never calls SetEssential, so it doesn't share the race that
+; got the old aeCombatState==0 essential-clear handler removed (see top-of-file note).
+Function HandleCombatEnd(Actor akTarget)
+	Debug.Trace("Handle Combat End")
+	If !akTarget
+		Return
+	EndIf
+	If !IsTrackedEssential(akTarget)
+		Return
+	EndIf
+	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+	If !decay
+		Debug.Trace("PickmansWhisper: ERROR HandleCombatEnd — CorpseDecay script missing")
+		Return
+	EndIf
+	decay.ApplyBeatFaceOverlays(akTarget)
+	Debug.Trace("PickmansWhisper: beat-before-kill combat end — face overlays applied id=0x" + GardenOfEden.GetHexFormID(akTarget))
 EndFunction
 
 Function EnsureEssentialList()

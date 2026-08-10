@@ -1,1296 +1,2585 @@
 {
-	"modName": "PickmansWhisper",
-	"displayName": "Pickman's Whisper",
-	"minMcmVersion": 1,
-	"plugin": "PickmansWhisper.esp",
-	"content": [
-		{
-			"type": "spacer",
-			"numLines": 2
-		},
-		{
-			"text": "<p align='center'><font size='40'><b>Pickman's Whisper</b></font></p>",
-			"type": "text",
-			"html": true
-		},
-		{
-			"text": "<p align='center'><font size='20'>Knife voice · serial hunger (not sexual)</font></p>",
-			"type": "text",
-			"html": true
-		},
-		{
-			"text": "<p align='center'><font size='18'>Version 1.3.0 · Killer Orchestrator</font></p>",
-			"type": "text",
-			"html": true
-		},
-		{
-			"type": "spacer",
-			"numLines": 1
-		},
-		{
-			"text": "<p align='center'>Companion to <b>Necromantic</b>. Open <b>Debug</b> to verify F4SE / forms.</p>",
-			"type": "text",
-			"html": true
-		}
-	],
-	"pages": [
-		{
-			"pageDisplayName": "How To Use",
-			"content": [
-				{
-					"text": "Hook",
-					"type": "section"
-				},
-				{
-					"text": "Enter <b>Pickman Gallery</b> (interior) or obtain / equip <b>Pickman's Blade</b>. A voice bonds with the wielder — toast-only for Slice A.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"text": "Hunger",
-					"type": "section"
-				},
-				{
-					"text": "Once bonded, hunger rises with unused knife-time. High hunger applies <b>Knife Hunger</b> withdrawal (AGI/CHA −1). Kill a non-essential human with <b>Pickman's Blade</b> to sate hunger (praise toast + sated window).",
-					"type": "text",
-					"html": true
-				},
-				{
-					"text": "Butcher menu",
-					"type": "section"
-				},
-				{
-					"text": "With <b>Pickman's Blade</b> drawn, aim at a dead adult woman and press <b>/</b> to open the <b>butcher menu</b>. Choose a limb — same combat gore (piece stays visible). Skipped during Necromantic scenes.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"text": "Bed gift",
-					"type": "section"
-				},
-				{
-					"text": "After the bond, sometimes a corpse appears in your bed when you sleep. Look away and she is gone. Toggle under <b>Voice</b>.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"text": "Suite",
-					"type": "section"
-				},
-				{
-					"text": "Soft load order: Occult Pact → Pickman's Whisper → Necromantic. This mod is <b>not sexual</b>; Necromantic handles corpse scenes afterward.",
-					"type": "text",
-					"html": true
-				}
-			]
-		},
-		{
-			"pageDisplayName": "Hunger",
-			"content": [
-				{
-					"text": "Status",
-					"type": "section"
-				},
-				{
-					"id": "sBondState:Hunger",
-					"text": "Bond",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sHungerLevel:Hunger",
-					"text": "Current hunger",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sHungerSated:Hunger",
-					"text": "Sated",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Show hunger info",
-					"type": "button",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "ShowHungerInfo",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test: push hunger to addicted",
-					"type": "button",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "ForceHungerAddictedTest",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Repair: restore one AGI/CHA stack",
-					"type": "button",
-					"help": "Undoes one knife-hunger SPECIAL pair if ModValue stacked. Click until SPECIAL is correct. Does not re-apply the penalty.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "RepairHungerSpecialStacks",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test: satiate hunger (debug)",
-					"type": "button",
-					"help": "Clears hunger and plays a praise line without a real kill.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugSatiateHunger",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test: reset bond (debug)",
-					"type": "button",
-					"help": "Clears BondStarted so the next bond poll re-triggers StartBond and the bond toast — lets you retest bonding without hunting for a pre-bond save.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugResetBond",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "System",
-					"type": "section"
-				},
-				{
-					"id": "bAddictionSpell:Hunger",
-					"text": "Knife Hunger effect",
-					"type": "switcher",
-					"help": "When hunger is high, apply AGI/CHA withdrawal stand-in.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"text": "Rates",
-					"type": "section"
-				},
-				{
-					"id": "fTimeGain:Hunger",
-					"text": "Hunger per game-hour",
-					"type": "slider",
-					"help": "Idle growth while bonded and not sated. Default 5.",
-					"valueOptions": {
-						"min": 0,
-						"max": 15,
-						"step": 0.5,
-						"sourceType": "ModSettingFloat"
-					}
-				},
-				{
-					"id": "fAddictedAt:Hunger",
-					"text": "Addicted threshold",
-					"type": "slider",
-					"valueOptions": {
-						"min": 25,
-						"max": 100,
-						"step": 5,
-						"sourceType": "ModSettingFloat"
-					}
-				},
-				{
-					"id": "fSatedHours:Hunger",
-					"text": "Sated duration (game hours)",
-					"type": "slider",
-					"help": "After satiation (Slice B knife kill / debug button).",
-					"valueOptions": {
-						"min": 0.5,
-						"max": 48,
-						"step": 0.5,
-						"sourceType": "ModSettingFloat"
-					}
-				}
-			]
-		},
-		{
-			"pageDisplayName": "Voice",
-			"content": [
-				{
-					"id": "bVoiceToasts:Voice",
-					"text": "Enable toast voice",
-					"type": "switcher",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"text": "Delivery",
-					"type": "section"
-				},
-				{
-					"id": "iVoiceDelivery:Voice",
-					"text": "Voice delivery",
-					"type": "stepper",
-					"help": "How notices are delivered. Toast and Audio (default): HUD toast and matching whisper clip. Audio only: clip with no toast. Toast only: toast with no audio.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Toast and Audio",
-							"Audio only",
-							"Toast only"
-						]
-					}
-				},
-				{
-					"id": "bBedGift:Voice",
-					"text": "Bed gift hallucination",
-					"type": "switcher",
-					"help": "While bonded, occasionally spawn an ephemeral corpse in your bed on sleep. Look away after seeing her and she vanishes. Pure vignette — no hunger change.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"text": "Tests",
-					"type": "section"
-				},
-				{
-					"text": "Test next trust line",
-					"type": "button",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestTrustLine",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test notice (nearby woman)",
-					"type": "button",
-					"help": "Comments on the nearest non-hostile adult female in range (C2). Honors Voice delivery mode.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestNoticeLine",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test next praise line",
-					"type": "button",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestPraiseLine",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Reload line banks",
-					"type": "button",
-					"help": "Re-reads NoticeLines_*.txt and *_Audio.txt from disk (no game restart) and reports load status.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugReloadLines",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Notice text: Data/PickmansWhisper/config/NoticeLines_*.txt. Audio maps: *_Audio.txt (.xwm filenames). Clips: Data/Sound/PickmansWhisper/. See Debug for load status.",
-					"type": "text",
-					"html": true
-				}
-			]
-		},
-		{
-			"pageDisplayName": "Victims",
-			"content": [
-				{
-					"text": "Victim",
-					"type": "section"
-				},
-				{
-					"text": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted victim\" re-pushes Aimed / Decay / named list from that cache — it does not re-scan the world.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "sVictimAimed:Victims",
-					"text": "Aimed now",
-					"type": "textinput",
-					"help": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted victim\" re-pushes the cache only.",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sDecayStage:Victims",
-					"text": "Decay stage (current)",
-					"type": "textinput",
-					"help": "Current decay for the cached victim. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply via KillerScan sync after you close MCM (may take several seconds).",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sVictimsSummary:Victims",
-					"text": "Named victims",
-					"type": "textinput",
-					"help": "Up to 8 names from the saved FormID table (cap 32). \"Leslie x2\" means two different NPCs share that name.",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Load targeted victim",
-					"type": "button",
-					"help": "Re-push Aimed / Decay / named list from the killscan cache. Opens a MessageBox so you can confirm the button fired. Face her in-world before opening MCM.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMRefreshVictimsPanel",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"text": "Beat before kill (temp essential)",
-					"type": "section"
-				},
-				{
-					"text": "Toggle \"can't be killed\" on the aimed NPC for a beat-before-kill fight (Slice J1). Same eligibility as a valid knife-kill target: human, adult female, not essential/child/teammate, seen non-hostile. Pressing again while she's essential (that this toggle set) turns it back off — an NPC essential for any other reason is never touched.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "sBeatEssential:Victims",
-					"text": "Essential (beat mode)",
-					"type": "textinput",
-					"help": "☑ = essential via this toggle right now; ☐ = not (or not eligible). Refreshes on \"Load targeted victim\" and after pressing Toggle essential below.",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Toggle essential",
-					"type": "button",
-					"help": "Sets/clears SetEssential on the aimed NPC. Status row above updates immediately after.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMToggleEssentialForAimed",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"text": "Name / rename",
-					"type": "section"
-				},
-				{
-					"text": "Type a real name, then \"Apply name\". That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "sVictimName:Victims",
-					"text": "New name",
-					"type": "textinput",
-					"help": "Real name only (e.g. Marie). Not Settler/Resident. Then press \"Apply name\".",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Apply name",
-					"type": "button",
-					"help": "GardenOfEden2.SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMNameAimedVictim",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"text": "Decay stage options",
-					"type": "section"
-				},
-				{
-					"id": "bDecayVisuals:Victims",
-					"text": "Corpse decay visuals",
-					"type": "switcher",
-					"help": "On by default. When on: LooksMenu body skins + face masks follow the decay stage on knife/world corpses (can conflict with Real HD Faces — load Real HD after Pickman's Whisper). When off: murder clock and stage labels still advance; no world-corpse paint. Bed gift vignette still paints.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"id": "bDecayMissingLimbs:Victims",
-					"text": "Apply decay to missing limbs/head",
-					"type": "switcher",
-					"help": "Off by default. When off: a corpse missing a limb or the head is skipped for body decal decay (stump-edge UV glow protection) — clock/face still advance as normal. When on: overrides that skip and paints body decals on a dismembered corpse exactly like a fully-limbed one.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"text": "Testing only. Pick a stage, press \"Set decay stage\" (or \"Reset decay stage\"), then close the dialog and MCM — overlays apply to the aimed corpse within about a second (requires Corpse decay visuals ON). Freshly (0) = no body skins; Pallor (1) = tinted SkinTexture_16; Livor (2)+ = heavier Porcupine skins. Face masks start at stage 2. \"Load targeted victim\" refreshes Aimed + Decay rows immediately.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "iVictimDecayStage:Victims",
-					"text": "Pick stage",
-					"type": "stepper",
-					"help": "Testing only. Choose ModConfig stage, then press \"Set decay stage\", then close dialog + MCM. Stage 0 = body none; Pallor (1) = tinted SkinTexture_16; stage 2+ heavier skins + face.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Freshly Deceased",
-							"Pallor Mortis",
-							"Livor Mortis",
-							"Putrefaction",
-							"Black Putrefaction"
-						]
-					}
-				},
-				{
-					"text": "Set decay stage",
-					"type": "button",
-					"help": "Backdates murder time by ModConfig startHours, then queues overlay apply on the aimed corpse as soon as you leave MCM.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMApplyAimedDecayStage",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				},
-				{
-					"text": "Reset decay stage",
-					"type": "button",
-					"help": "Sets murder time to now and Pick stage to Freshly Deceased, then queues overlay apply on the aimed corpse when you leave MCM.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "MCMResetAimedDecayKillClock",
-						"scriptName": "PickmansWhisperVictimsScript"
-					}
-				}
-			]
-		},
-		{
-			"pageDisplayName": "Debug",
-			"content": [
-				{
-					"text": "!!! MCM PING (global MessageBox) !!!",
-					"type": "button",
-					"help": "CallGlobalFunction Debug.MessageBox — no quest required.",
-					"action": {
-						"type": "CallGlobalFunction",
-						"script": "Debug",
-						"function": "MessageBox",
-						"params": [
-							"Pickman's Whisper MCM PING (global)\n\nMCM CallGlobalFunction works."
-						]
-					}
-				},
-				{
-					"text": "!!! QUEST PING (CallFunction) !!!",
-					"type": "button",
-					"help": "CallFunction on Main quest with scriptName — must MessageBox if quest wiring is OK.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"scriptName": "PickmansWhisperMainQuestScript",
-						"function": "MCMQuestPing"
-					}
-				},
-				{
-					"text": "!!! VOICE PATH DUMP !!!",
-					"type": "button",
-					"help": "MessageBox: bond, blade, KillerScan/VoiceScan casts, scan tick, last dispatch, notice/fixation status, hunger cooldown. Use this before guessing why whispers are silent.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"scriptName": "PickmansWhisperMainQuestScript",
-						"function": "DebugVoicePathDump"
-					}
-				},
-				{
-					"id": "bKillDebugToasts:Debug",
-					"text": "Kill / scan debug toasts",
-					"type": "switcher",
-					"help": "Blade status, scan heartbeats, HUMAN kill / ignore reasons. Off by default. Praise and hunger voice are separate (Voice page).",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"id": "bSniffMagicEffects:Debug",
-					"text": "Sniff magic effects (P5 discovery)",
-					"type": "switcher",
-					"help": "Temporary Slice H P5 diagnostic. Off by default. When on, Traces the FormID of EVERY magic effect applied to the player (Papyrus.0.log) — used to confirm which effect the Cannibal perk's heal actually applies. Turn off when done; it is noisy.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"id": "bBedGiftEverySleep:Debug",
-					"text": "Bed gift every sleep",
-					"type": "switcher",
-					"help": "Slice G testing: skip the ~12 game-hour bed-gift cooldown so a corpse can appear every sleep. Turn off for normal cadence.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"id": "bNoticePollDebug:Debug",
-					"text": "Notice poll dialogs",
-					"type": "switcher",
-					"help": "Auto MessageBox every ~8s while notice polling: who was nearby and why each failed or passed. No button needed. Turn off when done debugging.",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"id": "iNoticeStage:Debug",
-					"text": "Notice stage",
-					"type": "menu",
-					"help": "Current whisper escalation stage. When 'Force notice stage' is off this tracks hunger (updates on Refresh). When on, this pins the stage so you can test each one without grinding hunger.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"1 Calm",
-							"2 Restless",
-							"3 Hungry",
-							"4 Starving",
-							"5 Desperate"
-						]
-					}
-				},
-				{
-					"id": "bForceNoticeStage:Debug",
-					"text": "Force notice stage",
-					"type": "switcher",
-					"help": "When on, the Notice stage dropdown overrides the hunger-derived stage (debug/testing).",
-					"valueOptions": {
-						"sourceType": "ModSettingBool"
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"id": "sOverall:Debug",
-					"text": "Overall",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sF4SE:Debug",
-					"text": "F4SE",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sMCM:Debug",
-					"text": "MCM",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sBlade:Debug",
-					"text": "Blade form",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sBladeInv:Debug",
-					"text": "Blade inventory",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sBladeEq:Debug",
-					"text": "Blade equipped",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sCell:Debug",
-					"text": "Current cell",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sBond:Debug",
-					"text": "Bond",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sWatch:Debug",
-					"text": "Kill watch / alias",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sNearby:Debug",
-					"text": "Nearby NPC scan",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sNotice:Debug",
-					"text": "Last notice poll",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sVoiceDispatch:Debug",
-					"text": "Voice dispatch (KillerScan)",
-					"type": "textinput",
-					"help": "Updates every ~2s when KillerScan reaches VoiceScan. If stuck on (none yet), voice never got the call.",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sFixation:Debug",
-					"text": "Look fixation (C5)",
-					"type": "textinput",
-					"help": "Aim-edge counts on eligible NPCs (seen xN). Ambient hunger whispers unchanged.",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Notice line files (editable, under Data/PickmansWhisper/config/)",
-					"type": "section"
-				},
-				{
-					"id": "sNoticeCalm:Debug",
-					"text": "1 Calm file",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sNoticeRestless:Debug",
-					"text": "2 Restless file",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sNoticeHungry:Debug",
-					"text": "3 Hungry file",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sNoticeStarving:Debug",
-					"text": "4 Starving file",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sNoticeDesperate:Debug",
-					"text": "5 Desperate file",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"id": "sHungerSpell:Debug",
-					"text": "Hunger SPEL",
-					"type": "textinput",
-					"valueOptions": {
-						"sourceType": "ModSettingString"
-					}
-				},
-				{
-					"text": "Refresh status",
-					"type": "button",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "RefreshDebugStatus",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Scan nearby NPCs (raw)",
-					"type": "button",
-					"help": "Unfiltered GoE living + detecting scan within kill-watch radius. Verifies detection before notice filters.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugScanNearbyNpcs",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Verify blade detect",
-					"type": "button",
-					"help": "GoE check: PASS only when Pickman's Blade is actually drawn (not a gun with blade in inventory).",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugVerifyBladeDetect",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test notice file load",
-					"type": "button",
-					"help": "Reloads all five NoticeLines_*.txt via GoE2 and pops a MessageBox with the full path/exists/raw/parsed/RESULT trace (Necromantic-style). Screenshot this if load fails.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestNoticeFiles",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Force bond",
-					"type": "button",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugForceBond",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Play test whisper (EndIt)",
-					"type": "button",
-					"help": "D0-POC: Sound.Play on PW_Whisper_EndIt (FormID xx000807 → Sound\\PickmansWhisper\\EndIt.xwm). Quit FO4 to desktop after deploy so MCM reloads this button.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugPlayTestWhisper",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Force bed gift",
-					"type": "button",
-					"help": "Slice G: spawn the bed-hallucination corpse beside the player (no sleep). Look at her, then look away to clear.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugForceBedGift",
-						"scriptName": "PickmansWhisperBedGiftScript"
-					}
-				},
-				{
-					"text": "Clear bed gift",
-					"type": "button",
-					"help": "Slice G: despawn the ephemeral bed corpse immediately.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugClearBedGift",
-						"scriptName": "PickmansWhisperBedGiftScript"
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"text": "Open butcher menu",
-					"type": "button",
-					"help": "Slice F: open the butcher limb menu on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. Works from MCM.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugOpenButcherMenu",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Test sever aimed head",
-					"type": "button",
-					"help": "Slice F: sever Head1 on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. No limb menu.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugTestSeverAimedHead",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				}
-			]
-		},
-		{
-			"pageDisplayName": "Wound Lab",
-			"content": [
-				{
-					"text": "Decay stage (P2)",
-					"type": "section"
-				},
-				{
-					"text": "Locked tint ramp + Porcupine SkinTexture map. Apply clears Porcupine overlays first. Stages Putrefaction / Black Putrefaction also add all scars.",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "iDecayLabStage:WoundLab",
-					"text": "Decay stage",
-					"type": "stepper",
-					"help": "Locked P2 stage names from SLICE_H. Left/right to change, then Apply stage.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Freshly Deceased",
-							"Pallor Mortis",
-							"Livor Mortis",
-							"Putrefaction",
-							"Black Putrefaction"
-						]
-					}
-				},
-				{
-					"text": "Apply stage",
-					"type": "button",
-					"help": "Clear all Porcupine Scars/SkinTexture on the lab corpse, then apply the locked stage SkinTextures + tint. Stages Putrefaction and Black Putrefaction also apply all scars. Keeps DeathMarks wounds.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyDecayStageLab",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Spawn wound lab corpse",
-					"type": "button",
-					"help": "Same as Force bed gift spawn, sticky (no 6s despawn). Clear wound lab corpse removes it. Prefers nearby bed; else player.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugSpawnWoundLabCorpse",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Clear wound lab corpse",
-					"type": "button",
-					"help": "Despawn the sticky wound-lab corpse.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugClearWoundLabCorpse",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Lab tools",
-					"type": "section"
-				},
-				{
-					"text": "<b>Slice H P0.1 / P0.2</b> — sticky corpse; DeathMarks wounds + Porcupine skin + SFT face bruises. Tint shared for overlays. Banks stack (each Apply clears only its bank).",
-					"type": "text",
-					"html": true
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"id": "iWoundLabTemplate:WoundLab",
-					"text": "Wound template",
-					"type": "stepper",
-					"help": "Female DeathMarks from DecayWoundOverlays.txt. Left/right to change.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Female_Arm_Wound",
-							"Female_Back_Wound_1",
-							"Female_Back_Wound_2",
-							"Female_Back_Wound_3",
-							"Female_Back_Wound_4",
-							"Female_Back_Wound_5",
-							"Female_Front_Wound_1",
-							"Female_Front_Wound_2",
-							"Female_Front_Wound_3",
-							"Female_Front_Wound_4",
-							"Female_Front_Wound_5"
-						]
-					}
-				},
-				{
-					"id": "iWoundLabCount:WoundLab",
-					"text": "Apply count",
-					"type": "stepper",
-					"help": "Apply the selected wound this many times.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"1",
-							"2",
-							"3",
-							"4",
-							"5",
-							"6",
-							"7",
-							"8",
-							"9",
-							"10",
-							"11",
-							"12",
-							"13",
-							"14",
-							"15",
-							"16"
-						]
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"id": "iWoundLabTintPreset:WoundLab",
-					"text": "Tint preset",
-					"type": "menu",
-					"help": "Sets Tint R/G/B (alpha unchanged). P1 pale = locked wound look; green / red / ashen for decay experiments.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"P1 pale",
-							"Death decay green",
-							"Body decay red",
-							"Ashen gray"
-						]
-					}
-				},
-				{
-					"id": "fWoundLabTintR:WoundLab",
-					"text": "Tint R",
-					"type": "slider",
-					"help": "LooksMenu overlay red (0-1).",
-					"valueOptions": {
-						"min": 0,
-						"max": 1,
-						"step": 0.05,
-						"sourceType": "ModSettingFloat"
-					}
-				},
-				{
-					"id": "fWoundLabTintG:WoundLab",
-					"text": "Tint G",
-					"type": "slider",
-					"help": "LooksMenu overlay green (0-1).",
-					"valueOptions": {
-						"min": 0,
-						"max": 1,
-						"step": 0.05,
-						"sourceType": "ModSettingFloat"
-					}
-				},
-				{
-					"id": "fWoundLabTintB:WoundLab",
-					"text": "Tint B",
-					"type": "slider",
-					"help": "LooksMenu overlay blue (0-1).",
-					"valueOptions": {
-						"min": 0,
-						"max": 1,
-						"step": 0.05,
-						"sourceType": "ModSettingFloat"
-					}
-				},
-				{
-					"id": "fWoundLabTintA:WoundLab",
-					"text": "Tint A",
-					"type": "slider",
-					"help": "LooksMenu overlay alpha (0-1) for manual wound/skin/face Apply. Decay stage Apply always uses 1.0 (100%).",
-					"valueOptions": {
-						"min": 0,
-						"max": 1,
-						"step": 0.05,
-						"sourceType": "ModSettingFloat"
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"text": "Apply wound lab overlays",
-					"type": "button",
-					"help": "Clear wound-bank overlays only, then apply selected DeathMarks template N times. Keeps Porcupine skin overlays.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyWoundLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Apply all wounds",
-					"type": "button",
-					"help": "Clear wound-bank only, then apply every DecayWoundOverlays.txt template (count = times each). Keeps skin overlays.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllWoundLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"text": "<b>P0.2 — Porcupine skin</b> (Scars + SkinTexture from DecaySkinOverlays.txt; needs porcOverlays.esl)",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "iSkinLabTemplate:WoundLab",
-					"text": "Skin template",
-					"type": "stepper",
-					"help": "Porcupine Scars_01-20 then SkinTexture_01-20. Left/right to change.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Scars_01",
-							"Scars_02",
-							"Scars_03",
-							"Scars_04",
-							"Scars_05",
-							"Scars_06",
-							"Scars_07",
-							"Scars_08",
-							"Scars_09",
-							"Scars_10",
-							"Scars_11",
-							"Scars_12",
-							"Scars_13",
-							"Scars_14",
-							"Scars_15",
-							"Scars_16",
-							"Scars_17",
-							"Scars_18",
-							"Scars_19",
-							"Scars_20",
-							"SkinTexture_01",
-							"SkinTexture_02",
-							"SkinTexture_03",
-							"SkinTexture_04",
-							"SkinTexture_05",
-							"SkinTexture_06",
-							"SkinTexture_07",
-							"SkinTexture_08",
-							"SkinTexture_09",
-							"SkinTexture_10",
-							"SkinTexture_11",
-							"SkinTexture_12",
-							"SkinTexture_13",
-							"SkinTexture_14",
-							"SkinTexture_15",
-							"SkinTexture_16",
-							"SkinTexture_17",
-							"SkinTexture_18",
-							"SkinTexture_19",
-							"SkinTexture_20"
-						]
-					}
-				},
-				{
-					"id": "iSkinLabTemplate2:WoundLab",
-					"text": "Skin template 2",
-					"type": "stepper",
-					"help": "Optional second Porcupine overlay layered with Skin template. First option (none) skips.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"(none)",
-							"Scars_01",
-							"Scars_02",
-							"Scars_03",
-							"Scars_04",
-							"Scars_05",
-							"Scars_06",
-							"Scars_07",
-							"Scars_08",
-							"Scars_09",
-							"Scars_10",
-							"Scars_11",
-							"Scars_12",
-							"Scars_13",
-							"Scars_14",
-							"Scars_15",
-							"Scars_16",
-							"Scars_17",
-							"Scars_18",
-							"Scars_19",
-							"Scars_20",
-							"SkinTexture_01",
-							"SkinTexture_02",
-							"SkinTexture_03",
-							"SkinTexture_04",
-							"SkinTexture_05",
-							"SkinTexture_06",
-							"SkinTexture_07",
-							"SkinTexture_08",
-							"SkinTexture_09",
-							"SkinTexture_10",
-							"SkinTexture_11",
-							"SkinTexture_12",
-							"SkinTexture_13",
-							"SkinTexture_14",
-							"SkinTexture_15",
-							"SkinTexture_16",
-							"SkinTexture_17",
-							"SkinTexture_18",
-							"SkinTexture_19",
-							"SkinTexture_20"
-						]
-					}
-				},
-				{
-					"text": "Apply skin overlays",
-					"type": "button",
-					"help": "Clear skin-bank only, then apply Skin template (+ Skin template 2 if not none) N times each. Keeps DeathMarks wounds.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplySkinLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Apply all skin overlays",
-					"type": "button",
-					"help": "Clear skin-bank only, then apply every DecaySkinOverlays.txt template (count = times each). Keeps wounds.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllSkinLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Apply all scars",
-					"type": "button",
-					"help": "Add every Scars_01-20 on top of existing Porcupine SkinTexture layers (does not clear SkinTexture or wounds). Count = times each.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllScarLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"type": "spacer",
-					"numLines": 1
-				},
-				{
-					"text": "<b>Face - Scripted Face Tints</b> (SFT Damage / Boxer bruises; soft dep SFT.esp; not LooksMenu overlays)",
-					"type": "text",
-					"html": true
-				},
-				{
-					"id": "iFaceLabTemplate:WoundLab",
-					"text": "Face template",
-					"type": "stepper",
-					"help": "SFT Damage headparts from DecayFaceOverlays.txt (Boxer bruises). Needs SFT.esp. Left/right to change.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"Boxer - 12 Rounds",
-							"Boxer - Broken Nose",
-							"Boxer - Black Eye",
-							"Boxer - Fat Lip"
-						]
-					}
-				},
-				{
-					"id": "iFaceLabTemplate2:WoundLab",
-					"text": "Face template 2",
-					"type": "stepper",
-					"help": "Optional second SFT Damage headpart. First option (none) skips.",
-					"valueOptions": {
-						"sourceType": "ModSettingInt",
-						"options": [
-							"(none)",
-							"Boxer - 12 Rounds",
-							"Boxer - Broken Nose",
-							"Boxer - Black Eye",
-							"Boxer - Fat Lip"
-						]
-					}
-				},
-				{
-					"text": "Apply face overlays",
-					"type": "button",
-					"help": "Clear SFT Damage category, then apply Face template (+ template 2 if not none). Keeps wounds/skin.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyFaceLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				},
-				{
-					"text": "Apply all face overlays",
-					"type": "button",
-					"help": "Clear SFT Damage category, then apply every DecayFaceOverlays.txt tint. Keeps wounds/skin.",
-					"action": {
-						"type": "CallFunction",
-						"form": "PickmansWhisper.esp|800",
-						"function": "DebugApplyAllFaceLabOverlays",
-						"scriptName": "PickmansWhisperMainQuestScript"
-					}
-				}
-			]
-		}
-	]
+  "modName": "PickmansWhisper",
+  "displayName": "Pickman's Whisper",
+  "minMcmVersion": 1,
+  "plugin": "PickmansWhisper.esp",
+  "content": [
+    {
+      "type": "spacer",
+      "numLines": 2
+    },
+    {
+      "text": "<p align='center'><font size='40'><b>Pickman's Whisper</b></font></p>",
+      "type": "text",
+      "html": true
+    },
+    {
+      "text": "<p align='center'><font size='20'>Knife voice · serial hunger (not sexual)</font></p>",
+      "type": "text",
+      "html": true
+    },
+    {
+      "text": "<p align='center'><font size='18'>Version 1.3.0 · Killer Orchestrator</font></p>",
+      "type": "text",
+      "html": true
+    },
+    {
+      "type": "spacer",
+      "numLines": 1
+    },
+    {
+      "text": "<p align='center'>Companion to <b>Necromantic</b>. Open <b>Debug</b> to verify F4SE / forms.</p>",
+      "type": "text",
+      "html": true
+    }
+  ],
+  "pages": [
+    {
+      "pageDisplayName": "How To Use",
+      "content": [
+        {
+          "text": "Hook",
+          "type": "section"
+        },
+        {
+          "text": "Enter <b>Pickman Gallery</b> (interior) or obtain / equip <b>Pickman's Blade</b>. A voice bonds with the wielder — toast-only for Slice A.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "text": "Hunger",
+          "type": "section"
+        },
+        {
+          "text": "Once bonded, hunger rises with unused knife-time. High hunger applies <b>Knife Hunger</b> withdrawal (AGI/CHA −1). Kill a non-essential human with <b>Pickman's Blade</b> to sate hunger (praise toast + sated window).",
+          "type": "text",
+          "html": true
+        },
+        {
+          "text": "Butcher menu",
+          "type": "section"
+        },
+        {
+          "text": "With <b>Pickman's Blade</b> drawn, aim at a dead adult woman and press <b>/</b> to open the <b>butcher menu</b>. Choose a limb — same combat gore (piece stays visible). Skipped during Necromantic scenes.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "text": "Bed gift",
+          "type": "section"
+        },
+        {
+          "text": "After the bond, sometimes a corpse appears in your bed when you sleep. Look away and she is gone. Toggle under <b>Voice</b>.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "text": "Suite",
+          "type": "section"
+        },
+        {
+          "text": "Soft load order: Occult Pact → Pickman's Whisper → Necromantic. This mod is <b>not sexual</b>; Necromantic handles corpse scenes afterward.",
+          "type": "text",
+          "html": true
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Hunger",
+      "content": [
+        {
+          "text": "Status",
+          "type": "section"
+        },
+        {
+          "id": "sBondState:Hunger",
+          "text": "Bond",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sHungerLevel:Hunger",
+          "text": "Current hunger",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sHungerSated:Hunger",
+          "text": "Sated",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Show hunger info",
+          "type": "button",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "ShowHungerInfo",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test: push hunger to addicted",
+          "type": "button",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "ForceHungerAddictedTest",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Repair: restore one AGI/CHA stack",
+          "type": "button",
+          "help": "Undoes one knife-hunger SPECIAL pair if ModValue stacked. Click until SPECIAL is correct. Does not re-apply the penalty.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "RepairHungerSpecialStacks",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test: satiate hunger (debug)",
+          "type": "button",
+          "help": "Clears hunger and plays a praise line without a real kill.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugSatiateHunger",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test: reset bond (debug)",
+          "type": "button",
+          "help": "Clears BondStarted so the next bond poll re-triggers StartBond and the bond toast — lets you retest bonding without hunting for a pre-bond save.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugResetBond",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "System",
+          "type": "section"
+        },
+        {
+          "id": "bAddictionSpell:Hunger",
+          "text": "Knife Hunger effect",
+          "type": "switcher",
+          "help": "When hunger is high, apply AGI/CHA withdrawal stand-in.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Rates",
+          "type": "section"
+        },
+        {
+          "id": "fTimeGain:Hunger",
+          "text": "Hunger per game-hour",
+          "type": "slider",
+          "help": "Idle growth while bonded and not sated. Default 5.",
+          "valueOptions": {
+            "min": 0,
+            "max": 15,
+            "step": 0.5,
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fAddictedAt:Hunger",
+          "text": "Addicted threshold",
+          "type": "slider",
+          "valueOptions": {
+            "min": 25,
+            "max": 100,
+            "step": 5,
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fSatedHours:Hunger",
+          "text": "Sated duration (game hours)",
+          "type": "slider",
+          "help": "After satiation (Slice B knife kill / debug button).",
+          "valueOptions": {
+            "min": 0.5,
+            "max": 48,
+            "step": 0.5,
+            "sourceType": "ModSettingFloat"
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Voice",
+      "content": [
+        {
+          "id": "bVoiceToasts:Voice",
+          "text": "Enable toast voice",
+          "type": "switcher",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Delivery",
+          "type": "section"
+        },
+        {
+          "id": "iVoiceDelivery:Voice",
+          "text": "Voice delivery",
+          "type": "stepper",
+          "help": "How notices are delivered. Toast and Audio (default): HUD toast and matching whisper clip. Audio only: clip with no toast. Toast only: toast with no audio.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "Toast and Audio",
+              "Audio only",
+              "Toast only"
+            ]
+          }
+        },
+        {
+          "id": "bBedGift:Voice",
+          "text": "Bed gift hallucination",
+          "type": "switcher",
+          "help": "While bonded, occasionally spawn an ephemeral corpse in your bed on sleep. Look away after seeing her and she vanishes. Pure vignette — no hunger change.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Tests",
+          "type": "section"
+        },
+        {
+          "text": "Test next trust line",
+          "type": "button",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugTestTrustLine",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test notice (nearby woman)",
+          "type": "button",
+          "help": "Comments on the nearest non-hostile adult female in range (C2). Honors Voice delivery mode.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugTestNoticeLine",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test next praise line",
+          "type": "button",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugTestPraiseLine",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Reload line banks",
+          "type": "button",
+          "help": "Re-reads NoticeLines_*.txt and *_Audio.txt from disk (no game restart) and reports load status.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugReloadLines",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Notice text: Data/PickmansWhisper/config/NoticeLines_*.txt. Audio maps: *_Audio.txt (.xwm filenames). Clips: Data/Sound/PickmansWhisper/. See Debug for load status.",
+          "type": "text",
+          "html": true
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Victims",
+      "content": [
+        {
+          "text": "Victim",
+          "type": "section"
+        },
+        {
+          "text": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted victim\" re-pushes Aimed / Decay / named list from that cache — it does not re-scan the world.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "sVictimAimed:Victims",
+          "text": "Aimed now",
+          "type": "textinput",
+          "help": "Face someone in-world for ~2s (killscan caches them), then open this page. \"Load targeted victim\" re-pushes the cache only.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sDecayStage:Victims",
+          "text": "Decay stage (current)",
+          "type": "textinput",
+          "help": "Current decay for the cached victim. Named victims without a clock start Freshly Deceased. Blade kills stamp automatically. Overlays apply via KillerScan sync after you close MCM (may take several seconds).",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sVictimsSummary:Victims",
+          "text": "Named victims",
+          "type": "textinput",
+          "help": "Up to 8 names from the saved FormID table (cap 32). \"Leslie x2\" means two different NPCs share that name.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Load targeted victim",
+          "type": "button",
+          "help": "Re-push Aimed / Decay / named list from the killscan cache. Opens a MessageBox so you can confirm the button fired. Face her in-world before opening MCM.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMRefreshVictimsPanel",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        },
+        {
+          "text": "Beat before kill (temp essential)",
+          "type": "section"
+        },
+        {
+          "text": "Toggle \"can't be killed\" on the aimed NPC for a beat-before-kill fight (Slice J1). Same eligibility as a valid knife-kill target: human, adult female, not essential/child/teammate, seen non-hostile. Pressing again while she's essential (that this toggle set) turns it back off — an NPC essential for any other reason is never touched.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "sBeatEssential:Victims",
+          "text": "Essential (beat mode)",
+          "type": "textinput",
+          "help": "☑ = essential via this toggle right now; ☐ = not (or not eligible). Refreshes on \"Load targeted victim\" and after pressing Toggle essential below.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Toggle essential",
+          "type": "button",
+          "help": "Sets/clears SetEssential on the aimed NPC. Status row above updates immediately after.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMToggleEssentialForAimed",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        },
+        {
+          "text": "Name / rename",
+          "type": "section"
+        },
+        {
+          "text": "Type a real name, then \"Apply name\". That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "sVictimName:Victims",
+          "text": "New name",
+          "type": "textinput",
+          "help": "Real name only (e.g. Marie). Not Settler/Resident. Then press \"Apply name\".",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Apply name",
+          "type": "button",
+          "help": "GardenOfEden2.SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMNameAimedVictim",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        },
+        {
+          "text": "Decay stage options",
+          "type": "section"
+        },
+        {
+          "id": "bDecayVisuals:Victims",
+          "text": "Corpse decay visuals",
+          "type": "switcher",
+          "help": "On by default. When on: LooksMenu body skins + face masks follow the decay stage on knife/world corpses (can conflict with Real HD Faces — load Real HD after Pickman's Whisper). When off: murder clock and stage labels still advance; no world-corpse paint. Bed gift vignette still paints.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bDecayMissingLimbs:Victims",
+          "text": "Apply decay to missing limbs/head",
+          "type": "switcher",
+          "help": "Off by default. When off: a corpse missing a limb or the head is skipped for body decal decay (stump-edge UV glow protection) — clock/face still advance as normal. When on: overrides that skip and paints body decals on a dismembered corpse exactly like a fully-limbed one.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Testing only. Pick a stage, press \"Set decay stage\" (or \"Reset decay stage\"), then close the dialog and MCM — overlays apply to the aimed corpse within about a second (requires Corpse decay visuals ON). Freshly (0) = no body skins; Pallor (1) = tinted SkinTexture_16; Livor (2)+ = heavier Porcupine skins. Face masks start at stage 2. \"Load targeted victim\" refreshes Aimed + Decay rows immediately.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "iVictimDecayStage:Victims",
+          "text": "Pick stage",
+          "type": "stepper",
+          "help": "Testing only. Choose ModConfig stage, then press \"Set decay stage\", then close dialog + MCM. Stage 0 = body none; Pallor (1) = tinted SkinTexture_16; stage 2+ heavier skins + face.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "Freshly Deceased",
+              "Pallor Mortis",
+              "Livor Mortis",
+              "Putrefaction",
+              "Black Putrefaction"
+            ]
+          }
+        },
+        {
+          "text": "Set decay stage",
+          "type": "button",
+          "help": "Backdates murder time by ModConfig startHours, then queues overlay apply on the aimed corpse as soon as you leave MCM.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMApplyAimedDecayStage",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        },
+        {
+          "text": "Reset decay stage",
+          "type": "button",
+          "help": "Sets murder time to now and Pick stage to Freshly Deceased, then queues overlay apply on the aimed corpse when you leave MCM.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMResetAimedDecayKillClock",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Debug",
+      "content": [
+        {
+          "text": "!!! MCM PING (global MessageBox) !!!",
+          "type": "button",
+          "help": "CallGlobalFunction Debug.MessageBox — no quest required.",
+          "action": {
+            "type": "CallGlobalFunction",
+            "script": "Debug",
+            "function": "MessageBox",
+            "params": [
+              "Pickman's Whisper MCM PING (global)\n\nMCM CallGlobalFunction works."
+            ]
+          }
+        },
+        {
+          "text": "!!! QUEST PING (CallFunction) !!!",
+          "type": "button",
+          "help": "CallFunction on Main quest with scriptName — must MessageBox if quest wiring is OK.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "scriptName": "PickmansWhisperMainQuestScript",
+            "function": "MCMQuestPing"
+          }
+        },
+        {
+          "text": "!!! VOICE PATH DUMP !!!",
+          "type": "button",
+          "help": "MessageBox: bond, blade, KillerScan/VoiceScan casts, scan tick, last dispatch, notice/fixation status, hunger cooldown. Use this before guessing why whispers are silent.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "scriptName": "PickmansWhisperMainQuestScript",
+            "function": "DebugVoicePathDump"
+          }
+        },
+        {
+          "id": "bKillDebugToasts:Debug",
+          "text": "Kill / scan debug toasts",
+          "type": "switcher",
+          "help": "Blade status, scan heartbeats, HUMAN kill / ignore reasons. Off by default. Praise and hunger voice are separate (Voice page).",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bSniffMagicEffects:Debug",
+          "text": "Sniff magic effects (P5 discovery)",
+          "type": "switcher",
+          "help": "Temporary Slice H P5 diagnostic. Off by default. When on, Traces the FormID of EVERY magic effect applied to the player (Papyrus.0.log) — used to confirm which effect the Cannibal perk's heal actually applies. Turn off when done; it is noisy.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bBedGiftEverySleep:Debug",
+          "text": "Bed gift every sleep",
+          "type": "switcher",
+          "help": "Slice G testing: skip the ~12 game-hour bed-gift cooldown so a corpse can appear every sleep. Turn off for normal cadence.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bNoticePollDebug:Debug",
+          "text": "Notice poll dialogs",
+          "type": "switcher",
+          "help": "Auto MessageBox every ~8s while notice polling: who was nearby and why each failed or passed. No button needed. Turn off when done debugging.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "iNoticeStage:Debug",
+          "text": "Notice stage",
+          "type": "menu",
+          "help": "Current whisper escalation stage. When 'Force notice stage' is off this tracks hunger (updates on Refresh). When on, this pins the stage so you can test each one without grinding hunger.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "1 Calm",
+              "2 Restless",
+              "3 Hungry",
+              "4 Starving",
+              "5 Desperate"
+            ]
+          }
+        },
+        {
+          "id": "bForceNoticeStage:Debug",
+          "text": "Force notice stage",
+          "type": "switcher",
+          "help": "When on, the Notice stage dropdown overrides the hunger-derived stage (debug/testing).",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "id": "sOverall:Debug",
+          "text": "Overall",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sF4SE:Debug",
+          "text": "F4SE",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sMCM:Debug",
+          "text": "MCM",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sBlade:Debug",
+          "text": "Blade form",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sBladeInv:Debug",
+          "text": "Blade inventory",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sBladeEq:Debug",
+          "text": "Blade equipped",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sCell:Debug",
+          "text": "Current cell",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sBond:Debug",
+          "text": "Bond",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sWatch:Debug",
+          "text": "Kill watch / alias",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sNearby:Debug",
+          "text": "Nearby NPC scan",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sNotice:Debug",
+          "text": "Last notice poll",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sVoiceDispatch:Debug",
+          "text": "Voice dispatch (KillerScan)",
+          "type": "textinput",
+          "help": "Updates every ~2s when KillerScan reaches VoiceScan. If stuck on (none yet), voice never got the call.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sFixation:Debug",
+          "text": "Look fixation (C5)",
+          "type": "textinput",
+          "help": "Aim-edge counts on eligible NPCs (seen xN). Ambient hunger whispers unchanged.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Notice line files (editable, under Data/PickmansWhisper/config/)",
+          "type": "section"
+        },
+        {
+          "id": "sNoticeCalm:Debug",
+          "text": "1 Calm file",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sNoticeRestless:Debug",
+          "text": "2 Restless file",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sNoticeHungry:Debug",
+          "text": "3 Hungry file",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sNoticeStarving:Debug",
+          "text": "4 Starving file",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sNoticeDesperate:Debug",
+          "text": "5 Desperate file",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "id": "sHungerSpell:Debug",
+          "text": "Hunger SPEL",
+          "type": "textinput",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Refresh status",
+          "type": "button",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "RefreshDebugStatus",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Scan nearby NPCs (raw)",
+          "type": "button",
+          "help": "Unfiltered GoE living + detecting scan within kill-watch radius. Verifies detection before notice filters.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugScanNearbyNpcs",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Verify blade detect",
+          "type": "button",
+          "help": "GoE check: PASS only when Pickman's Blade is actually drawn (not a gun with blade in inventory).",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugVerifyBladeDetect",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test notice file load",
+          "type": "button",
+          "help": "Reloads all five NoticeLines_*.txt via GoE2 and pops a MessageBox with the full path/exists/raw/parsed/RESULT trace (Necromantic-style). Screenshot this if load fails.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugTestNoticeFiles",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Force bond",
+          "type": "button",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugForceBond",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Play test whisper (EndIt)",
+          "type": "button",
+          "help": "D0-POC: Sound.Play on PW_Whisper_EndIt (FormID xx000807 → Sound\\PickmansWhisper\\EndIt.xwm). Quit FO4 to desktop after deploy so MCM reloads this button.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugPlayTestWhisper",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Force bed gift",
+          "type": "button",
+          "help": "Slice G: spawn the bed-hallucination corpse beside the player (no sleep). Look at her, then look away to clear.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugForceBedGift",
+            "scriptName": "PickmansWhisperBedGiftScript"
+          }
+        },
+        {
+          "text": "Clear bed gift",
+          "type": "button",
+          "help": "Slice G: despawn the ephemeral bed corpse immediately.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugClearBedGift",
+            "scriptName": "PickmansWhisperBedGiftScript"
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "text": "Open butcher menu",
+          "type": "button",
+          "help": "Slice F: open the butcher limb menu on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. Works from MCM.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugOpenButcherMenu",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Test sever aimed head",
+          "type": "button",
+          "help": "Slice F: sever Head1 on aimed (or last-look) dead adult female. Requires Pickman's Blade drawn. No limb menu.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugTestSeverAimedHead",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Wound Lab",
+      "content": [
+        {
+          "text": "Decay stage (P2)",
+          "type": "section"
+        },
+        {
+          "text": "Locked tint ramp + Porcupine SkinTexture map. Apply clears Porcupine overlays first. Stages Putrefaction / Black Putrefaction also add all scars.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "iDecayLabStage:WoundLab",
+          "text": "Decay stage",
+          "type": "stepper",
+          "help": "Locked P2 stage names from SLICE_H. Left/right to change, then Apply stage.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "Freshly Deceased",
+              "Pallor Mortis",
+              "Livor Mortis",
+              "Putrefaction",
+              "Black Putrefaction"
+            ]
+          }
+        },
+        {
+          "text": "Apply stage",
+          "type": "button",
+          "help": "Clear all Porcupine Scars/SkinTexture on the lab corpse, then apply the locked stage SkinTextures + tint. Stages Putrefaction and Black Putrefaction also apply all scars. Keeps DeathMarks wounds.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyDecayStageLab",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Spawn wound lab corpse",
+          "type": "button",
+          "help": "Same as Force bed gift spawn, sticky (no 6s despawn). Clear wound lab corpse removes it. Prefers nearby bed; else player.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugSpawnWoundLabCorpse",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Clear wound lab corpse",
+          "type": "button",
+          "help": "Despawn the sticky wound-lab corpse.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugClearWoundLabCorpse",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Lab tools",
+          "type": "section"
+        },
+        {
+          "text": "<b>Slice H P0.1 / P0.2</b> — sticky corpse; DeathMarks wounds + Porcupine skin + SFT face bruises. Tint shared for overlays. Banks stack (each Apply clears only its bank).",
+          "type": "text",
+          "html": true
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "id": "iWoundLabTemplate:WoundLab",
+          "text": "Wound template",
+          "type": "stepper",
+          "help": "Female DeathMarks from DecayWoundOverlays.txt. Left/right to change.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "Female_Arm_Wound",
+              "Female_Back_Wound_1",
+              "Female_Back_Wound_2",
+              "Female_Back_Wound_3",
+              "Female_Back_Wound_4",
+              "Female_Back_Wound_5",
+              "Female_Front_Wound_1",
+              "Female_Front_Wound_2",
+              "Female_Front_Wound_3",
+              "Female_Front_Wound_4",
+              "Female_Front_Wound_5"
+            ]
+          }
+        },
+        {
+          "id": "iWoundLabCount:WoundLab",
+          "text": "Apply count",
+          "type": "stepper",
+          "help": "Apply the selected wound this many times.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "7",
+              "8",
+              "9",
+              "10",
+              "11",
+              "12",
+              "13",
+              "14",
+              "15",
+              "16"
+            ]
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "id": "iWoundLabTintPreset:WoundLab",
+          "text": "Tint preset",
+          "type": "menu",
+          "help": "Sets Tint R/G/B (alpha unchanged). P1 pale = locked wound look; green / red / ashen for decay experiments.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "P1 pale",
+              "Death decay green",
+              "Body decay red",
+              "Ashen gray"
+            ]
+          }
+        },
+        {
+          "id": "fWoundLabTintR:WoundLab",
+          "text": "Tint R",
+          "type": "slider",
+          "help": "LooksMenu overlay red (0-1).",
+          "valueOptions": {
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fWoundLabTintG:WoundLab",
+          "text": "Tint G",
+          "type": "slider",
+          "help": "LooksMenu overlay green (0-1).",
+          "valueOptions": {
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fWoundLabTintB:WoundLab",
+          "text": "Tint B",
+          "type": "slider",
+          "help": "LooksMenu overlay blue (0-1).",
+          "valueOptions": {
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fWoundLabTintA:WoundLab",
+          "text": "Tint A",
+          "type": "slider",
+          "help": "LooksMenu overlay alpha (0-1) for manual wound/skin/face Apply. Decay stage Apply always uses 1.0 (100%).",
+          "valueOptions": {
+            "min": 0,
+            "max": 1,
+            "step": 0.05,
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "text": "Apply wound lab overlays",
+          "type": "button",
+          "help": "Clear wound-bank overlays only, then apply selected DeathMarks template N times. Keeps Porcupine skin overlays.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyWoundLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Apply all wounds",
+          "type": "button",
+          "help": "Clear wound-bank only, then apply every DecayWoundOverlays.txt template (count = times each). Keeps skin overlays.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyAllWoundLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "text": "<b>P0.2 — Porcupine skin</b> (Scars + SkinTexture from DecaySkinOverlays.txt; needs porcOverlays.esl)",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "iSkinLabTemplate:WoundLab",
+          "text": "Skin template",
+          "type": "stepper",
+          "help": "Porcupine Scars_01-20 then SkinTexture_01-20. Left/right to change.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "Scars_01",
+              "Scars_02",
+              "Scars_03",
+              "Scars_04",
+              "Scars_05",
+              "Scars_06",
+              "Scars_07",
+              "Scars_08",
+              "Scars_09",
+              "Scars_10",
+              "Scars_11",
+              "Scars_12",
+              "Scars_13",
+              "Scars_14",
+              "Scars_15",
+              "Scars_16",
+              "Scars_17",
+              "Scars_18",
+              "Scars_19",
+              "Scars_20",
+              "SkinTexture_01",
+              "SkinTexture_02",
+              "SkinTexture_03",
+              "SkinTexture_04",
+              "SkinTexture_05",
+              "SkinTexture_06",
+              "SkinTexture_07",
+              "SkinTexture_08",
+              "SkinTexture_09",
+              "SkinTexture_10",
+              "SkinTexture_11",
+              "SkinTexture_12",
+              "SkinTexture_13",
+              "SkinTexture_14",
+              "SkinTexture_15",
+              "SkinTexture_16",
+              "SkinTexture_17",
+              "SkinTexture_18",
+              "SkinTexture_19",
+              "SkinTexture_20"
+            ]
+          }
+        },
+        {
+          "id": "iSkinLabTemplate2:WoundLab",
+          "text": "Skin template 2",
+          "type": "stepper",
+          "help": "Optional second Porcupine overlay layered with Skin template. First option (none) skips.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "Scars_01",
+              "Scars_02",
+              "Scars_03",
+              "Scars_04",
+              "Scars_05",
+              "Scars_06",
+              "Scars_07",
+              "Scars_08",
+              "Scars_09",
+              "Scars_10",
+              "Scars_11",
+              "Scars_12",
+              "Scars_13",
+              "Scars_14",
+              "Scars_15",
+              "Scars_16",
+              "Scars_17",
+              "Scars_18",
+              "Scars_19",
+              "Scars_20",
+              "SkinTexture_01",
+              "SkinTexture_02",
+              "SkinTexture_03",
+              "SkinTexture_04",
+              "SkinTexture_05",
+              "SkinTexture_06",
+              "SkinTexture_07",
+              "SkinTexture_08",
+              "SkinTexture_09",
+              "SkinTexture_10",
+              "SkinTexture_11",
+              "SkinTexture_12",
+              "SkinTexture_13",
+              "SkinTexture_14",
+              "SkinTexture_15",
+              "SkinTexture_16",
+              "SkinTexture_17",
+              "SkinTexture_18",
+              "SkinTexture_19",
+              "SkinTexture_20"
+            ]
+          }
+        },
+        {
+          "text": "Apply skin overlays",
+          "type": "button",
+          "help": "Clear skin-bank only, then apply Skin template (+ Skin template 2 if not none) N times each. Keeps DeathMarks wounds.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplySkinLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Apply all skin overlays",
+          "type": "button",
+          "help": "Clear skin-bank only, then apply every DecaySkinOverlays.txt template (count = times each). Keeps wounds.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyAllSkinLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Apply all scars",
+          "type": "button",
+          "help": "Add every Scars_01-20 on top of existing Porcupine SkinTexture layers (does not clear SkinTexture or wounds). Count = times each.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyAllScarLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "text": "<b>Face - Scripted Face Tints</b> (SFT Damage / Boxer bruises; soft dep SFT.esp; not LooksMenu overlays)",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "iFaceLabTemplate:WoundLab",
+          "text": "Face template",
+          "type": "stepper",
+          "help": "SFT Damage headparts from DecayFaceOverlays.txt (Boxer bruises). Needs SFT.esp. Left/right to change.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "Boxer - 12 Rounds",
+              "Boxer - Broken Nose",
+              "Boxer - Black Eye",
+              "Boxer - Fat Lip"
+            ]
+          }
+        },
+        {
+          "id": "iFaceLabTemplate2:WoundLab",
+          "text": "Face template 2",
+          "type": "stepper",
+          "help": "Optional second SFT Damage headpart. First option (none) skips.",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "Boxer - 12 Rounds",
+              "Boxer - Broken Nose",
+              "Boxer - Black Eye",
+              "Boxer - Fat Lip"
+            ]
+          }
+        },
+        {
+          "text": "Apply face overlays",
+          "type": "button",
+          "help": "Clear SFT Damage category, then apply Face template (+ template 2 if not none). Keeps wounds/skin.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyFaceLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Apply all face overlays",
+          "type": "button",
+          "help": "Clear SFT Damage category, then apply every DecayFaceOverlays.txt tint. Keeps wounds/skin.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyAllFaceLabOverlays",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "text": "Captive Tattoos",
+          "type": "section"
+        },
+        {
+          "text": "Full Captive Tattoos catalog (SlaveTattoos.esp), split into category chunks because Fallout 4's Papyrus engine caps a single list at 128 entries. Each Item stepper defaults to (none) = skip; set any number of them to something else and Apply applies all of them at once, targeting whatever's in your crosshair (not the sticky lab corpse). Re-Apply replaces only what this panel itself applied. Requires SlaveTattoos.esp.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "iTattooItem_Hands:WoundLab",
+          "text": "Item ($Hands)",
+          "type": "stepper",
+          "help": "Captive Tattoos — $Hands (10 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats ($Hands) Slavery",
+              "CapTats ($Hands) Zoo",
+              "CapTats ($Hands) BBC",
+              "CapTats ($Hands) Hearts",
+              "CapTats ($Hands) Junkie",
+              "CapTats ($Hands) Raiders Symbols",
+              "CapTats ($Hands) Full",
+              "CapTats ($Hands) NukaRide",
+              "CapTats ($Hands) Multi Colours Nails",
+              "CapTats ($Hands) Laces"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_ArmLeft:WoundLab",
+          "text": "Item (Arm Left)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Arm Left (16 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Arm Left) BBC QOS Ivy",
+              "CapTats (Arm Left) BBC Tat",
+              "CapTats (Arm Left) Cuffs",
+              "CapTats (Arm Left) Junkie",
+              "CapTats (Arm Left) Pet",
+              "CapTats (Arm Left) Skull",
+              "CapTats (Arm Left) WorthlessCunt",
+              "CapTats (Arm Left) SuperMutant",
+              "CapTats (Arm Left) Game Over",
+              "CapTats (Arm Left) Game Over",
+              "CapTats (Arm Left) Filthy",
+              "CapTats (Arm Left) Thief",
+              "CapTats (Arm Left) Marked Cattle",
+              "CapTats (Arm Left) Marked SkullFire",
+              "CapTats (Arm Left) BOS Helmet 01",
+              "CapTats (Arm Left) BOS Helmet 02"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_ArmRight:WoundLab",
+          "text": "Item (Arm Right)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Arm Right (17 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Arm Right) BBC QOS Ivy",
+              "CapTats (Arm Right) BBC Tat",
+              "CapTats (Arm Right) BBC Bull",
+              "CapTats (Arm Right) Weapons",
+              "CapTats (Arm Right) Skulls",
+              "CapTats (Arm Right) Gunners Morale",
+              "CapTats (Arm Right) Raider Dog",
+              "CapTats (Arm Right) Slave",
+              "CapTats (Arm Right) SuperMutant",
+              "CapTats (Arm Right) Slave",
+              "CapTats (Arm Right) Morale",
+              "CapTats (Arm Right) Super Mutant",
+              "CapTats (Arm Right) Slave",
+              "CapTats (Arm Right) Morale",
+              "CapTats (Arm Right) Super Mutant",
+              "CapTats (Arm Right) Cock Sucker",
+              "CapTats (Arm Right) BOS 01"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_Back_A:WoundLab",
+          "text": "Item (Back A)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back A (88 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back) Juicy Girl",
+              "CapTats (Back) BBC Queen of Spades",
+              "CapTats (Back) BBC Black Owned",
+              "CapTats (Back) BBC Tatto 1",
+              "CapTats (Back) BBC Bull Tat",
+              "CapTats (Back) BBC Tattoo 2",
+              "CapTats (Back) BBC Property",
+              "CapTats (Back) BBC African Tusk",
+              "CapTats (Back) BBC Wings",
+              "CapTats (Back) BBC SnowBunny",
+              "CapTats (Back) BigSkullBack",
+              "CapTats (Back) InTraining",
+              "CapTats (Back) Knives",
+              "CapTats (Back) LipsBack",
+              "CapTats (Back) Property",
+              "CapTats (Back) RaiderGirlBack",
+              "CapTats (Back) RaiderSkull",
+              "CapTats (Back) DrunkGirl",
+              "CapTats (Back) SkullWeapon",
+              "CapTats (Back) Discount",
+              "CapTats (Back) Mistress",
+              "CapTats (Back) Tied",
+              "CapTats (Back) Tied2",
+              "CapTats (Back) YourLips",
+              "CapTats (Back) FuckLove",
+              "CapTats (Back) SkipTheBullshit",
+              "CapTats (Back) IfMissBehave",
+              "CapTats (Back) PropertyOfRaiders2",
+              "CapTats (Back) KeeipInRestraints",
+              "CapTats (Back) BetterThanDomesticLife",
+              "CapTats (Back) ForRaidersUseOnly",
+              "CapTats (Back) IfLost",
+              "CapTats (Back) Urinal",
+              "CapTats (Back) FeedMe",
+              "CapTats (Back) ICanTakeIt",
+              "CapTats (Back) NoOne",
+              "CapTats (Back) StillTight",
+              "CapTats (Back) IntensiveTraining",
+              "CapTats (Back) FreakOnALeash",
+              "CapTats (Back) ChokeHer",
+              "CapTats (Back) IDeserveABeating",
+              "CapTats (Back) Collar",
+              "CapTats (Back) Kitty",
+              "CapTats (Back) Grab Me",
+              "CapTats (Back) SexPig",
+              "CapTats (Back) To Loot And Enslave",
+              "CapTats (Back) Raider Queen",
+              "CapTats (Back) Raider Queen 2",
+              "CapTats (Back) Bad Kitty",
+              "CapTats (Back) Pretty Wild Kitty",
+              "CapTats (Back) Weapons",
+              "CapTats (Back) Raider Queen 3",
+              "CapTats (Back) Punishment Fucking",
+              "CapTats (Back) To Loot And Enslave",
+              "CapTats (Back) Animal",
+              "CapTats (Back) Brat",
+              "CapTats (Back) Fresh",
+              "CapTats (Back) NotHuman",
+              "CapTats (Back) Heart",
+              "CapTats (Back) Caps",
+              "CapTats (Back) Gunners Education",
+              "CapTats (Back) Indoctrination",
+              "CapTats (Back) Gunners Morale",
+              "CapTats (Back) Gunners Property",
+              "CapTats (Back) Gunners Report",
+              "CapTats (Back) Gunners Skull",
+              "CapTats (Back) PainSlut",
+              "CapTats (Back) Stop Thinking",
+              "CapTats (Back) VaultTec Nothing Ventured",
+              "CapTats (Back) VaultTec Happiest",
+              "CapTats (Back) GiveMePsycho",
+              "CapTats (Back) Finger",
+              "CapTats (Back) Lead Me",
+              "CapTats (Back) Me and you",
+              "CapTats (Back) My whole week",
+              "CapTats (Back) Vaultec Nothing Ventured",
+              "CapTats (Back) Show me the ropes",
+              "CapTats (Back) VaultTec Use Them!",
+              "CapTats (Back) VaultTec Dosis",
+              "CapTats (Back) SubGirl",
+              "CapTats (Back) Boiler",
+              "CapTats (Back) Demon Slave",
+              "CapTats (Back) HumanMilk",
+              "CapTats (Back) Sad Slave",
+              "CapTats (Back) SuperMutant",
+              "CapTats (Back) SuperMutant",
+              "CapTats (Back) Little Breeder",
+              "CapTats (Back) Superior Race"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_Back_B:WoundLab",
+          "text": "Item (Back B)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back B (87 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back) Training",
+              "CapTats (Back) Trained",
+              "CapTats (Back) MastersProperty",
+              "CapTats (Back) MistressProperty",
+              "CapTats (Back) Bone",
+              "CapTats (Back) Raider Logo",
+              "CapTats (Back) Raider Logo 2",
+              "CapTats (Back) Raider Logo 3",
+              "CapTats (Back) Lips",
+              "CapTats (Back) Raider Logo 4",
+              "CapTats (Back) Beating",
+              "CapTats (Back) Slap Me",
+              "CapTats (Back) 2Cute",
+              "CapTats (Back) 13",
+              "CapTats (Back) Stop Thinking",
+              "CapTats (Back) Paw",
+              "CapTats (Back) Moanday",
+              "CapTats (Back) Slave",
+              "CapTats (Back) Less Talk",
+              "CapTats (Back) Training",
+              "CapTats (Back) Trained",
+              "CapTats (Back) MastersProperty",
+              "CapTats (Back) MistressProperty",
+              "CapTats (Back) Bone",
+              "CapTats (Back) Raider Logo",
+              "CapTats (Back) Raider Logo 2",
+              "CapTats (Back) Raider Logo 3",
+              "CapTats (Back) Lips",
+              "CapTats (Back) Raider Logo 4",
+              "CapTats (Back) Beating",
+              "CapTats (Back) Slap Me",
+              "CapTats (Back) 2Cute",
+              "CapTats (Back) Stop Thinking",
+              "CapTats (Back) Skull",
+              "CapTats (Back) Paw",
+              "CapTats (Back) Moanday",
+              "CapTats (Back) Here for suck",
+              "CapTats (Back) Any Raider",
+              "CapTats (Back) Slave",
+              "CapTats (Back) Less Talk",
+              "CapTats (Back) Skull Red",
+              "CapTats (Back) TakeThis",
+              "CapTats (Back) Filthy",
+              "CapTats (Back) Queen of Spade",
+              "CapTats (Back) Chains",
+              "CapTats (Back) Whore",
+              "CapTats (Back) HalfTime",
+              "CapTats (Back) Labour Slave",
+              "CapTats (Back) Spit",
+              "CapTats (Back) Marked Skull",
+              "CapTats (Back) Marked Property",
+              "CapTats (Back) Marked SkullFire",
+              "CapTats (Back) Whipped Light",
+              "CapTats (Back) Whipped Medium",
+              "CapTats (Back) Whipped Heavy",
+              "CapTats (Back) Whipped Ass",
+              "CapTats (Back) Whipped Ass Heavy",
+              "CapTats (Back) Spanked Ass",
+              "CapTats (Back) Spanked Ass Heavy",
+              "CapTats (Back) Whipped",
+              "CapTats (Back) Whipped Full",
+              "CapTats (Back) Bruises",
+              "CapTats (Back) Purple Heart",
+              "CapTats (Back) Red Flower",
+              "CapTats (Back) Red Heart",
+              "CapTats (Back) Sissy Heart",
+              "CapTats (Back) BBC Cards",
+              "CapTats (Back) Bloody Skull",
+              "CapTats (Back) Daddy Property",
+              "CapTats (Back) Flowers",
+              "CapTats (Back) BBC Keys",
+              "CapTats (Back) Girl 01",
+              "CapTats (Back) Hell Girl",
+              "CapTats (Back) BBC Cards",
+              "CapTats (Back) Bloody Skull",
+              "CapTats (Back) Daddy Property",
+              "CapTats (Back) Flowers",
+              "CapTats (Back) BBC Keys",
+              "CapTats (Back) Girl 01",
+              "CapTats (Back) Hell Girl",
+              "CapTats (Back) BOS 01",
+              "CapTats (Back) BOS Helmet",
+              "CapTats (Back) BOS Helmet Butterfly",
+              "CapTats (Back) BOS Power Armor",
+              "CapTats (Back) BOS Hearts",
+              "CapTats (Back) BOS Helmet Butterfly",
+              "CapTats (Back) BOS Initiate"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_BackButt:WoundLab",
+          "text": "Item (Back Butt)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back Butt (88 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back Butt) BBC Tat",
+              "CapTats (Back Butt) BBC Owned",
+              "CapTats (Back Butt) BBC Queen",
+              "CapTats (Back Butt) BBC Certified",
+              "CapTats (Back Butt) CumDumpster",
+              "CapTats (Back Butt) FuckToy",
+              "CapTats (Back Butt) HandsButt",
+              "CapTats (Back Butt) Hate Minutemen",
+              "CapTats (Back Butt) LovePain",
+              "CapTats (Back Butt) PunishMe",
+              "CapTats (Back Butt) IKneelForCaps",
+              "CapTats (Back Butt) BeenBad",
+              "CapTats (Back Butt) Junkie2",
+              "CapTats (Back Butt) ProudMinutemen",
+              "CapTats (Back Butt) DoWhatSirWants",
+              "CapTats (Back Butt) KickHere",
+              "CapTats (Back Butt) UseMe",
+              "CapTats (Back Butt) AtLeastSpit",
+              "CapTats (Back Butt) Haha",
+              "CapTats (Back Butt) Sub3",
+              "CapTats (Back Butt) Dairy Cattle",
+              "CapTats (Back Butt) 3Holes",
+              "CapTats (Back Butt) NotHuman",
+              "CapTats (Back Butt) 10",
+              "CapTats (Back Butt) Caps2",
+              "CapTats (Back Butt) 100",
+              "CapTats (Back Butt) Coin",
+              "CapTats (Back Butt) HotBitch",
+              "CapTats (Back Butt) Cute",
+              "CapTats (Back Butt) For Rent",
+              "CapTats (Back Butt) Queen of Spades",
+              "CapTats (Back Butt) VaultTec",
+              "CapTats (Back Butt) HotWife",
+              "CapTats (Back Butt) TrophyButt",
+              "CapTats (Back Butt) BadGirl",
+              "CapTats (Back Butt) Boiler",
+              "CapTats (Back Butt) Hound Pet",
+              "CapTats (Back Butt) Mutie Whore",
+              "CapTats (Back Butt) Mutant Pet",
+              "CapTats (Back Butt) Mutie Pet",
+              "CapTats (Back Butt) Paw Left",
+              "CapTats (Back Butt) Paw Right",
+              "CapTats (Back Butt) FuckToy",
+              "CapTats (Back Butt) Locked",
+              "CapTats (Back Butt) Sold",
+              "CapTats (Back Butt) HandCuffs",
+              "CapTats (Back Butt) Punish Me",
+              "CapTats (Back Butt) Mouth",
+              "CapTats (Back Butt) BeenBad",
+              "CapTats (Back Butt) Bad Boy",
+              "CapTats (Back Butt) Was Here",
+              "CapTats (Back Butt) Soft and mushy",
+              "CapTats (Back Butt) Stupid Breeder",
+              "CapTats (Back Butt) FuckToy",
+              "CapTats (Back Butt) Locked",
+              "CapTats (Back Butt) Sold",
+              "CapTats (Back Butt) HandCuffs",
+              "CapTats (Back Butt) Punish Me",
+              "CapTats (Back Butt) Mouth",
+              "CapTats (Back Butt) BeenBad",
+              "CapTats (Back Butt) Bad Boy",
+              "CapTats (Back Butt) Was Here",
+              "CapTats (Back Butt) Soft and mushy",
+              "CapTats (Back Butt) Stupid Breeder",
+              "CapTats (Back Butt) Was Here!",
+              "CapTats (Back Butt) Fuck You",
+              "CapTats (Back Butt) Tasty Ass",
+              "CapTats (Back Butt) Spit",
+              "CapTats (Back Butt) Bad Girl",
+              "CapTats (Back Butt)Good Dogs",
+              "CapTats (Back Butt) Good Pets",
+              "CapTats (Back Butt) Love me Hard",
+              "CapTats (Back Butt) Siren",
+              "CapTats (Back Butt) Hand Slap",
+              "CapTats (Back Butt) Hand Slap 2",
+              "CapTats (Back Butt) Marked Cattle",
+              "CapTats (Back Butt) Marked Skull",
+              "CapTats (Back Butt) Marked SkullFire",
+              "CapTats (Back Butt) Spanked",
+              "CapTats (Back Butt) Whipped",
+              "CapTats (Back Butt) Bite",
+              "CapTats (Back Butt) BBC Only",
+              "CapTats (Back Butt) SlutWife",
+              "CapTats (Back Butt) BBC White Slut",
+              "CapTats (Back Butt) BBC Only",
+              "CapTats (Back Butt) SlutWife",
+              "CapTats (Back Butt) BBC White Slut",
+              "CapTats (Back Butt) BOS 01"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_BackHip:WoundLab",
+          "text": "Item (Back Hip)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back Hip (23 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back Hip) BBC Black Cock",
+              "CapTats (Back Hip) BBC Built For Blacks",
+              "CapTats (Back Hip) BBC Bull",
+              "CapTats (Back Hip) BBC Bull 2",
+              "CapTats (Back Hip) Flowers",
+              "CapTats (Back Hip) BBC Purple Spade",
+              "CapTats (Back Hip) BBC Red Spade",
+              "CapTats (Back Hip) BBC Snowbunny",
+              "CapTats (Back Hip) BBC Snowbunny 2",
+              "CapTats (Back Hip) BBC Spade",
+              "CapTats (Back Hip) BBC White Slut",
+              "CapTats (Back Hip) BBC Black Cock",
+              "CapTats (Back Hip) BBC Built For Blacks",
+              "CapTats (Back Hip) BBC Bull",
+              "CapTats (Back Hip) BBC Bull 2",
+              "CapTats (Back Hip) Flowers",
+              "CapTats (Back Hip) BBC Purple Spade",
+              "CapTats (Back Hip) BBC Red Spade",
+              "CapTats (Back Hip) BBC Snowbunny",
+              "CapTats (Back Hip) BBC Snowbunny 2",
+              "CapTats (Back Hip) BBC Spade",
+              "CapTats (Back Hip) BBC White Slut",
+              "CapTats (Back Hip) BOS Pink"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_BackLow:WoundLab",
+          "text": "Item (Back Low)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back Low (64 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back Low) BBC Snow Bunny",
+              "CapTats (Back Low) BBC Queen of Spades",
+              "CapTats (Back Low) BBC Tat",
+              "CapTats (Back Low) BBC Only",
+              "CapTats (Back Low) BBC SnowBunny",
+              "CapTats (Back Low) SemenDemon",
+              "CapTats (Back Low) My Purpose",
+              "CapTats (Back Low) Raider Queen",
+              "CapTats (Back Low) Dogs",
+              "CapTats (Back Low) DoItRight",
+              "CapTats (Back Low) Max",
+              "CapTats (Back Low) Penis",
+              "CapTats (Back Low) Already Ruined",
+              "CapTats (Back Low)Ruined",
+              "CapTats (Back Low) Anal only whore",
+              "CapTats (Back Low)For Rent ",
+              "CapTats (Back Low) Sweet Vault Girl",
+              "CapTats (Back Low) Gunners If Found",
+              "CapTats (Back Low) Play Hard",
+              "CapTats (Back Low) Queen of Spades",
+              "CapTats (Back Low) VaultTec",
+              "CapTats (Back Low) Lust",
+              "CapTats (Back Low) Mistress Pet",
+              "CapTats (Back Low) Mistress Property",
+              "CapTats (Back Low) Soft",
+              "CapTats (Back Low) Skull",
+              "CapTats (Back Low) Purpose",
+              "CapTats (Back Low) EnjoyRide",
+              "CapTats (Back Low) FillMyAss",
+              "CapTats (Back Low)HoundsPetLowBack",
+              "CapTats (Back Low) Morale Unit",
+              "CapTats (Back Low) Skull",
+              "CapTats (Back Low) Purpose",
+              "CapTats (Back Low) EnjoyRide",
+              "CapTats (Back Low) FillMyAss",
+              "CapTats (Back Low)HoundsPetLowBack",
+              "CapTats (Back Low) Morale Unit",
+              "CapTats (Back Low) If Found",
+              "CapTats (Back Low) If Found",
+              "CapTats (Back Low) Old Hag",
+              "CapTats (Back Low) Enjoy the Ride",
+              "CapTats (Back Low) Paw",
+              "CapTats (Back Low) Cock Candy",
+              "CapTats (Back Low) Hot Ass",
+              "CapTats (Back Low) Sailor",
+              "CapTats (Back Low) Marked Fucktoy",
+              "CapTats (Back Low) Marked Fucktoy",
+              "CapTats (Back Low) Tramp Stamp",
+              "CapTats (Back Low) Tramp Stamp 2",
+              "CapTats (Back Low) Tramp Stamp 4",
+              "CapTats (Back Low) Tramp Stamp 6",
+              "CapTats (Back Low) Tramp Stamp 05",
+              "CapTats (Back Low) Tramp Stamp 06",
+              "CapTats (Back Low) Tramp Stamp 08",
+              "CapTats (Back Low) Tramp Stamp 09",
+              "CapTats (Back Low) Tramp Stamp 10",
+              "CapTats (Back Low) BBC Bull",
+              "CapTats (Back Low) Use Me",
+              "CapTats (Back Low) BBC Stop",
+              "CapTats (Back Low) BBC Bull",
+              "CapTats (Back Low) Use Me",
+              "CapTats (Back Low) BBC Stop",
+              "CapTats (Back Low) BOS 01",
+              "CapTats (Back Low) BOS Initiate"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_BackNeck:WoundLab",
+          "text": "Item (Back Neck)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back Neck (30 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back Neck) BBC Black Owned",
+              "CapTats (Back Neck) BBC SnowBunny",
+              "CapTats (Back Neck) Favorite",
+              "CapTats (Back Neck) BabyMaker",
+              "CapTats (Back Neck) Brat",
+              "CapTats (Back Neck) Collar",
+              "CapTats (Back Neck) Hearts",
+              "CapTats (Back Neck) Lock",
+              "CapTats (Back Neck) Pet",
+              "CapTats (Back Neck) SexPig",
+              "CapTats (Back Neck) SexSlave",
+              "CapTats (Back Neck) Skull2",
+              "CapTats (Back Neck) Slave",
+              "CapTats (Back Neck) Skull",
+              "CapTats (Back Neck) Slut",
+              "CapTats (Back Neck) Submissive",
+              "CapTats (Back Neck) Sub",
+              "CapTats (Back Neck) Trained",
+              "CapTats (Back Neck) UseMe",
+              "CapTats (Back Neck) Whore",
+              "CapTats (Back Neck) SkullTheFuck",
+              "CapTats (Back Neck) General Slut",
+              "CapTats (Back Neck) Rapemeat",
+              "CapTats (Back Neck) Nymph",
+              "CapTats (Back Neck) Cumpet",
+              "CapTats (Back Neck) VaultTec",
+              "CapTats (Back Neck) Skull",
+              "CapTats (Back Neck) Here for suck",
+              "CapTats (Back Neck) Old Hag",
+              "CapTats (Back Neck) Sucker"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_BackThigh:WoundLab",
+          "text": "Item (Back Thigh)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Back Thigh (45 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Back Thigh) BBC Black Owned",
+              "CapTats (Back Thigh) BBC Black Owned",
+              "CapTats (Back Thigh) BBC Property",
+              "CapTats (Back Thigh) BBC Certified",
+              "CapTats (Back Thigh) LegChains",
+              "CapTats (Back Thigh) Owned",
+              "CapTats (Back Thigh) PET",
+              "CapTats (Back Thigh) Tamed",
+              "CapTats (Back Thigh) Little Skull",
+              "CapTats (Back Thigh) Slave Handcuffs",
+              "CapTats (Back Thigh) Skulls2",
+              "CapTats (Back Thigh) Skulls",
+              "CapTats (Back Thigh) NewFuckToy",
+              "CapTats (Back Thigh) Animal",
+              "CapTats (Back Thigh) 13",
+              "CapTats (Back Thigh) Gunners Morale",
+              "CapTats (Back Thigh) Cute",
+              "CapTats (Back Thigh) Slave",
+              "CapTats (Back Thigh) Boil Slow",
+              "CapTats (Back Thigh) Mutie Pet",
+              "CapTats (Back Thigh) Tamed by Muties",
+              "CapTats (Back Thigh) This Lice!",
+              "CapTats (Back Thigh) Owned",
+              "CapTats (Back Thigh) Object",
+              "CapTats (Back Thigh) Boil Slow!",
+              "CapTats (Back Thigh) Slave",
+              "CapTats (Back Thigh) Super Mutant",
+              "CapTats (Back Thigh) Owned",
+              "CapTats (Back Thigh) 13",
+              "CapTats (Back Thigh) Object",
+              "CapTats (Back Thigh) Boil Slow!",
+              "CapTats (Back Thigh) Slave",
+              "CapTats (Back Thigh) Super Mutant",
+              "CapTats (Back Thigh)Tamed",
+              "CapTats (Back Thigh) Black Owned",
+              "CapTats (Back Thigh) Jail Whore",
+              "CapTats (Back Thigh) Nuka World Princess",
+              "CapTats (Back Thigh) Red Heart",
+              "CapTats (Back Thigh) Put Some Sugar",
+              "CapTats (Back Thigh) Double Trouble",
+              "CapTats (Back Thigh) Purple Ribbons",
+              "CapTats (Back Thigh) Red Ribbons",
+              "CapTats (Back Thigh) Laces",
+              "CapTats (Back Thigh) BOS Hearts",
+              "CapTats (Back Thigh) BOS Sword"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_Front_A:WoundLab",
+          "text": "Item (Front A)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front A (69 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front) BBC SnowBunny II",
+              "CapTats (Front) BBC Ivy Spades",
+              "CapTats (Front) BBC SnowBunny",
+              "CapTats (Front) BBC Upper Snowbunny",
+              "CapTats (Front) BBC QOS Ivy 2",
+              "CapTats (Front) BBC Queen",
+              "CapTats (Front) BBC SnowBunny",
+              "CapTats (Front) Be Patient",
+              "CapTats (Front) BewareBitch",
+              "CapTats (Front) ChokeMe",
+              "CapTats (Front) Dissobedient",
+              "CapTats (Front) GrabMe",
+              "CapTats (Front) StayGood",
+              "CapTats (Front) EverySingleDrop",
+              "CapTats (Front) Junkie4",
+              "CapTats (Front) MyTongueLonges",
+              "CapTats (Front) StillLoveU",
+              "CapTats (Front) Breeder",
+              "CapTats (Front) Made To Wear a Collar",
+              "CapTats (Front) Haha Slut",
+              "CapTats (Front) Can You?",
+              "CapTats (Front) BarelyLegal",
+              "CapTats (Front) Bitch",
+              "CapTats (Front) Cunt",
+              "CapTats (Front) Gag",
+              "CapTats (Front) HitMe",
+              "CapTats (Front) PublicToilet",
+              "CapTats (Front) Collared And Happy",
+              "CapTats (Front) Seeking...",
+              "CapTats (Front) Paw",
+              "CapTats (Front) Caps",
+              "CapTats (Front) For Rent",
+              "CapTats (Front) 10",
+              "CapTats (Front) 100",
+              "CapTats (Front) Caps2",
+              "CapTats (Front) Tongue",
+              "CapTats (Front) Caps2",
+              "CapTats (Front) Heart",
+              "CapTats (Front) Always Open",
+              "CapTats (Front) HotBitch",
+              "CapTats (Front) Gunners Senniors Only",
+              "CapTats (Front) VaultTec Leak",
+              "CapTats (Front) Destroy My Throat",
+              "CapTats (Front) Cute",
+              "CapTats (Front) Cumpet",
+              "CapTats (Front) VaultTec",
+              "CapTats (Front) 2Cute",
+              "CapTats (Front) Call Me Bitch",
+              "CapTats (Front) MessyGirl",
+              "CapTats (Front) Pills",
+              "CapTats (Front) Piss Slave",
+              "CapTats (Front) Skull",
+              "CapTats (Front) Trophy",
+              "CapTats (Front) U Aint Shit",
+              "CapTats (Front) Pet Me",
+              "CapTats (Front) Fuck Minutemen II",
+              "CapTats (Front) Here for Suck",
+              "CapTats (Front) Human Milk",
+              "CapTats (Front) Worship",
+              "CapTats (Front) Less Talk",
+              "CapTats (Front) Little Breeder",
+              "CapTats (Front) Mutie Whore",
+              "CapTats (Front) Brainless",
+              "CapTats (Front) Mash it",
+              "CapTats (Front) ChokeMe",
+              "CapTats (Front) MGrabMe",
+              "CapTats (Front) HandCuffs",
+              "CapTats (Front) Lock1",
+              "CapTats (Front) Slave"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_Front_B:WoundLab",
+          "text": "Item (Front B)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front B (69 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front) Sold",
+              "CapTats (Front) Ready",
+              "CapTats (Front) RapeMeat",
+              "CapTats (Front) Pull Me",
+              "CapTats (Front) Paw",
+              "CapTats (Front) Was Here",
+              "CapTats (Front) Here for suck",
+              "CapTats (Front) Fuck Minuteman",
+              "CapTats (Front) Gunners Property",
+              "CapTats (Front) Penis",
+              "CapTats (Front) Pet",
+              "CapTats (Front) Super Mutant",
+              "CapTats (Front) Use Me",
+              "CapTats (Front) SM Tamed",
+              "CapTats (Front) Spit",
+              "CapTats (Front) ChokeMe",
+              "CapTats (Front) MGrabMe",
+              "CapTats (Front) HandCuffs",
+              "CapTats (Front) Slave",
+              "CapTats (Front) Sold",
+              "CapTats (Front) Ready",
+              "CapTats (Front) RapeMeat",
+              "CapTats (Front) Pull Me",
+              "CapTats (Front) Paw",
+              "CapTats (Front) Was Here",
+              "CapTats (Front) Here for suck",
+              "CapTats (Front) Fuck Minuteman",
+              "CapTats (Front) Gunners Property",
+              "CapTats (Front) Penis",
+              "CapTats (Front) Pet",
+              "CapTats (Front) Super Mutant",
+              "CapTats (Front) Use Me",
+              "CapTats (Front) Spit",
+              "CapTats (Front) Spit",
+              "CapTats (Front) My boyfriend",
+              "CapTats (Front) Cumpet",
+              "CapTats (Front) Empty",
+              "CapTats (Front) Grab Me Red",
+              "CapTats (Front) Massive Kisses",
+              "CapTats (Front) Pull Me",
+              "CapTats (Front) Spit Roast",
+              "CapTats (Front) My Master Loves Me",
+              "CapTats (Front) Chains",
+              "CapTats (Front) Little Sucker",
+              "CapTats (Front) Princess",
+              "CapTats (Front)Cum Eater",
+              "CapTats (Front) HorseShoe",
+              "CapTats (Front) Marked Slave 2479",
+              "CapTats (Front) Marked Cattle",
+              "CapTats (Front) Spanked Breast",
+              "CapTats (Front) Whipped Breasts",
+              "CapTats (Front) Whipped",
+              "CapTats (Front) Bruise",
+              "CapTats (Front) Bruise",
+              "CapTats (Front) Psycho Marks",
+              "CapTats (Front) Bruises Heavy",
+              "CapTats (Front) Bruises Light",
+              "CapTats (Front) Bruises Medium",
+              "CapTats (Front) Sissy",
+              "CapTats (Front) Colorfoul Stars",
+              "CapTats (Front) Dolphine",
+              "CapTats (Front) Pink Heart",
+              "CapTats (Front) Pink Hearts",
+              "CapTats (Front) Pink Stars",
+              "CapTats (Front) Pink Fire",
+              "CapTats (Front) Stars",
+              "CapTats (Front) Not a bomb Inside",
+              "CapTats (Front) Not a bomb Inside",
+              "CapTats (Front) BOS PA"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_FrontBelly_A:WoundLab",
+          "text": "Item (Front Belly A)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front Belly A (96 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front Belly) BBC Queen of Spades",
+              "CapTats (Front Belly) Boner Garage",
+              "CapTats (Front Belly) Boner Garage 2",
+              "CapTats (Front Belly) BBC Baby Maker",
+              "CapTats (Front Belly) BBC QOS",
+              "CapTats (Front Belly) BBC Tat 2",
+              "CapTats (Front Belly) BBC Wings",
+              "CapTats (Front Belly) BBC Certified",
+              "CapTats (Front Belly) Jared",
+              "CapTats (Front Belly) MyMasterGonnaKill",
+              "CapTats (Front Belly) PsychoAddict",
+              "CapTats (Front Belly) RaiderInside",
+              "CapTats (Front Belly) RedProperty",
+              "CapTats (Front Belly) Submissive",
+              "CapTats (Front Belly) Deserved",
+              "CapTats (Front Belly) FeelingNaughty",
+              "CapTats (Front Belly) MyMasterGonnaKill2",
+              "CapTats (Front Belly) PetHeart",
+              "CapTats (Front Belly) NewRaiderIncoming",
+              "CapTats (Front Belly) DontCare",
+              "CapTats (Front Belly) PregnantSkull",
+              "CapTats (Front Belly) FuckLove2",
+              "CapTats (Front Belly) Heart",
+              "CapTats (Front Belly) BreedingPet2",
+              "CapTats (Front Belly) FuckLove3",
+              "CapTats (Front Belly) NotShaun",
+              "CapTats (Front Belly) We Can Play",
+              "CapTats (Front Belly) Ready",
+              "CapTats (Front Belly) Waiting",
+              "CapTats (Front Belly) Yours",
+              "CapTats (Front Belly) Mistress",
+              "CapTats (Front Belly) LewdBelly",
+              "CapTats (Front Belly) RaiderQueenBelly",
+              "CapTats (Front Belly) BarelyLegal",
+              "CapTats (Front Belly) Deposit",
+              "CapTats (Front Belly) Prime",
+              "CapTats (Front Belly) MasterCunt",
+              "CapTats (Front Belly) Caps Make Me Cum",
+              "CapTats (Front Belly) Cock Addicted",
+              "CapTats (Front Belly) Caps2",
+              "CapTats (Front Belly) 100",
+              "CapTats (Front Belly) 10",
+              "CapTats (Front Belly) Heart",
+              "CapTats (Front Belly) Sweet Girl",
+              "CapTats (Front Belly) CapsL",
+              "CapTats (Front Belly) Coin",
+              "CapTats (Front Belly) ForRent",
+              "CapTats (Front Belly) FuckToy",
+              "CapTats (Front Belly) Gunners Morale",
+              "CapTats (Front Belly) Gunners Belly",
+              "CapTats (Front Belly) Gunners Skull",
+              "CapTats (Front Belly) Stop Thinking",
+              "CapTats (Front Belly) VaultTec Nothing Ventured",
+              "CapTats (Front Belly) VaultTec Happiest",
+              "CapTats (Front Belly) GiveMePsycho",
+              "CapTats (Front Belly) VaultTec GetYourDose",
+              "CapTats (Front Belly) DaddysLittlePet",
+              "CapTats (Front Belly) Cute",
+              "CapTats (Front Belly) Cumpet",
+              "CapTats (Front Belly) Nymph",
+              "CapTats (Front Belly) VaultTec",
+              "CapTats (Front Belly) Hell",
+              "CapTats (Front Belly) HotWife",
+              "CapTats (Front Belly) Lust",
+              "CapTats (Front Belly) MessyGirl",
+              "CapTats (Front Belly) WorthlessCunt",
+              "CapTats (Front Belly) No Purpose",
+              "CapTats (Front Belly) BadGirl",
+              "CapTats (Front Belly) Good Girls",
+              "CapTats (Front Belly) Mistress Gonna Kill",
+              "CapTats (Front Belly) Mistress Pet",
+              "CapTats (Front Belly) SuperMutant",
+              "CapTats (Front Belly) Breed",
+              "CapTats (Front Belly) Hounds Pet",
+              "CapTats (Front Belly) Soft",
+              "CapTats (Front Belly) Paw",
+              "CapTats (Front Belly) GunnerSkull",
+              "CapTats (Front Belly) Lock3",
+              "CapTats (Front Belly) Locked",
+              "CapTats (Front Belly) MyMasterGonnaKill",
+              "CapTats (Front Belly) Pet",
+              "CapTats (Front Belly) PsychoAddict",
+              "CapTats (Front Belly) RaiderHeart",
+              "CapTats (Front Belly) RaiderSkull",
+              "CapTats (Front Belly) RaiderSkull2",
+              "CapTats (Front Belly) Sub",
+              "CapTats (Front Belly) Puppy",
+              "CapTats (Front Belly) Pills",
+              "CapTats (Front Belly) Paw",
+              "CapTats (Front Belly) Mistress Pet",
+              "CapTats (Front Belly) GoodLuck",
+              "CapTats (Front Belly) Cunnilingus",
+              "CapTats (Front Belly) Mutie Whore",
+              "CapTats (Front Belly) FuckToy",
+              "CapTats (Front Belly) GunnerSkull",
+              "CapTats (Front Belly) Lock3"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_FrontBelly_B:WoundLab",
+          "text": "Item (Front Belly B)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front Belly B (95 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front Belly) Locked",
+              "CapTats (Front Belly) MyMasterGonnaKill",
+              "CapTats (Front Belly) Pet",
+              "CapTats (Front Belly) PsychoAddict",
+              "CapTats (Front Belly) RaiderHeart",
+              "CapTats (Front Belly) RaiderSkull",
+              "CapTats (Front Belly) RaiderSkull2",
+              "CapTats (Front Belly) Sub",
+              "CapTats (Front Belly) Puppy",
+              "CapTats (Front Belly) Pills",
+              "CapTats (Front Belly) Paw",
+              "CapTats (Front Belly) Mistress Pet",
+              "CapTats (Front Belly) GoodLuck",
+              "CapTats (Front Belly) Cunnilingus",
+              "CapTats (Front Belly) Mutie Whore",
+              "CapTats (Front Belly) Morale Unit",
+              "CapTats (Front Belly) Morale Unit",
+              "CapTats (Front Belly) Skull Red",
+              "CapTats (Front Belly) Kiss",
+              "CapTats (Front Belly) Enjoy the Ride",
+              "CapTats (Front Belly) Cunnilingus",
+              "CapTats (Front Belly) Favour",
+              "CapTats (Front Belly) Cock Candy",
+              "CapTats (Front Belly) Fuck You",
+              "CapTats (Front Belly) BBC Chastity",
+              "CapTats (Front Belly) Bondage",
+              "CapTats (Front Belly) Nuka Cap",
+              "CapTats (Front Belly) Nuka Caps",
+              "CapTats (Front Belly) Nuka Cola",
+              "CapTats (Front Belly) Raider Horns",
+              "CapTats (Front Belly) Womb Tattoo Pink 2",
+              "CapTats (Front Belly) Fixed",
+              "CapTats (Front Belly) Womb Tattoo Pink",
+              "CapTats (Front Belly) Womb Tattoo Red",
+              "CapTats (Front Belly) Skull on fire",
+              "CapTats (Front Belly) Stars",
+              "CapTats (Front Belly) Womb Tattoo Dark Purple",
+              "CapTats (Front Belly) Marked Skull",
+              "CapTats (Front Belly) Marked Cattle",
+              "CapTats (Front Belly) Marked SkullFire",
+              "CapTats (Front Belly) Red Pussy",
+              "CapTats (Front Belly) Bruise",
+              "CapTats (Front Belly) Womb Tattoo Dark Pink",
+              "CapTats (Front Belly) Womb Tattoo Lilac",
+              "CapTats (Front Belly) Locked",
+              "CapTats (Front Belly) Fuck Toy",
+              "CapTats (Front Belly) Sissy Boy 3",
+              "CapTats (Front Belly) Sissy Boy 4",
+              "CapTats (Front Belly) Pink Womb Tattoo",
+              "CapTats (Front Belly) Pink Womb Tattoo II",
+              "CapTats (Front Belly) Womb Tattoo 09",
+              "CapTats (Front Belly) Womb Tattoo 10",
+              "CapTats (Front Belly) Womb Tattoo 11",
+              "CapTats (Front Belly) Womb Tattoo 12",
+              "CapTats (Front Belly) Womb Tattoo 13",
+              "CapTats (Front Belly) Womb Tattoo 14",
+              "CapTats (Front Belly) Womb Tattoo 15",
+              "CapTats (Front Belly) Womb Tattoo 16",
+              "CapTats (Front Belly) Womb Tattoo 17",
+              "CapTats (Front Belly) Womb Tattoo 18",
+              "CapTats (Front Belly) Womb Tattoo 19",
+              "CapTats (Front Belly) Womb Tattoo 20",
+              "CapTats (Front Belly) Womb Tattoo 21",
+              "CapTats (Front Belly) Womb Tattoo 22",
+              "CapTats (Front Belly) Womb Tattoo 23",
+              "CapTats (Front Belly) Womb Tattoo 24",
+              "CapTats (Front Belly) Womb Tattoo 25",
+              "CapTats (Front Belly) Womb Tattoo 26",
+              "CapTats (Front Belly) Womb Tattoo 27",
+              "CapTats (Front Belly) Womb Tattoo 28",
+              "CapTats (Front Belly) Womb Tattoo 29",
+              "CapTats (Front Belly) Womb Tattoo 30",
+              "CapTats (Front Belly) Dadddy Little Girl",
+              "CapTats (Front Belly) Fuck Toy",
+              "CapTats (Front Belly) Sissy Boy 1",
+              "CapTats (Front Belly) Sissy Boy 2",
+              "CapTats (Front Belly) Pink Tat",
+              "CapTats (Front Belly) BBC Snowbunny Wings",
+              "CapTats (Front Belly) BBC Pink Tat",
+              "CapTats (Front Belly) BBC Flowers",
+              "CapTats (Front Belly) BOS Tattoo 01",
+              "CapTats (Front Belly) BBC Queen Sword",
+              "CapTats (Front Belly) Dadddy Little Girl",
+              "CapTats (Front Belly) Fuck Toy",
+              "CapTats (Front Belly) Sissy Boy 1",
+              "CapTats (Front Belly) Sissy Boy 2",
+              "CapTats (Front Belly) Pink Tat",
+              "CapTats (Front Belly) BBC Snowbunny Wings",
+              "CapTats (Front Belly) BBC Pink Tat",
+              "CapTats (Front Belly) BBC Flowers",
+              "CapTats (Front Belly) BOS Tattoo 01",
+              "CapTats (Front Belly) BBC Queen Sword",
+              "CapTats (Front Belly) BOS 01",
+              "CapTats (Front Belly) BOS Iire",
+              "CapTats (Front Belly) BOS Sword"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_FrontBreast:WoundLab",
+          "text": "Item (Front Breast)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front Breast (35 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front Breast) BBC Whore",
+              "CapTats (Front Breast) BBC Upper SnowBunny 2",
+              "CapTats (Front Breast) BBC QOS",
+              "CapTats (Front Breast) BBC Love",
+              "CapTats (Front Breast) BBC QOS 2",
+              "CapTats (Front Breast) BBC QOS",
+              "CapTats (Front Breast) HandBreast",
+              "CapTats (Front Breast) SkullBreast",
+              "CapTats (Front Breast) SlaveBreast",
+              "CapTats (Front Breast) Sold",
+              "CapTats (Front Breast) SkullBreast2",
+              "CapTats (Front Breast) CowTits",
+              "CapTats (Front Breast) Two Hearts",
+              "CapTats (Front Breast) Slave",
+              "CapTats (Front Breast) Brat",
+              "CapTats (Front Breast) Hell",
+              "CapTats (Front Breast) SummerSlut",
+              "CapTats (Front Breast) Trpphy",
+              "CapTats (Front Breast) Soft",
+              "CapTats (Front Breast) BBC QOS 05",
+              "CapTats (Front Breast) Two Hearts Red",
+              "CapTats (Front Breast) Two Hearts Green",
+              "CapTats (Front Breast) Kiss",
+              "CapTats (Front Breast) BBC Whore",
+              "CapTats (Front Breast) Tally Mark 03",
+              "CapTats (Front Breast) Tally Marks 02",
+              "CapTats (Front Breast) Tally Marks 01",
+              "CapTats (Front Breast) Flowers",
+              "CapTats (Front Breast) BBC Circles",
+              "CapTats (Front Breast) Marked Slave",
+              "CapTats (Front Breast) Bite",
+              "CapTats (Front Breast) BBC QOS 3",
+              "CapTats (Front Breast) BBC QOS 4",
+              "CapTats (Front Breast) BBC QOS 3",
+              "CapTats (Front Breast) BBC QOS 4"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_FrontHip:WoundLab",
+          "text": "Item (Front Hip)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front Hip (48 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front Hip) BBC Snow Bunny",
+              "CapTats (Front Hip) BBC Tat",
+              "CapTats (Front Hip) BBC QOS",
+              "CapTats (Front Hip) BBC Spades",
+              "CapTats (Front Hip) DaddyIssues2",
+              "CapTats (Front Hip) Yours",
+              "CapTats (Front Hip) Junkie3",
+              "CapTats (Front Hip) Slave2",
+              "CapTats (Front Hip) PropertyOfDaddy2",
+              "CapTats (Front Hip) FuckPig",
+              "CapTats (Front Hip) Brainless",
+              "CapTats (Front Hip) Daddys Slut",
+              "CapTats (Front Hip) Raider Queen",
+              "CapTats (Front Hip) DaddysNewToy",
+              "CapTats (Front Hip) Hot Bitch",
+              "CapTats (Front Hip) Call Me Bitch",
+              "CapTats (Front Hip) Pills",
+              "CapTats (Front Hip) Pills",
+              "CapTats (Front Hip) Slut",
+              "CapTats (Front Hip) DemonSlave",
+              "CapTats (Front Hip) Sad Slave",
+              "CapTats (Front Hip) This Lice!",
+              "CapTats (Front Hip) Bullets",
+              "CapTats (Front Hip) FuckToy",
+              "CapTats (Front Hip) Locked2",
+              "CapTats (Front Hip) Pet2",
+              "CapTats (Front Hip) Pet3",
+              "CapTats (Front Hip) FuckToy",
+              "CapTats (Front Hip) Whore",
+              "CapTats (Front Hip) Bullets",
+              "CapTats (Front Hip) Locked2",
+              "CapTats (Front Hip) Pet2",
+              "CapTats (Front Hip) Pet3",
+              "CapTats (Front Hip) Whore",
+              "CapTats (Front Hip) BBC",
+              "CapTats (Front Hip) Nuka Girl",
+              "CapTats (Front Hip) Knife",
+              "CapTats (Front Hip) Futa",
+              "CapTats (Front Hip) Futa Slave",
+              "CapTats (Front Hip) Marked Property",
+              "CapTats (Front Hip) BBC Bull",
+              "CapTats (Front Hip) BBC Spades",
+              "CapTats (Front Hip) BBC Red Spade",
+              "CapTats (Front Hip) BBC Bull",
+              "CapTats (Front Hip) BBC Spades",
+              "CapTats (Front Hip) BBC Red Spade",
+              "CapTats (Front Hip) BOS Hearts",
+              "CapTats (Front Hip) BOS Pink"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_FrontThigh:WoundLab",
+          "text": "Item (Front Thigh)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Front Thigh (45 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Front Thigh) BBC Ivy Spades L",
+              "CapTats (Front Thigh) BBC Ivy Spades R",
+              "CapTats (Front Thigh) BBC Bull",
+              "CapTats (Front Thigh) BBC QOS",
+              "CapTats (Front Thigh) QOS Stars",
+              "CapTats (Front Thigh) BBC Only",
+              "CapTats (Front Thigh) BreedingPet",
+              "CapTats (Front Thigh) TamedByRaiders",
+              "CapTats (Front Thigh) Puppy",
+              "CapTats (Front Thigh) Animal",
+              "CapTats (Front Thigh) Object",
+              "CapTats (Front Thigh) RapeMeat",
+              "CapTats (Front Thigh) My Son Can Wait",
+              "CapTats (Front Thigh) For Rent",
+              "CapTats (Front Thigh) StepByTry",
+              "CapTats (Front Thigh) Cute",
+              "CapTats (Front Thigh) VaultTec",
+              "CapTats (Front Thigh) BabyGirl",
+              "CapTats (Front Thigh) Allowed",
+              "CapTats (Front Thigh) Boiler",
+              "CapTats (Front Thigh) Female Orgasm",
+              "CapTats (Front Thigh) Mutie Whore",
+              "CapTats (Front Thigh) Guards Favorite",
+              "CapTats (Front Thigh)Spit",
+              "CapTats (Front Thigh) Bruise",
+              "CapTats (Front Thigh) Bite",
+              "CapTats (Front Thigh) BBC Left Chains",
+              "CapTats (Front Thigh) Girl 02",
+              "CapTats (Front Thigh) Pink Girl",
+              "CapTats (Front Thigh) BBC Right Chains 02",
+              "CapTats (Front Thigh) BBC Left Chains 02",
+              "CapTats (Front Thigh) BBC Right Chains 03",
+              "CapTats (Front Thigh) BBC Left Chains 03",
+              "CapTats (Front Thigh) BBC Right Chains",
+              "CapTats (Front Thigh) BBC Left Chains",
+              "CapTats (Front Thigh) Girl 02",
+              "CapTats (Front Thigh) Pink Girl",
+              "CapTats (Front Thigh) BBC Right Chains 02",
+              "CapTats (Front Thigh) BBC Left Chains 02",
+              "CapTats (Front Thigh) BBC Right Chains",
+              "CapTats (Front Thigh) BBC Right Chains 03",
+              "CapTats (Front Thigh) BBC Left Chains 03",
+              "CapTats (Front Thigh) BOS Sword",
+              "CapTats (Front Thigh) Right Band of Hearts",
+              "CapTats (Front Thigh) Left Band of Hearts"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_ThighInner:WoundLab",
+          "text": "Item (Thigh Inner)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Thigh Inner (15 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Thigh Inner) BBC Tat",
+              "CapTats (Thigh Inner) Brat",
+              "CapTats (Thigh Inner) Domesticated",
+              "CapTats (Thigh Inner) Princess",
+              "CapTats (Thigh Inner) Bite Me",
+              "CapTats (Thigh Inner) Lick Me",
+              "CapTats (Thigh Inner) General Slut",
+              "CapTats (Thigh Inner) Lust",
+              "CapTats (Thigh Inner) Cock Addicted",
+              "CapTats (Thigh Inner) Slave",
+              "CapTats (Thigh Inner) Cock Addicted",
+              "CapTats (Thigh Inner) Slave",
+              "CapTats (Thigh Inner) Tally Marks 03",
+              "CapTats (Thigh Inner) Tally Marks 02",
+              "CapTats (Thigh Inner) Tally Marks 01"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_UnderArmRight:WoundLab",
+          "text": "Item (Under Arm Right)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Under Arm Right (16 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Under Arm Right) PropertyOfDaddy",
+              "CapTats (Under Arm Right) JunkieArm",
+              "CapTats (Under Arm Right) Skull",
+              "CapTats (Under Arm Right) Rimjobs",
+              "CapTats (Under Arm Right) Property",
+              "CapTats (Under Arm Right) WeCanPlay",
+              "CapTats (Under Arm Right) Raider Skull",
+              "CapTats (Under Arm Right) Pet",
+              "CapTats (Under Arm Right) Pain",
+              "CapTats (Under Arm Right) Owned",
+              "CapTats (Under Arm Right) FuckToyUA",
+              "CapTats (Under Arm Right) FuckPig",
+              "CapTats (Under Arm Right) Broken",
+              "CapTats (Under Arm Right) Slut",
+              "CapTats (Under Arm Right) Pet",
+              "CapTats (Under Arm Right) Trophy"
+            ]
+          }
+        },
+        {
+          "id": "iTattooItem_Misc:WoundLab",
+          "text": "Item (Misc)",
+          "type": "stepper",
+          "help": "Captive Tattoos — Misc (69 items). Leave at (none) to skip this category. Apply applies every category not left at (none).",
+          "valueOptions": {
+            "sourceType": "ModSettingInt",
+            "options": [
+              "(none)",
+              "CapTats (Ankle) BBC Ivy",
+              "CapTats (Ankle) QueenOfSpades",
+              "CapTats (Ankle) Raider Dog",
+              "CapTats (Ankle) Spade",
+              "CapTats (Ankle) Spade",
+              "CapTats (Ankle) Chains",
+              "CapTats (Side Breast) Pet",
+              "CapTats (Back Lower Knee) Sub2",
+              "CapTats (Under Arm Left) Skull",
+              "CapTats (Under Arm Left) Strangers Candy",
+              "CapTats (Front Under Knee) SkullLeg",
+              "CapTats (Rear Lower Knee) SoldLeg",
+              "CapTats (Arm Leff) Skulls",
+              "CapTats (Thigh Back) MessyGirl",
+              "CapTats (Thigh Rear) Pet Me",
+              "CapTats (Under Arm) MistressProperty",
+              "CapTats (Shoulder) Raider Logo",
+              "CapTats (Shoulder) MArmRaiderLogo2",
+              "CapTats (Shoulder) Raider Logo",
+              "CapTats (UnderArm Left) Lock1",
+              "CapTats (UnderArm Left) MistressProperty",
+              "CapTats (Arm Righ) Pet",
+              "CapTats (Front Knees) Knees of Steel",
+              "CapTats (Back Calf) BBC Whore",
+              "CapTats (Back Calf) Dumb Slut",
+              "CapTats (Back Calf) Filthy",
+              "CapTats (Back Calf) Lead Me",
+              "CapTats (Back Calf) Raiders Favorite",
+              "CapTats (Front Leg) Dumb Slut",
+              "CapTats (Front Leg) Tasty Ass",
+              "CapTats  ($Body) Full Extremities",
+              "CapTats ($Body) Full Left Arm",
+              "CapTats ($Body) Full Right Arm",
+              "CapTats ($Body) Full Left Leg",
+              "CapTats ($Body) Full Right Leg",
+              "CapTats ($Body) Full Body",
+              "CapTats ($Body) Full Back",
+              "CapTats ($Body) Full Front",
+              "CapTats ($Body) Nuka Ride",
+              "CapTats ($Feet Nails) Black",
+              "CapTats ($Feet Nails) Silver",
+              "CapTats ($Feet Nails) Gold",
+              "CapTats ($Feet Nails) White",
+              "CapTats ($Feet Nails) Pink",
+              "CapTats ($Feet Nails) Pink 2",
+              "CapTats ($Feet Nails) Blue",
+              "CapTats ($Feet Nails) Multi Colours",
+              "CapTats ($Hands Nails) Pink Nails",
+              "CapTats ($Hands Nails) Red Nails",
+              "CapTats ($Hands Nails) White Nails",
+              "CapTats ($Hands Nails) Dark Red Nails",
+              "CapTats ($Hands Nails) Blue Nails",
+              "CapTats ($Hands Nails) Black Nails",
+              "CapTats (Feet Right) Skull",
+              "CapTats (Feet Right)Buterflies",
+              "CapTats (Feet Left) Buterflies",
+              "CapTats (Feet Left) Stars",
+              "CapTats (Front Sides)BBC Ivy",
+              "CapTats (&Body) Bruises",
+              "CapTats (Back Thighs) BBC Tattoo 01",
+              "CapTats (Back Thighs) BBC Tattoo 01",
+              "CapTats ($Full Body) Apocrypha",
+              "CapTats ($Full Body) Wires",
+              "CapTats ($Full Body) Apocrypha",
+              "CapTats ($Full Body) Wires",
+              "CapTats (Back Lowback) BBC Snowbunny 02",
+              "CapTats (Back Lowback) BBC Snowbunny 02",
+              "CapTats (Back LowBack) BBC Black Boys",
+              "CapTats (Back LowBack) BBC Black Boys"
+            ]
+          }
+        },
+        {
+          "type": "spacer",
+          "numLines": 1
+        },
+        {
+          "text": "Apply tattoo",
+          "type": "button",
+          "help": "Apply the selected item from the selected category to whatever's in your crosshair. Replaces the previously applied tattoo.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "DebugApplyTattooLabOverlay",
+            "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        }
+      ]
+    }
+  ]
 }
