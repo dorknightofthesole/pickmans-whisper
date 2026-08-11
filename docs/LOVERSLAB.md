@@ -1,94 +1,114 @@
 # LoversLab release draft — Pickman's Whisper
 
-Paste-ready copy for the **Resource** page and a **support thread**. Edit placeholders (`[LINK]`, screenshots, Necromantic Resource URL) before posting.
+Paste-ready, player-facing copy for the **Resource** page and **support thread**.
+Feature claims are cross-referenced against `docs/ROADMAP.md`, the repository's
+status source of truth. Edit the `REPLACE_WITH_*` links before posting.
 
-Author / version (from FOMOD): **Oohtre** · **1.3.0**  
+Author / FOMOD version: **Oohtre** · **1.3.0**
 Repo: https://github.com/dorknightofthesole/pickmans-whisper
 
----
+## Status used for this draft
+
+The public **major features** section includes only Roadmap slices marked shipped,
+done, or verified in-game: **A–F, I, and S**.
+
+The following are called out separately as experimental because the Roadmap still
+requires in-game confirmation: **G** (bed hallucination), **H** (full decay loop),
+**T** (slavery), and **U** (AAF slave scene). **K** and later planned slices are
+not advertised as current features.
 
 ## Suggested Resource metadata
 
 | Field | Suggestion |
 | ----- | ---------- |
 | **Title** | Pickman's Whisper |
-| **Category** | Fallout 4 → Adult Mods (or closest FO4 adult/gameplay fit) |
-| **Prefix / tags** | Fallout 4, Adult, Dark, Horror, Serial Killer, Slavery, AAF (optional), MCM, F4SE |
-| **Short description** | Knife voice + serial hunger for Pickman's Blade. Mostly non-sexual; optional AAF "Take Her" for an enslaved NPC. Soft companion to Necromantic. |
-| **Content warnings** | Graphic violence / serial murder fantasy; non-consensual slavery / force trade; optional AAF adult scene; corpse decay / cannibal hooks |
+| **Category** | Fallout 4 → Adult Mods |
+| **Tags** | Fallout 4, Dark Roleplay, Horror, Serial Killer, Misogyny, Slavery, AAF, MCM, F4SE |
+| **Short description** | A transgressive Pickman's Blade roleplay: the knife whispers, hunger rises, and murder becomes ritual. |
+| **Content warnings** | Misogyny; adult female victim targeting; graphic violence and dismemberment; coercion and slavery; optional non-consensual AAF scene; corpse and cannibal themes |
 
-**Do not** post on Nexus — content policies usually block this theme.
-
-Keep a **separate** MO2 folder and LoversLab page from Necromantic.
+Keep this in a **separate** MO2 folder and LoversLab Resource from Necromantic.
 
 ---
 
 ## Resource description (BBCode)
 
-Copy everything below into the Resource description editor.
-
 ```bbcode
 [CENTER][SIZE=6][B]Pickman's Whisper[/B][/SIZE]
-[I]A voice that bonds to Pickman's Blade — then feeds a hunger only knife kills can sate.[/I]
+[I]The knife whispers. The hunger rises. Murder becomes ritual.[/I]
 
 [B]Version[/B] 1.3.0 · Author: Oohtre
 [URL=https://github.com/dorknightofthesole/pickmans-whisper]GitHub[/URL]
 [/CENTER]
 
-[B]Content warnings[/B]
-Serial killer / knife-murder fantasy · adult female victim targeting · force trade & slavery · optional AAF adult scene · corpse decay / cannibal hooks. Not a lighthearted companion mod.
+[B]This module is a transgressive, misanthropic, misogynist simulator. It is not for weaker minds or anyone easily offended.[/B]
+
+It is a fictional adult roleplaying mod built around hatred, coercion, and violence against adult women. Expect serial murder, dismemberment, degrading language, force trade, slavery, corpse imagery, cannibal themes, and an optional non-consensual AAF scene. Children and essential story NPCs are excluded from its victim systems.
+
+If that premise is not what you want in your game, do not install it.
 
 [HR]
 
-[SIZE=5][B]What this is[/B][/SIZE]
+[SIZE=5][B]What is Pickman's Whisper?[/B][/SIZE]
 
-Fallout 4 companion mod for the [B]Pickman's Blade[/B] fantasy: a voice that starts warm and bonded, then escalates into staged [B]hunger[/B] that only clears when you kill an eligible adult woman [B]with the blade drawn[/B].
+Pickman's Whisper turns [B]Pickman's Blade[/B] into the center of a dark player fantasy. The knife's voice first bonds with you, then begins noticing women around you. Its admiration curdles into fixation, jealousy, anger, and an escalating hunger that only a qualifying blade kill can satisfy.
 
-This mod is [B]not sexual by default[/B]. One narrow exception: Slavery [B]"Take Her"[/B] (needs AAF) — a two-actor scene only after she is already your slave. Stack with [B]Necromantic[/B] for corpse aftermath play; no hard master / no compile-time coupling.
-
-[B]Suite arc[/B] (surface → commitment):
-Occult Pact → [B]Pickman's Whisper[/B] → Necromantic
-
-Soft load order when using all three. Separate mod folder / page from Necromantic.
+This is primarily a [B]voice, hunger, murder, and control[/B] module—not a general sex framework. Its one optional AAF feature belongs to the experimental slavery path described below.
 
 [HR]
 
-[SIZE=5][B]Features[/B][/SIZE]
+[SIZE=5][B]Major features[/B][/SIZE]
 
-[B]Bond, hunger, knife voice[/B]
+[B]The knife gets inside your head[/B]
 [LIST]
-[*]Bond when entering [B]Pickman Gallery[/B] and/or obtaining / equipping [B]Pickman's Blade[/B]
-[*]Hunger meter (0–100); rises while bonded; Pip-Boy withdrawal stand-in (AGI/CHA)
-[*]Valid blade kill → praise, hunger → 0, sated window
-[*]Eligible kills: adult [B]female[/B] non-essential human, seen non-hostile while alive (men, children, teammates, hostiles-from-first-sight, robots/synths/ghouls skipped; see TargetOverrides for opt-in)
-[*]Hunger-staged ambient whispers (editable line banks + optional audio maps)
-[*]Look-fixation / Potential Victims: aim, name her in MCM, recognition + sleep lines
-[*]MCM: How To Use, Hunger, Voice, Victims, Debug
+[*]Entering Pickman Gallery or claiming the blade awakens the voice
+[*]A persistent hunger rises as the bond deepens
+[*]Whispers change from calm fascination to an urgent demand to kill
+[*]Text, audio, and hunger behavior can be adjusted through MCM and editable line banks
 [/LIST]
 
-[B]Blade play[/B]
+[B]It notices women—and remembers the ones you notice[/B]
 [LIST]
-[*][B]Corpse sever[/B] — blade drawn, aim a dead adult woman, press [B]/[/B] for limb menu
-[*][B]Beat before kill[/B] — unarmed struggle path on tracked victims (blade sheathed for clean activate)
-[*][B]Bed gift[/B] — occasional sleep hallucination corpse near the bed
-[*][B]Corpse decay[/B] — tracked knife-kill bodies stage through LooksMenu overlays; ripe-corpse eat urge + END buff when Cannibal applies
-[*][B]Desperate rename[/B] — at peak hunger, nearby eligible NPCs get a knife-voice name suffix
-[*]Soft [B]Necromantic[/B] intimacy hooks on named Potential Victim corpses (no Necromantic.esp master)
+[*]The voice comments on nearby eligible adult women
+[*]Looking repeatedly at the same woman deepens the fixation
+[*]Mark Potential Victims and give them names the voice can remember
+[*]Named victims receive more personal recognition, sleep, kill, and optional Necromantic aftermath lines
+[*]At desperate hunger, the knife degrades how nearby women appear to you
 [/LIST]
 
-[B]Force Trade & slavery[/B]
+[B]Murder satisfies the hunger[/B]
 [LIST]
-[*][B]][/B] toggles Force Trade / Enslave / Take Her choices ([B]off by default[/B] so beat/attack keep a clean activate)
-[*]Choices are [B]hidden while Pickman's Blade is drawn[/B] (extra activate options block attack)
-[*][B]Force Trade[/B] — open her inventory; first trade strips outfit-locked gear once
-[*]Gates: living eligible target, [B]knife calm[/B] (low hunger), player Charisma ≥ config thresholds
-[*]Inventory item names containing [B]slave[/B] (case-insensitive) → pacify on Trade close and auto-enslave
-[*][B]Enslave[/B] — follow + cross-cell warp; [B]not[/B] a vanilla companion (still a Whisper victim you can kill)
-[*][B]Take Her[/B] (optional AAF) — once enslaved, starts a two-actor scene; free via MCM Victims page
-[*]One slave at a time
+[*]Kill a qualifying woman with Pickman's Blade drawn to satisfy the knife
+[*]The voice praises the kill and clears your hunger
+[*]Men, children, teammates, essential story characters, non-humans, and enemies hostile from first sight are rejected by default
+[*]With the blade drawn, aim at a dead woman and press [B]/[/B] to choose a limb to sever
 [/LIST]
 
-[B]Follow tip:[/B] a collar / any "slave"-named item can [B]enslave[/B], but she usually will [B]not walk-follow[/B] until her [B]arms are bound[/B] (slave bindings or similar). Collar = yours; bindings = she marches.
+[B]Force Trade[/B]
+[LIST]
+[*]While the knife is calm, high Charisma can unlock a coercive inventory interaction with an eligible woman
+[*]The first Force Trade makes her outfit available; later trades preserve the clothing you give her
+[*]The extra interaction is hidden while the blade is drawn so normal attacks remain available
+[/LIST]
+
+[B]Soft Necromantic companion support[/B]
+
+If [B]Necromantic[/B] is installed, the knife can react to intimate aftermath involving a named victim. Necromantic is recommended for the wider suite fantasy but is [B]not required[/B] and is not a master of this mod.
+
+[HR]
+
+[SIZE=5][B]Experimental features in this build[/B][/SIZE]
+
+These systems are implemented or shipped but still need broader in-game confirmation. Feedback and Papyrus logs are especially welcome.
+
+[LIST]
+[*][B]Bed gift[/B] — wake to a corpse left beside your bed
+[*][B]Corpse decay[/B] — knife-kill bodies visually deteriorate toward a ripe-corpse urge and Cannibal reward
+[*][B]Slavery[/B] — slave gear can turn one eligible woman into a killable follower rather than a vanilla companion
+[*][B]Take Her[/B] — an optional, interior-only two-actor AAF scene with an already-enslaved woman
+[/LIST]
+
+[I]These are not presented as fully verified features yet. Report what works—and what does not—in the support thread.[/I]
 
 [HR]
 
@@ -96,27 +116,28 @@ Soft load order when using all three. Separate mod folder / page from Necromanti
 
 [B]Required[/B]
 [LIST]
-[*]Fallout 4 + [URL=https://f4se.silverlock.org/]F4SE[/URL]
-[*][URL=https://www.nexusmods.com/fallout4/mods/21497]Mod Configuration Menu[/URL] (MCM)
-[*][URL=https://www.nexusmods.com/fallout4/mods/74160]Garden of Eden Papyrus Script Extender[/URL] (scans, inventory helpers, config load)
-[*][URL=https://www.nexusmods.com/fallout4/mods/21483]LooksMenu[/URL] (corpse decay overlays)
+[*]Fallout 4
+[*][URL=https://f4se.silverlock.org/]F4SE[/URL]
+[*][URL=https://www.nexusmods.com/fallout4/mods/21497]Mod Configuration Menu[/URL]
+[*][URL=https://www.nexusmods.com/fallout4/mods/74160]Garden of Eden Papyrus Script Extender[/URL]
+[*][URL=https://www.nexusmods.com/fallout4/mods/21483]LooksMenu[/URL]
 [/LIST]
 
 [B]Optional[/B]
 [LIST]
-[*][URL=https://www.nexusmods.com/fallout4/mods/31304]Advanced Animation Framework[/URL] (AAF.esm) + at least one 2-actor animation pack — [B]only[/B] for Slavery "Take Her"
-[*]Slave collar / bindings from whatever slave-equipment mods you use (this mod only matches the substring [B]slave[/B] in item display names)
-[*][B]Necromantic[/B] — recommended companion for corpse intimacy after the kill habit ([URL=REPLACE_WITH_NECROMANTIC_LL_OR_GITHUB]Necromantic[/URL]) — [I]not required[/I]
+[*][URL=https://www.nexusmods.com/fallout4/mods/31304]Advanced Animation Framework[/URL] plus a compatible two-actor animation pack—only for experimental [B]Take Her[/B]
+[*]Slave collar / binding mods for the experimental slavery path
+[*][URL=REPLACE_WITH_NECROMANTIC_RESOURCE]Necromantic[/URL] for corpse aftermath play
 [/LIST]
 
 [HR]
 
-[SIZE=5][B]Install (MO2)[/B][/SIZE]
+[SIZE=5][B]Install[/B][/SIZE]
 
 [LIST=1]
-[*]Install [B]PickmansWhisper[/B] (FOMOD zip) into its [B]own[/B] mod folder named PickmansWhisper
-[*]Enable [B]PickmansWhisper.esp[/B] after Fallout4.esm, F4SE, MCM, GoE, LooksMenu
-[*]Soft suite order: Occult Pact → PickmansWhisper → Necromantic
+[*]Install the FOMOD into its own [B]PickmansWhisper[/B] mod folder
+[*]Enable [B]PickmansWhisper.esp[/B] after its requirements
+[*]When using the full suite, use the soft order: Occult Pact → Pickman's Whisper → Necromantic
 [/LIST]
 
 [HR]
@@ -124,95 +145,87 @@ Soft load order when using all three. Separate mod folder / page from Necromanti
 [SIZE=5][B]Quick start[/B][/SIZE]
 
 [LIST=1]
-[*]Load a save — toast: [I]Pickman's Whisper ready[/I]
-[*]Enter Pickman Gallery [B]or[/B] take the blade ([FONT=courier]player.additem 22595f 1[/FONT])
-[*]Hear an intro whisper; hunger drifts upward while bonded
-[*]Open MCM → Hunger / Voice / Victims / Debug
-[*]For Force Trade / Enslave: sheath the blade, keep hunger calm, press [B]][/B], dress her in slave gear ([B]bindings[/B] if you want follow)
+[*]Load a save and wait for the [I]Pickman's Whisper ready[/I] notice
+[*]Enter Pickman Gallery or acquire Pickman's Blade
+[*]Open MCM to review Hunger, Voice, Victims, and Debug
+[*]Carry the blade and let the voice begin choosing what you see
+[*]Draw the blade when you are ready to satisfy it
 [/LIST]
-
-Editable config lives under [FONT=courier]Data/PickmansWhisper/config/[/FONT] (notice line banks, audio maps, ModConfig.txt, TargetOverrides). Missing TargetOverrides = safe blocked defaults; copy from the .example file to opt in.
 
 [HR]
 
 [SIZE=5][B]Support[/B][/SIZE]
 
-Bug reports, questions, and update notes: [URL=REPLACE_WITH_SUPPORT_THREAD]support thread[/URL].
+Bug reports, questions, and update notes: [URL=REPLACE_WITH_SUPPORT_THREAD]Pickman's Whisper support thread[/URL].
 
-Please include: FO4 + F4SE version, load order snippet (this mod + MCM/GoE/LooksMenu/AAF/Necromantic if used), MCM Debug status lines if relevant, and a short repro. Papyrus logging on helps a lot ([FONT=courier]bEnableLogging=1[/FONT], [FONT=courier]bEnableTrace=1[/FONT], [FONT=courier]bLoadDebugInformation=1[/FONT]).
-
-[HR]
-
-[SIZE=5][B]Permissions[/B][/SIZE]
-
-[LIST]
-[*]Personal use / private load orders: fine
-[*]Do not re-upload elsewhere without asking
-[*]Assets and line banks are editable for your own game; please don't republish the whole package as your own
-[/LIST]
+For a useful report, include the mod version, FO4/F4SE versions, relevant load order, what you expected, what happened, and the MCM Debug status. Papyrus logs are especially useful for experimental features.
 
 [I]Not affiliated with Bethesda. Fallout 4 © Bethesda Softworks.[/I]
 ```
 
 ---
 
-## Support thread — opening post (BBCode)
+## Support thread opening post (BBCode)
 
-Create a forum thread in the matching FO4 section. Title idea: **Pickman's Whisper — Support & Updates**.
+Suggested title: **Pickman's Whisper — Support, Updates & Experimental Feature Reports**
 
 ```bbcode
-[B]Pickman's Whisper — support & updates[/B]
+[B]Pickman's Whisper — support, updates & experimental feature reports[/B]
 
 Resource: [URL=REPLACE_WITH_RESOURCE_URL]Pickman's Whisper[/URL]
 GitHub: [URL=https://github.com/dorknightofthesole/pickmans-whisper]dorknightofthesole/pickmans-whisper[/URL]
 
-This thread is for bug reports, questions, and release notes. Download from the Resource page above.
+This thread is for install help, bug reports, questions, and update notes.
 
-[B]What belongs here[/B]
+[B]Current confirmed feature areas[/B]
 [LIST]
-[*]Install / load-order issues
-[*]Hunger / whisper / kill-satiation bugs
-[*]Force Trade / Enslave / Take Her problems
-[*]Soft suite stacking with Necromantic
+[*]Blade bond, hunger, and staged whispers
+[*]Nearby-woman fixation and named Potential Victims
+[*]Blade-kill praise and hunger satiation
+[*]Corpse severing
+[*]Desperate-hunger renaming
+[*]Force Trade
+[*]Soft Necromantic reactions
 [/LIST]
 
-[B]Please include when reporting[/B]
+[B]Experimental—reports especially wanted[/B]
 [LIST]
-[*]Mod version (FOMOD / MCM)
-[*]FO4 + F4SE build
-[*]Relevant load order (PickmansWhisper + MCM, GoE, LooksMenu; AAF / Necromantic if used)
-[*]What you expected vs what happened
-[*]MCM Debug / status lines if the feature has them
-[*]Papyrus log excerpt if you can ([FONT=courier]Documents\My Games\Fallout4\Logs\Script\Papyrus.0.log[/FONT] — OneDrive Documents path if applicable)
+[*]Bed gift
+[*]Corpse decay and Cannibal reward
+[*]Slavery follow / cell travel
+[*]AAF Take Her scene
 [/LIST]
 
-[B]Soft suite note[/B]
-Pickman's Whisper is the knife / serial-hunger layer. [B]Necromantic[/B] is the recommended (optional) corpse-intimacy companion — separate download, separate MO2 folder, no esp master from this mod. Soft order: Occult Pact → Pickman's Whisper → Necromantic.
+[B]Please include[/B]
+[LIST]
+[*]Pickman's Whisper version
+[*]FO4 and F4SE versions
+[*]Relevant load order, including MCM, GoE, LooksMenu, AAF, and Necromantic where applicable
+[*]What you expected and what happened
+[*]Relevant MCM Debug status
+[*]Papyrus log excerpt when available
+[/LIST]
 
-[B]Current version[/B]
-1.3.0 — see Resource description for features and requirements.
+[B]Suite note[/B]
+Pickman's Whisper is the knife / serial-hunger layer. [URL=REPLACE_WITH_NECROMANTIC_RESOURCE]Necromantic[/URL] is the optional corpse-aftermath companion. Keep them as separate downloads and mod folders. Soft order: Occult Pact → Pickman's Whisper → Necromantic.
 ```
 
 ---
 
-## Soft suite blurb (short — for Necromantic page / cross-link)
-
-Paste on Necromantic (or in comments) when you want a one-liner pointer:
+## Short Necromantic cross-link
 
 ```bbcode
-[B]Suite companion:[/B] [URL=REPLACE_WITH_PICKMANS_WHISPER_RESOURCE]Pickman's Whisper[/URL] — Pickman's Blade voice + serial hunger (mostly non-sexual; optional AAF "Take Her" for an enslaved NPC). Soft-stack before Necromantic. Not required.
+[B]Suite companion:[/B] [URL=REPLACE_WITH_PICKMANS_WHISPER_RESOURCE]Pickman's Whisper[/URL] is a transgressive Pickman's Blade voice, serial-hunger, and murder-roleplay module. Mostly non-sexual; its optional AAF content is limited to an experimental scene with an already-enslaved woman. Soft-stack before Necromantic. Not required.
 ```
 
 ---
 
 ## Posting checklist
 
-From `TODO.md` LoversLab release items:
-
-- [ ] Create the **Resource** (primary download + description above)
-- [ ] Attach the FOMOD zip; confirm folder name `PickmansWhisper` / `PickmansWhisper.esp`
-- [ ] Create the **support thread**; link Resource ↔ thread both ways
-- [ ] Soft suite note on Necromantic (companion, not required)
-- [ ] Replace `REPLACE_WITH_*` URLs after both pages exist
-- [ ] Add 2–4 screenshots (gallery bond toast, hunger MCM, whisper toast, optional slavery / Take Her if you want that visible)
-- [ ] Skip Nexus
+- [ ] Create the **Resource** and attach the FOMOD zip
+- [ ] Create the **support thread** and cross-link both pages
+- [ ] Replace every `REPLACE_WITH_*` link
+- [ ] Add screenshots focused on the player experience: bond, hunger MCM, a staged whisper, Potential Victim, corpse-sever menu
+- [ ] If showing experimental slavery / AAF content, label it experimental in the caption
+- [ ] Add the short suite note to Necromantic
+- [ ] Do not mark experimental Roadmap slices verified until the user confirms them in-game
