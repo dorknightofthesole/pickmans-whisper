@@ -74,6 +74,8 @@ See docs/ROADMAP.md Slice J. Do not start until event-driven kill/notice path is
 
 ## LoversLab release / visibility
 
+Draft copy (BBCode + checklist): [docs/LOVERSLAB.md](docs/LOVERSLAB.md)
+
 - [ ] Create the **Resource** (primary download + description)
 - [ ] Create a **support thread** — link the Resource, take bug reports and updates there
 - [ ] Soft suite note pointing at Necromantic (companion, not required)
