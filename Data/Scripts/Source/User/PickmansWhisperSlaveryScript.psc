@@ -6,7 +6,6 @@ SSOT for inventory "slave" name scan; Trade pacify + auto-enslave call into here
 ; CK/VMAD: bound to PW_SlaveryActivate PERK.
 Perk Property SlaveryActivatePerk Auto Const
 
-Float CALM_HUNGER_MAX = 25.0
 Int FID_AV_CHA = 0x000002C5
 Int FID_SLAVERY_PERK = 0x0000087A
 ; Fallout4.esm CurrentCompanionFaction — never treat vanilla companions as ours.
@@ -348,11 +347,6 @@ Function TryEnslaveFromActivate(Actor akTarget)
 	If !m.IsValidTarget(akTarget, True)
 		Debug.Trace("PickmansWhisper: slavery skip | not valid target id=" + akTarget.GetFormID())
 		Debug.Notification("PickmansWhisper: Slavery — not an eligible target")
-		Return
-	EndIf
-	If m.HungerLevel >= CALM_HUNGER_MAX
-		Debug.Trace("PickmansWhisper: slavery skip | hunger not calm level=" + m.HungerLevel)
-		Debug.Notification("PickmansWhisper: Slavery — knife is not calm")
 		Return
 	EndIf
 	Int minCha = 0

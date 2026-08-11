@@ -29,8 +29,9 @@ Locks:
     other bank in this mod) — stub + script + AAF data + ModConfig + ESP + config.json +
     deploy wiring, all statically checked
   - PickmansWhisperSlaveSceneScript: new Actor[2], exact settings.position from
-    GetSlaveScenePositionId()/EnsureSlaveScenePositionBank (SlaveScenePositions.txt, index
-    0 only, no cycling), ModConfig-sourced duration (not a literal baked in),
+    GetSlaveScenePositionId()/EnsureSlaveScenePositionBank (SlaveScenePositions.txt,
+    fresh random pick per scene via Utility.RandomInt, no persisted cycling state),
+    ModConfig-sourced duration (not a literal baked in),
     EnsureAAFStoppedForRestart, SceneGeneration, watchdog polls AAF_ActorBusy, OnSceneEnd +
     OnAnimationStop both present, interior gate
   - SlaveryPerkScript: Take Her replaces Free (see tools/test_slavery.py for that side)
@@ -204,8 +205,12 @@ def test_scene_script() -> None:
     if "SLAVE_SCENE_POSITIONS_FILE" not in bank_fn:
         fail("EnsureSlaveScenePositionBank must reference SLAVE_SCENE_POSITIONS_FILE (SlaveScenePositions.txt)")
     pos_id_fn = extract_function(text, "GetSlaveScenePositionId")
-    if "SlaveScenePositions[0]" not in pos_id_fn:
-        fail("GetSlaveScenePositionId must always return index 0 (no in-game cycling, unlike Necromantic's U/P keys)")
+    if "Utility.RandomInt" not in pos_id_fn:
+        fail("GetSlaveScenePositionId must pick a fresh random index via Utility.RandomInt each call — "
+             "AAF's own in-scene Wizard was tried live and did not change position for these hidden "
+             "positions, so random-per-scene is the variety fallback, not in-game cycling")
+    if "SlaveScenePositionCount - 1" not in pos_id_fn and "SlaveScenePositionCount-1" not in pos_id_fn:
+        fail("GetSlaveScenePositionId's RandomInt range must be bounded by SlaveScenePositionCount - 1")
 
     restart_fn = extract_function(text, "EnsureAAFStoppedForRestart")
     if "IsPlayerAAFBusy()" not in restart_fn or "IsActorAAFBusy(akOther)" not in restart_fn:

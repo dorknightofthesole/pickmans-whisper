@@ -7,8 +7,12 @@ set of genuine two-actor positions — Necromantic's exact 7-position list, pair
 of solo, using verified real F+M idleForm pairs from rxl_bp70_animations.esp (the same
 plugin Necromantic already depends on — checked directly against the installed "BP70s
 Fallout 4 Sex anims 2.8" pack's own animationData.xml, not guessed). settings.position is
-an exact id from Data\PickmansWhisper\config\SlaveScenePositions.txt (first non-comment
-line — no in-game cycling, unlike Necromantic's U/P keys; this is script-driven only).
+an exact id chosen at random (Utility.RandomInt) from every line in
+Data\PickmansWhisper\config\SlaveScenePositions.txt on each scene start — no in-game
+cycling. AAF's own in-scene "Wizard" (Home to open, Delete/Backspace to cycle, confirmed
+via AAF_settings.ini [HOTKEYS] + AAF_En.TXT strings) was tried live first — it opened but
+did not change position, likely because these positions are isHidden="true"; random pick
+per scene is the fallback that still gives variety without needing to un-hide them.
 Tag-based auto-select (settings.includeTags) was tried first and abandoned — checked
 several real installed 2-actor packs (Leito, Atomic Lust, rufGT's: 140 positions) and
 almost none carry any tags at all, so any tag filter matched ~nothing and every attempt
@@ -37,9 +41,9 @@ String LastPositionId = "" ; what StartSlaveScene actually passed AAF last attem
 Float LastDuration = -1.0
 Int LastOnSceneInitStatus = -1 ; -1 = no attempt yet this session
 
-; Slice U position bank — Data\PickmansWhisper\config\SlaveScenePositions.txt. Always
-; uses index 0 (the first loaded line); no cycling state, unlike the Wound Lab template
-; banks or Necromantic's own U/P-driven PositionIndex.
+; Slice U position bank — Data\PickmansWhisper\config\SlaveScenePositions.txt. Every
+; StartSlaveScene picks a fresh random index (Utility.RandomInt); no persisted cycling
+; state, unlike the Wound Lab template banks or Necromantic's own U/P-driven PositionIndex.
 String[] SlaveScenePositions
 Int SlaveScenePositionCount = 0
 Bool SlaveScenePositionBankLoaded = False
@@ -83,12 +87,15 @@ Bool Function EnsureSlaveScenePositionBank()
 	Return True
 EndFunction
 
-; Always index 0 — the file's first non-comment line, no cycling (see class doc comment).
+; Fresh random pick every call — no persisted index, no in-game cycling (see class doc
+; comment: AAF's own in-scene Wizard was tried live and didn't change position for these
+; isHidden positions, so a random pick per scene is the variety fallback).
 String Function GetSlaveScenePositionId()
 	If !EnsureSlaveScenePositionBank()
 		Return ""
 	EndIf
-	Return SlaveScenePositions[0]
+	Int idx = Utility.RandomInt(0, SlaveScenePositionCount - 1)
+	Return SlaveScenePositions[idx]
 EndFunction
 
 ; Called from Main.RegisterFeatureScripts on OnQuestInit + every load-game resume (same

@@ -132,6 +132,11 @@ def test_slavery_script() -> None:
         fail("Enslave must require slave gear")
     if "IsBladeEquipped" not in enslave:
         fail("Enslave must skip when IsBladeEquipped")
+    if "HungerLevel" in enslave or "CALM_HUNGER_MAX" in enslave:
+        fail("Enslave must NOT gate on blade-calm hunger level — that requirement is "
+             "Force Trade-only (see tools/test_victim_trade.py)")
+    if "CALM_HUNGER_MAX" in text:
+        fail("SlaveryScript must not declare an unused CALM_HUNGER_MAX constant")
     sync = extract_function(text, "SyncSlaveryActivatePerk")
     if "AddPerk" not in sync or "RemovePerk" not in sync:
         fail("SyncSlaveryActivatePerk must AddPerk when allowed and RemovePerk when blade drawn")

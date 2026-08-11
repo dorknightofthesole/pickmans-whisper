@@ -47,11 +47,23 @@ rather than assumed:
   `rxl_bp70_animations.esp` (the same plugin Necromantic already depends on — checked
   directly against the installed "BP70s Fallout 4 Sex anims 2.8" pack's own
   `rxl_bp70_anims_animationData.xml`, not guessed). `settings.position` is set to an exact
-  id read from `Data\PickmansWhisper\config\SlaveScenePositions.txt` (first non-comment
-  line — unlike Necromantic's `Positions.txt`, there is **no in-game cycling** (no U/P
-  keys) for this feature; edit the file and reopen MCM / reload the save to change it).
-  `aafSlaveSceneIncludeTags` was removed from `ModConfig.txt`/`ModConfigScript.psc`
-  entirely along with this pivot.
+  id picked at random (`Utility.RandomInt`) from every line in
+  `Data\PickmansWhisper\config\SlaveScenePositions.txt` on each scene start — a fresh
+  position each time "Take Her" is used. `aafSlaveSceneIncludeTags` was removed from
+  `ModConfig.txt`/`ModConfigScript.psc` entirely along with this pivot.
+- **In-game cycling: tried AAF's own Wizard, didn't work for these positions, random-per-
+  scene is the fallback.** AAF ships a native in-scene "Wizard" overlay (confirmed via
+  `AAF_settings.ini` `[HOTKEYS]` — `toggle_key_1=36` (Home) opens it, `cycle_key_1=46`
+  (Delete) cycles positions — and the `AAF_En.TXT` string table's `$WIZARD_SELECT_POSITION`
+  / `$SCENE_CYCLE_MSG`), generic to any active AAF scene, not something AAF Violate builds
+  itself (checked its full `.psc` source — zero `RegisterForKey`/`OnKeyDown` anywhere).
+  Tested live against a Take Her scene: Home opened the Wizard, but Delete/Backspace did
+  not change position — likely because all 7 `PW TakeHer *` positions are
+  `isHidden="true"` (set to keep them out of AAF's general browsable position list for
+  *other* mods' manual scene starts). Rather than un-hide them (untested effect on other
+  packs' menus) or build a custom hotkey handler, `GetSlaveScenePositionId` instead
+  re-rolls a random pick from `SlaveScenePositions.txt` every time a scene starts, so
+  repeated use varies without needing in-scene input.
 - CTD-avoidance patterns reused as-is (all hard-won from that mod's own production
   history, not reinvented here): interior-only by default (`CanStartSceneInCurrentCell`,
   MCM `bAllowExteriorSlaveScene:Debug` override), `EnsureAAFStoppedForRestart` before
@@ -71,8 +83,9 @@ rather than assumed:
 - `PickmansWhisperSlaveSceneScript` (new co-script on the Main quest) owns all AAF state:
   `LoadAAF`/`OnAAFReady` (event registration), `EnsureSlaveScenePositionBank`/
   `GetSlaveScenePositionId` (loads `SlaveScenePositions.txt` via the same manifest-free
-  `VoiceAlias.LoadStageBankAt` loader every other bank in this mod uses; always returns
-  index 0, no cycling state), `TryStartSlaveSceneFromActivate` (gameplay entry —
+  `VoiceAlias.LoadStageBankAt` loader every other bank in this mod uses; picks a fresh
+  random index via `Utility.RandomInt` on every call, no persisted cycling state),
+  `TryStartSlaveSceneFromActivate` (gameplay entry —
   re-validates `IsOurSlave`, blade sheathed, not already active, interior cell, ModConfig
   duration present, position bank non-empty), `StartSlaveScene` (builds the 2-actor array
   + `SceneSettings` with the exact `settings.position`), `EndSlaveScene`/
@@ -93,10 +106,11 @@ rather than assumed:
   relabeled **Take Her**; `OnEntryRun` routes it to `TryStartSlaveSceneFromActivate`
   instead of `TryFreeSlaveFromActivate`.
 - [x] **U2 — Two-actor AAF scene** — `new Actor[2]` (player + target); exact
-  `settings.position` sourced from `SlaveScenePositions.txt`, pointing at this mod's own
-  `Data\AAF\PickmansWhisper_positionData.xml`/`_animationData.xml` (cloned from
-  Necromantic's curated 7-position list, paired instead of solo). Tag-based auto-select
-  was tried first and abandoned — see "Position selection" above.
+  `settings.position` randomly picked each scene from `SlaveScenePositions.txt`, pointing
+  at this mod's own `Data\AAF\PickmansWhisper_positionData.xml`/`_animationData.xml`
+  (cloned from Necromantic's curated 7-position list, paired instead of solo). Tag-based
+  auto-select was tried first and abandoned; AAF's own in-scene Wizard was tried live and
+  didn't cycle these hidden positions — see "Position selection" above.
 - [x] **U3 — CTD-avoidance parity** — Interior-only default + MCM override, restart-safe
   `EnsureAAFStoppedForRestart`, watchdog + max-duration timers, `OnAAFReady` re-bind.
 - [x] **U4 — MCM status / cancel / free** — Victims page `sSlaveScene` status row +
@@ -158,9 +172,10 @@ confirm.
 ## Contract
 
 `tools/test_slave_scene.py` — stub presence, 2-actor array (not Necromantic's solo
-`new Actor[1]`), exact-position `settings.position` (no `includeTags` anywhere, no
-hardcoded literal id), AAF data files (7 genuine two-actor positions cross-checked against
-`SlaveScenePositions.txt`), ModConfig SSOT + fail-loud (duration only, no
+`new Actor[1]`), exact-position `settings.position` chosen via `Utility.RandomInt` (no
+`includeTags` anywhere, no hardcoded literal id), AAF data files (7 genuine two-actor
+positions cross-checked against `SlaveScenePositions.txt`), ModConfig SSOT + fail-loud
+(duration only, no
 `aafSlaveSceneIncludeTags`), CTD-avoidance function/event presence, perk/Main/Victims
 wiring, MCM config, deploy gate (both `.ps1` and `.sh`, plus `package_mo2_zip.py` and
 `fomod/ModuleConfig.xml` shipping `Data/AAF`), and that the direction docs no longer state
