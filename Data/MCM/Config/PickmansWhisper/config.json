@@ -393,6 +393,26 @@
           }
         },
         {
+          "id": "sSlaveScene:Victims",
+          "text": "Slave scene (AAF)",
+          "type": "textinput",
+          "help": "Idle, or the current AAF scene phase (Starting/Playing/Cancelling) plus the target's FormID. Updates on scene events and panel refresh.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Free (no scene)",
+          "type": "button",
+          "help": "Frees the aimed slave directly, without starting a scene. The activate-menu \"Take Her\" choice (Slice U) starts an AAF scene instead of freeing once she's already enslaved — use this button for a plain, no-scene release.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMFreeAimedSlave",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        },
+        {
           "text": "Name / rename",
           "type": "section"
         },
@@ -859,6 +879,26 @@
             "form": "PickmansWhisper.esp|800",
             "function": "DebugTestSeverAimedHead",
             "scriptName": "PickmansWhisperMainQuestScript"
+          }
+        },
+        {
+          "id": "bAllowExteriorSlaveScene:Debug",
+          "text": "Allow exterior slave scenes",
+          "type": "toggle",
+          "help": "Slice U AAF scene normally requires an interior cell (exteriors are CTD-prone for AAF scene starts). Default off.",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Cancel slave scene",
+          "type": "button",
+          "help": "Force-stops the current AAF slave scene, if any.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "CancelSlaveScene",
+            "scriptName": "PickmansWhisperSlaveSceneScript"
           }
         }
       ]

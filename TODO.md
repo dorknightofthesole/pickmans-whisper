@@ -70,6 +70,7 @@ See docs/ROADMAP.md Slice J. Do not start until event-driven kill/notice path is
 - [ ] **O** Witnesses / killer rumors
 - [ ] **P** Infamy whispers
 - [ ] **Q** Private cells + quests (Combat Zone, Culte des Ghouls, butcher shop, Pickman house)
+- [ ] **U** AAF slave scene ("Take Her" activate choice, replaces Free) — see docs/ROADMAP.md Slice U / docs/SLICE_U_SLAVE_SCENE.md (implemented, awaiting in-game confirm)
 
 ## LoversLab release / visibility
 

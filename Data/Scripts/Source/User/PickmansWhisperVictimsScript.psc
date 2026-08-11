@@ -40,6 +40,10 @@ PickmansWhisperBeatBeforeKillScript Function BeatBeforeKill()
 	Return (Self as Quest) as PickmansWhisperBeatBeforeKillScript
 EndFunction
 
+PickmansWhisperSlaveryScript Function Slavery()
+	Return (Self as Quest) as PickmansWhisperSlaveryScript
+EndFunction
+
 Event OnInit()
 	EnsureMcmEventsRegistered()
 EndEvent
@@ -315,6 +319,41 @@ Function MCMToggleEssentialForAimed()
 	Else
 		DiagNotify("Pickman's Whisper — Toggle essential\n\nFailed:\n" + m.LastVictimStatus)
 	EndIf
+	If MCM.IsInstalled()
+		m.WriteVictimsStatusToMcm()
+	EndIf
+	RefreshVictimsPanel(True)
+EndFunction
+
+; Slice U — MCM Victims "Free" button. The activate-menu "Free" choice was replaced by
+; "Take Her" (Slice U scene, only shown once she's already a slave); this keeps a direct
+; one-click free path. Same aim-cache pattern as MCMToggleEssentialForAimed;
+; TryFreeSlaveFromActivate already Notifies its own result (not-yours / blade-drawn / ok).
+Function MCMFreeAimedSlave()
+	PickmansWhisperMainQuestScript m = Main()
+	If !m
+		DiagNotify("Pickman's Whisper — Free\n\nMain script missing.")
+		Return
+	EndIf
+	Actor player = Game.GetPlayer()
+	Actor aimed = ResolveVictimsAimActor()
+	If !aimed || aimed == player
+		m.LastVictimStatus = "no aim cache — face her in-world ~2s, then Free"
+		PushVictimsPanelStrings()
+		If MCM.IsInstalled()
+			MCM.RefreshMenu()
+			WriteVictimsAimedToMcm()
+			m.WriteVictimsStatusToMcm()
+		EndIf
+		DiagNotify("Pickman's Whisper — Free\n\nNo aim cache.\nFace her in-world for ~2s (killscan), then open MCM and try again.")
+		Return
+	EndIf
+	PickmansWhisperSlaveryScript slavery = Slavery()
+	If !slavery
+		DiagNotify("Pickman's Whisper — Free\n\nSlaveryScript missing.")
+		Return
+	EndIf
+	slavery.TryFreeSlaveFromActivate(aimed)
 	If MCM.IsInstalled()
 		m.WriteVictimsStatusToMcm()
 	EndIf

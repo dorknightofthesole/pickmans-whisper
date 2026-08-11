@@ -8,7 +8,7 @@ Companion to **Necromantic** in a three-mod suite that shares tone, addiction/hu
 2. **Pickman's Whisper** (this mod) — the knife, the voice, serial hunger
 3. **Necromantic** — corpse intimacy after the killing habit
 
-On the surface, Occult Pact and Pickman's Whisper are **not sexual**. Necromantic is the only sexual module (AAF). Shared tech (toasts, craving meters, corpse hold lists / tokens) stays complementary — **no compile-time coupling**. Soft load order: Occult Pact → Pickman's Whisper → Necromantic.
+On the surface, Occult Pact and Pickman's Whisper are **not sexual by default**. Necromantic remains the primary sexual module (AAF); one narrow exception exists in Pickman's Whisper — Slice U's "Take Her" activate choice, a two-actor AAF scene only reachable once an NPC is already the player's slave (see Product hard rules below). Necromantic is single-actor by design (its "corpse" is a positioned prop, never a real second AAF participant) and couldn't do a living two-actor scene without a redesign of its own, so Slice U lives here directly rather than routed through it. Shared tech (toasts, craving meters, corpse hold lists / tokens) stays complementary — **no compile-time coupling**. Soft load order: Occult Pact → Pickman's Whisper → Necromantic.
 
 ## Fantasy
 
@@ -26,7 +26,7 @@ TargetScan replaces the Glowing One proximity-cloak bus and thins Main’s NPC t
 
 ## Product hard rules
 
-- **No AAF**, no sexual content, no TopicInfo dialogue scenes for the voice.
+- **AAF is limited to one feature**: the Slavery "Take Her" activate choice ([Slice U](SLICE_U_SLAVE_SCENE.md)) starts a real two-actor AAF scene, gated on `IsOurSlave` (only reachable once she's already enslaved). No other AAF/sexual content, and no TopicInfo dialogue scenes for the voice. Do not add AAF calls anywhere else without revisiting this rule.
 - Essential / protected NPC filters are strict once kill tracking lands (Slice B).
 - Lines are data-driven (`.txt`); extreme tone allowed; keep content editable.
 - Do not master `Necromantic.esp`. Duplicate minimal helpers until a shared lib exists.

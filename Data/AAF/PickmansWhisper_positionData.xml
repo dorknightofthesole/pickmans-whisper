@@ -1,0 +1,17 @@
+<meta title="PickmansWhisper_positionData.xml" version="1.1.0" dataSet="position"/>
+
+<!--
+  Slice U "Take Her" — two-actor positions (player + enslaved NPC). Cloned from
+  Necromantic's own curated 7-position list, paired instead of solo. isHidden so these
+  don't clutter AAF's own manual position browser — selection is script-driven only
+  (Data\PickmansWhisper\config\SlaveScenePositions.txt), no in-game position cycling.
+-->
+<defaults startEquipmentSet="unEquip" stopEquipmentSet="reEquip" startMorphSet="Erect" stopMorphSet="Flaccid"/>
+
+<position id="PW TakeHer Missionary" animation="PW_TakeHer_Missionary" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Missionary,FromFront,Neutral"/>
+<position id="PW TakeHer Doggy" animation="PW_TakeHer_Doggy" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Doggy,FromBehind,Neutral"/>
+<position id="PW TakeHer ProneBone" animation="PW_TakeHer_ProneBone" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Doggy,FromBehind,Neutral"/>
+<position id="PW TakeHer RomanticMissionary" animation="PW_TakeHer_RomanticMissionary" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Missionary,FromFront,Loving"/>
+<position id="PW TakeHer PitDoggy" animation="PW_TakeHer_PitDoggy" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Doggy,FromBehind,Neutral"/>
+<position id="PW TakeHer Spooning" animation="PW_TakeHer_Spooning" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Spooning,FromBehind,Neutral"/>
+<position id="PW TakeHer Lotus" animation="PW_TakeHer_Lotus" isHidden="true" tags="PickmansWhisper,TakeHer,F_M,NoFurn,Cowgirl,FromFront,Neutral"/>

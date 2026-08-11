@@ -93,6 +93,7 @@ def stage() -> None:
         "PickmansWhisperVictimTradePerkScript",
         "PickmansWhisperSlaveryScript",
         "PickmansWhisperSlaveryPerkScript",
+        "PickmansWhisperSlaveSceneScript",
     ):
         pex = ROOT / "Data" / "Scripts" / f"{script_stem}.pex"
         require_file(pex, f"compiled {script_stem}.pex")
@@ -108,6 +109,15 @@ def stage() -> None:
     copy_tree_contents(ROOT / "Data" / "Meshes", STAGING / "Meshes")
     copy_tree_contents(ROOT / "Data" / "Textures", STAGING / "Textures")
     copy_tree_contents(ROOT / "Data" / "F4SE", STAGING / "F4SE")
+    copy_tree_contents(ROOT / "Data" / "AAF", STAGING / "AAF")
+    require_file(
+        STAGING / "AAF" / "PickmansWhisper_positionData.xml",
+        "AAF/PickmansWhisper_positionData.xml",
+    )
+    require_file(
+        STAGING / "AAF" / "PickmansWhisper_animationData.xml",
+        "AAF/PickmansWhisper_animationData.xml",
+    )
     require_file(
         STAGING / "Sound" / "PickmansWhisper" / "EndIt.xwm",
         "Sound/PickmansWhisper/EndIt.xwm",
@@ -154,6 +164,7 @@ def stage() -> None:
         "Meshes",
         "Textures",
         "F4SE",
+        "AAF",
         "docs",
         "README.md",
         "meta.ini",

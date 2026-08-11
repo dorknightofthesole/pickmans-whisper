@@ -1,0 +1,17 @@
+# Slice U "Take Her" — AAF position id used for the two-actor slave scene.
+#
+# ONE POSITION ID PER LINE. The first non-comment line is THE position used — unlike
+# Necromantic's Positions.txt, there is no in-game cycling (no U/P keys) for this
+# feature; edit this file and reopen MCM / reload the save to change it.
+#
+# These ids come from Data\AAF\PickmansWhisper_positionData.xml (this mod's own AAF
+# data, cloned from Necromantic's curated 7-position list as genuine two-actor pairs —
+# see docs\SLICE_U_SLAVE_SCENE.md). Blank lines and lines starting with # are ignored.
+
+PW TakeHer Missionary
+PW TakeHer Doggy
+PW TakeHer ProneBone
+PW TakeHer RomanticMissionary
+PW TakeHer PitDoggy
+PW TakeHer Spooning
+PW TakeHer Lotus

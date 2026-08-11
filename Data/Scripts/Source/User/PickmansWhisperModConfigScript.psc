@@ -22,6 +22,7 @@ Float Property EatRipeCorpseEndBuffMaxDelta = -1.0 Auto
 Float Property EatRipeCorpseEndBuffHours = -1.0 Auto
 Int Property VictimTradeMinCha = -1 Auto
 Int Property SlaveryMinCha = -1 Auto
+Float Property AafSlaveSceneDurationSeconds = -1.0 Auto
 String Property ModConfigLoadStatus = "" Auto
 Bool ModConfigLoadBusy = False
 
@@ -386,6 +387,7 @@ Function LoadModConfig()
 	Float nextEatRipeCorpseEndBuffHours = -1.0
 	Int nextVictimTradeMinCha = -1
 	Int nextSlaveryMinCha = -1
+	Float nextAafSlaveSceneDurationSeconds = -1.0
 	ClearPendingDecayStages()
 	String fileName = "ModConfig.txt"
 	String path = ConfigPath()
@@ -496,6 +498,13 @@ Function LoadModConfig()
 							nextSlaveryMinCha = slaveryCha
 						EndIf
 					EndIf
+				ElseIf key == "aafSlaveSceneDurationSeconds"
+					If val && GardenOfEden.StrLength(val) > 0
+						Float sceneDur = val as Float
+						If sceneDur > 0.0
+							nextAafSlaveSceneDurationSeconds = sceneDur
+						EndIf
+					EndIf
 				ElseIf key == "decayStage0"
 					ParseDecayStageValue(0, val)
 				ElseIf key == "decayStage1"
@@ -530,6 +539,7 @@ Function LoadModConfig()
 	EatRipeCorpseEndBuffHours = nextEatRipeCorpseEndBuffHours
 	VictimTradeMinCha = nextVictimTradeMinCha
 	SlaveryMinCha = nextSlaveryMinCha
+	AafSlaveSceneDurationSeconds = nextAafSlaveSceneDurationSeconds
 	If !BondIntroGreeting
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — bondIntroGreeting missing/empty")
 	EndIf
@@ -547,6 +557,9 @@ Function LoadModConfig()
 	EndIf
 	If SlaveryMinCha <= 0
 		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — slaveryMinCha missing or <=0")
+	EndIf
+	If AafSlaveSceneDurationSeconds <= 0.0
+		Debug.Trace("PickmansWhisper: ERROR ModConfig.txt — aafSlaveSceneDurationSeconds missing or <=0")
 	EndIf
 	Int filled = 0
 	Int si = 0
@@ -612,6 +625,9 @@ Function LoadModConfig()
 	If SlaveryMinCha > 0
 		status += "slaveryCha "
 	EndIf
+	If AafSlaveSceneDurationSeconds > 0.0
+		status += "aafSlaveScene "
+	EndIf
 	If stagesOk
 		status += "decayStages "
 	EndIf
@@ -665,5 +681,10 @@ EndFunction
 ; Exposed for SlaveryScript (ModConfig slaveryMinCha). <=0 = missing/invalid.
 Int Function GetSlaveryMinCha()
 	Return SlaveryMinCha
+EndFunction
+
+; Exposed for SlaveSceneScript. <=0 = missing/invalid.
+Float Function GetAafSlaveSceneDurationSeconds()
+	Return AafSlaveSceneDurationSeconds
 EndFunction
 

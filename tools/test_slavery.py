@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""Contracts for Slavery (enslave follow + slave-gear gate + teammate exception)."""
+"""Contracts for Slavery (enslave follow + slave-gear gate + teammate exception).
+
+The activate-menu "Free" choice was replaced by "Take Her" (Slice U AAF scene,
+tools/test_slave_scene.py) — SlaveryScript.TryFreeSlaveFromActivate is unchanged and
+still reachable via MainQuestScript's forwarder, just no longer from this PERK; the
+direct one-click free path moved to PickmansWhisperVictimsScript.MCMFreeAimedSlave
+(MCM Victims page button).
+"""
 from __future__ import annotations
 
 import re
+import struct
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+ESP = ROOT / "Data" / "PickmansWhisper.esp"
 SLAVERY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperSlaveryScript.psc"
 PERK_PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperSlaveryPerkScript.psc"
 TRADE = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperVictimTradeScript.psc"
@@ -31,6 +40,16 @@ def fail(msg: str) -> None:
 
 def ok(msg: str) -> None:
     print(f"OK: {msg}")
+
+
+def extract_event(text: str, signature_start: str) -> str:
+    idx = text.find(signature_start)
+    if idx < 0:
+        fail(f"missing event {signature_start!r}")
+    end_m = re.search(r"\nEndEvent\b", text[idx:])
+    if not end_m:
+        fail(f"no EndEvent for {signature_start!r}")
+    return text[idx : idx + end_m.end()]
 
 
 def extract_function(text: str, name: str) -> str:
@@ -141,11 +160,32 @@ def test_perk_script() -> None:
     text = PERK_PSC.read_text(encoding="utf-8", errors="replace")
     if "extends Perk" not in text:
         fail("SlaveryPerkScript must extend Perk")
-    if "TryEnslaveFromActivate" not in text or "TryFreeSlaveFromActivate" not in text:
-        fail("perk must route Enslave and Free")
-    if "IsOurSlave" not in text:
-        fail("perk must toggle Free when IsOurSlave (single Slavery activate choice)")
-    ok("SlaveryPerkScript OnEntryRun -> toggle Enslave/Free")
+    if "TryEnslaveFromActivate" not in text or "TryStartSlaveSceneFromActivate" not in text:
+        fail("perk must route Enslave and Take Her (Slice U scene)")
+    if "TryFreeSlaveFromActivate" in text:
+        fail("perk must NOT route Free anymore — replaced by Take Her (Slice U); "
+             "direct free is now PickmansWhisperVictimsScript.MCMFreeAimedSlave (MCM button)")
+
+    # auiEntryID must be the PRIMARY routing signal now that each entry has a real,
+    # distinct EPFB (see test_esp_builder's binary check) — this was a real, confirmed
+    # bug: every entry previously shared EPFB=0000, so "Enslave" and "Take Her" always
+    # ran the exact same branch regardless of which was clicked. IsOurSlave may only
+    # remain as a fallback for an unrecognized auiEntryID, never the primary path.
+    entry_evt = extract_event(text, "Event OnEntryRun(Int auiEntryID, ObjectReference akTarget, Actor akOwner)")
+    if "auiEntryID == 0" not in entry_evt or "auiEntryID == 1" not in entry_evt:
+        fail("OnEntryRun must branch on auiEntryID == 0 (Enslave) and == 1 (Take Her) as "
+             "the primary routing — not IsOurSlave state, which conflated the two "
+             "(confirmed live: clicking Enslave on an already-owned NPC started an AAF "
+             "scene instead of enslaving)")
+    m0 = re.search(r"auiEntryID == 0.*?TryEnslaveFromActivate", entry_evt, re.S)
+    if not m0 or (m0.end() - m0.start()) > 200:
+        fail("auiEntryID == 0 branch must call TryEnslaveFromActivate (close by, not via a distant fallback)")
+    m1 = re.search(r"auiEntryID == 1.*?TryStartSlaveSceneFromActivate", entry_evt, re.S)
+    if not m1 or (m1.end() - m1.start()) > 200:
+        fail("auiEntryID == 1 branch must call TryStartSlaveSceneFromActivate (close by, not via a distant fallback)")
+    if "IsOurSlave" not in entry_evt:
+        fail("OnEntryRun should still keep IsOurSlave as a fallback for an unrecognized auiEntryID")
+    ok("SlaveryPerkScript OnEntryRun routes primarily on auiEntryID (0=Enslave, 1=Take Her), IsOurSlave fallback only")
 
 
 def test_trade_glue() -> None:
@@ -203,8 +243,10 @@ def test_esp_builder() -> None:
         fail("ESP builder must emit PW_SlaveryActivate EDID")
     if '_activate_choice_entry("Enslave"' not in text and 'zstr("Enslave")' not in text:
         fail('ESP builder must set activate label Enslave (multi-activate dialog budget)')
-    if '_activate_choice_entry("Free"' not in text and 'zstr("Free")' not in text:
-        fail('ESP builder must set activate label Free (multi-activate dialog budget)')
+    if '_activate_choice_entry("Take Her"' not in text and 'zstr("Take Her")' not in text:
+        fail('ESP builder must set activate label "Take Her" (Slice U, replaced Free)')
+    if '_activate_choice_entry("Free"' in text or 'zstr("Free")' in text:
+        fail('ESP builder must NOT emit a Free activate label anymore — replaced by Take Her (Slice U)')
     if '_activate_choice_entry("Slavery"' in text:
         fail("ESP must not use single Slavery label — breaks multi-activate dialog")
     if '"PickmansWhisperSlaveryScript"' not in text:
@@ -215,7 +257,56 @@ def test_esp_builder() -> None:
         fail("ESP builder must bind SlaveryActivatePerk property")
     if "NEXT_OID = 0x0000087B" not in text:
         fail("ESP builder NEXT_OID must be past slavery PERK")
-    ok("ESP builder PERK Enslave/Free + VMAD wiring")
+    if "'Perk Entry ID (unique)'" not in text and "Perk Entry ID" not in text:
+        fail("_activate_choice_entry must document EPFB as xEdit's 'Perk Entry ID (unique)' "
+             "field — this was a real, confirmed bug: every entry sharing EPFB=0000 meant "
+             "auiEntryID could never distinguish Enslave from Take Her")
+    ok("ESP builder PERK Enslave/Take Her + VMAD wiring")
+
+
+def test_esp_binary_epfb_unique() -> None:
+    """Real binary check, not just source text: parse the built ESP's PW_SlaveryActivate
+    PERK record and confirm Enslave and Take Her actually have distinct EPFB values —
+    locks in the auiEntryID-routing fix at the byte level, the same way the rest of this
+    codebase verifies binary records rather than trusting the builder's own Python logic."""
+    if not ESP.is_file():
+        fail(f"missing built ESP: {ESP} (run tools/build_hunger_spell_esp.py)")
+    data = ESP.read_bytes()
+    needle = struct.pack("<I", FID_PERK)
+    idx = data.find(needle)
+    if idx < 0:
+        fail(f"PERK FormID 0x{FID_PERK:08X} not found in built ESP")
+    rec_start = data.rfind(b"PERK", 0, idx)
+    if rec_start < 0:
+        fail("could not locate PERK record header before FormID occurrence")
+    size = struct.unpack_from("<I", data, rec_start + 4)[0]
+    body = data[rec_start + 24 : rec_start + 24 + size]
+
+    epfb_by_label: dict[str, int] = {}
+    off = 0
+    pending_epfb = None
+    while off + 6 <= len(body):
+        tag = body[off : off + 4]
+        sz = struct.unpack_from("<H", body, off + 4)[0]
+        val = body[off + 6 : off + 6 + sz]
+        if tag == b"EPFB":
+            if sz != 2:
+                fail(f"EPFB field must be 2 bytes (u16), got {sz}")
+            pending_epfb = struct.unpack("<H", val)[0]
+        elif tag == b"EPF2":
+            label = val.split(b"\x00", 1)[0].decode("ascii", "replace")
+            if pending_epfb is None:
+                fail(f"EPF2 label {label!r} had no preceding EPFB field")
+            epfb_by_label[label] = pending_epfb
+            pending_epfb = None
+        off += 6 + sz
+
+    if "Enslave" not in epfb_by_label or "Take Her" not in epfb_by_label:
+        fail(f"expected EPF2 labels 'Enslave' and 'Take Her' in PW_SlaveryActivate, found {list(epfb_by_label)}")
+    if epfb_by_label["Enslave"] == epfb_by_label["Take Her"]:
+        fail(f"Enslave and Take Her share EPFB={epfb_by_label['Enslave']} — auiEntryID cannot "
+             f"distinguish them, reintroducing the exact bug that made clicking Enslave start an AAF scene")
+    ok(f"built ESP: Enslave EPFB={epfb_by_label['Enslave']}, Take Her EPFB={epfb_by_label['Take Her']} (distinct)")
 
 
 def test_deploy_gate() -> None:
@@ -246,6 +337,7 @@ def main() -> int:
     test_main_isvalidtarget()
     test_player_alias_warp()
     test_esp_builder()
+    test_esp_binary_epfb_unique()
     test_deploy_gate()
     print("All slavery contracts passed.")
     return 0

@@ -13,6 +13,7 @@
 		<folder source="Meshes" destination="Meshes" />
 		<folder source="Textures" destination="Textures" />
 		<folder source="F4SE" destination="F4SE" />
+		<folder source="AAF" destination="AAF" />
 		<folder source="docs" destination="docs" />
 		<file source="README.md" destination="README.md" />
 		<file source="meta.ini" destination="meta.ini" />

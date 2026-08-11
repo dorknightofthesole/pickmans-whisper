@@ -64,6 +64,13 @@ PSC_ALIAS="PickmansWhisperPlayerAliasScript.psc"
 PSC_BUFF_TRACKER="PickmansWhisperBuffTrackerScript.psc"
 PSC_BEAT_BEFORE_KILL="PickmansWhisperBeatBeforeKillScript.psc"
 PSC_KILL_REWARD="PickmansWhisperKillRewardScript.psc"
+# TODO: build-deploy-local.sh is missing ModConfigScript/TargetScanScript/VictimTradeScript/
+# VictimTradePerkScript/SlaveryScript/SlaveryPerkScript entirely (pre-existing gap, confirmed
+# not present anywhere in this file — out of scope for Slice U). SlaveSceneScript below
+# compiles fine regardless (Caprica resolves PickmansWhisperSlaveryScript/MainQuestScript as
+# types from source), but a .sh-only deploy is already broken for anything Slavery-related
+# before this feature; that gap needs its own follow-up pass, not papered over here.
+PSC_SLAVE_SCENE="PickmansWhisperSlaveSceneScript.psc"
 
 to_win_path() {
   local p="$1"
@@ -163,6 +170,9 @@ python "$ROOT/tools/test_buff_tracker.py" || exit 1
 echo "==> Beat before kill (Slice J1) contract test"
 python "$ROOT/tools/test_beat_before_kill.py" || exit 1
 
+echo "==> Slave scene (AAF, Slice U) contract test"
+python "$ROOT/tools/test_slave_scene.py" || exit 1
+
 echo "==> KillerScan retirement contract test"
 python "$ROOT/tools/test_no_killer_scan.py" || exit 1
 
@@ -194,10 +204,10 @@ python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_KILL_REWARD"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_KILL_REWARD + $PSC_SLAVE_SCENE"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_KILL_REWARD"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_KILL_REWARD" "$PSC_SLAVE_SCENE"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -250,6 +260,9 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperBeatBeforeKillScript.pex" ]]; then
 fi
 if [[ ! -f "$PEX_OUT/PickmansWhisperKillRewardScript.pex" ]]; then
   echo "ERROR: compile produced no KillReward .pex" >&2
+fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperSlaveSceneScript.pex" ]]; then
+  echo "ERROR: compile produced no SlaveScene .pex" >&2
   exit 1
 fi
 
@@ -276,6 +289,7 @@ cp -f "$PEX_OUT/PickmansWhisperPlayerAliasScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBeatBeforeKillScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperKillRewardScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperSlaveSceneScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
@@ -286,6 +300,7 @@ cp -f "$SRC/PickmansWhisperPlayerAliasScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBuffTrackerScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBeatBeforeKillScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperKillRewardScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperSlaveSceneScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"
@@ -309,6 +324,15 @@ sync_data_tree "Materials"
 sync_data_tree "Meshes"
 sync_data_tree "Textures"
 sync_data_tree "F4SE"
+sync_data_tree "AAF"
+if [[ ! -f "$DEPLOY/AAF/PickmansWhisper_positionData.xml" ]]; then
+  echo "ERROR: Deploy missing AAF/PickmansWhisper_positionData.xml (Slice U Take Her)" >&2
+  exit 1
+fi
+if [[ ! -f "$DEPLOY/AAF/PickmansWhisper_animationData.xml" ]]; then
+  echo "ERROR: Deploy missing AAF/PickmansWhisper_animationData.xml (Slice U Take Her)" >&2
+  exit 1
+fi
 if [[ ! -f "$DEPLOY/Meshes/PickmansWhisper/Decay/NecroBaseFemaleHead.nif" ]]; then
   echo "ERROR: Deploy missing Meshes/PickmansWhisper/Decay/NecroBaseFemaleHead.nif" >&2
   exit 1

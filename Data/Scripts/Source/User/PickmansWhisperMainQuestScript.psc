@@ -832,6 +832,15 @@ Function RegisterFeatureScripts()
 		Debug.Notification("Pickman's Whisper: TargetScan script missing — rebuild PickmansWhisper.esp")
 		Debug.Trace("PickmansWhisper: ERROR TargetScan script missing on Main quest")
 	EndIf
+	PickmansWhisperSlaveSceneScript scene = SlaveScene()
+	If !scene
+		Debug.Notification("Pickman's Whisper: SlaveScene script missing — rebuild PickmansWhisper.esp")
+		Debug.Trace("PickmansWhisper: ERROR SlaveScene script missing on Main quest")
+	Else
+		; AAF re-fires OnAAFReady on its own re-init — re-registering here every load
+		; (in addition to inside OnAAFReady itself) mirrors Necromantic's LoadAAF call site.
+		scene.LoadAAF()
+	EndIf
 EndFunction
 
 Function RegisterNecromanticSceneEvents()
@@ -1990,6 +1999,20 @@ Function WriteBeatEssentialStatusToMcm(Actor aimed)
 	EndIf
 EndFunction
 
+; Slice U — status row for the current slave scene (independent of which/whether an NPC
+; is aimed; only ever one scene active at a time, driven by SlaveSceneScript itself).
+Function WriteSlaveSceneStatusToMcm()
+	If !MCM.IsInstalled()
+		Return
+	EndIf
+	PickmansWhisperSlaveSceneScript scene = SlaveScene()
+	If !scene
+		MCM.SetModSettingString(MOD_NAME, "sSlaveScene:Victims", "Idle (SlaveScene script missing)")
+		Return
+	EndIf
+	MCM.SetModSettingString(MOD_NAME, "sSlaveScene:Victims", scene.GetSlaveSceneStatusLine())
+EndFunction
+
 ; VictimsScript CallFunctionNoWait after aimed push — decay/summary/status without stalling MCM.
 Function WriteVictimsMcmAuxRows()
 	PickmansWhisperVictimsScript v = Victims()
@@ -2008,6 +2031,7 @@ Function WriteVictimsMcmAuxRows()
 	EndIf
 	WriteDecayStageStatusToMcmForActor(aimed)
 	WriteBeatEssentialStatusToMcm(aimed)
+	WriteSlaveSceneStatusToMcm()
 	WriteVictimsSummaryToMcm()
 	WriteVictimsStatusToMcm()
 EndFunction
@@ -2368,6 +2392,10 @@ PickmansWhisperSlaveryScript Function Slavery()
 	Return (Self as Quest) as PickmansWhisperSlaveryScript
 EndFunction
 
+PickmansWhisperSlaveSceneScript Function SlaveScene()
+	Return (Self as Quest) as PickmansWhisperSlaveSceneScript
+EndFunction
+
 ; Perk OnEntryRun → feature script (activate choice Trade).
 Function TryForceVictimTradeFromActivate(Actor akTarget)
 	PickmansWhisperVictimTradeScript trade = VictimTrade()
@@ -2398,6 +2426,17 @@ Function TryFreeSlaveFromActivate(Actor akTarget)
 		Return
 	EndIf
 	slavery.TryFreeSlaveFromActivate(akTarget)
+EndFunction
+
+; Slavery perk "already ours" choice ("Take Her") → feature script.
+Function TryStartSlaveSceneFromActivate(Actor akTarget)
+	PickmansWhisperSlaveSceneScript scene = SlaveScene()
+	If !scene
+		Debug.Trace("PickmansWhisper: ERROR TryStartSlaveSceneFromActivate — SlaveSceneScript missing")
+		Debug.Notification("PickmansWhisper: Slave scene script missing")
+		Return
+	EndIf
+	scene.TryStartSlaveSceneFromActivate(akTarget)
 EndFunction
 
 Bool Function IsOurSlave(Actor ak)

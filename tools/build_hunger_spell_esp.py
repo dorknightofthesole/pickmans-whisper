@@ -68,7 +68,7 @@ FID_AV_KILL_REWARD_CHECK_TIME = 0x01000876  # PW_KillRewardCheckTime
 FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877  # PW_TargetTrackerExpiration
 FID_PERK_VICTIM_TRADE = 0x01000878  # PW_VictimTradeActivate (Talk + Force Trade)
 FID_OTFT_EMPTY = 0x01000879  # PW_EmptyOutfit — strip default outfits for Force Trade
-FID_PERK_SLAVERY = 0x0100087A  # PW_SlaveryActivate (Talk + Enslave / Free)
+FID_PERK_SLAVERY = 0x0100087A  # PW_SlaveryActivate (Talk + Enslave / Take Her)
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
 NEXT_OID = 0x0000087B  # == (FID_PERK_SLAVERY & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
@@ -350,6 +350,7 @@ def build_main_quest_payload() -> bytes:
         "PickmansWhisperTargetScanScript",
         "PickmansWhisperVictimTradeScript",
         "PickmansWhisperSlaveryScript",
+        "PickmansWhisperSlaveSceneScript",
     ]
     trade_perk_prop = build_vmad_object_form_property(
         "TradeActivatePerk", FID_PERK_VICTIM_TRADE
@@ -758,12 +759,19 @@ def _ctda_get_dead_eq_0() -> bytes:
     )
 
 
-def _activate_choice_entry(label: str, priority: int = 0) -> list[bytes]:
+def _activate_choice_entry(label: str, priority: int = 0, entry_id: int | None = None) -> list[bytes]:
     """One Activate / Add Activate Choice entry (living target). priority = PRKE byte2.
 
-    EPFB stays 0000 like the working Force Trade build — do not invent entry ids here;
-    SlaveryPerkScript toggles enslave/free in script (does not trust auiEntryID).
+    EPFB is xEdit's "Perk Entry ID (unique)" (wbDefinitionsFO4.pas: wbInteger(EPFB,
+    'Perk Entry ID (unique)', itU16)) — this is what OnEntryRun's auiEntryID actually
+    reflects. Every previous call here hardcoded EPFB=0000, so any perk with >1 entry
+    had entries sharing the same "unique" id — auiEntryID could never have distinguished
+    them; that was a bug in this builder, not an engine limitation (the old comment
+    claiming auiEntryID is "unreliable" was describing this bug's symptom). Defaults to
+    entry_id=priority so existing single-entry perks (Force Trade) are unaffected.
     """
+    if entry_id is None:
+        entry_id = priority
     return [
         field(b"PRKE", bytes([0x02, 0x00, priority & 0xFF])),
         # Activate (0x0E) / Add Activate Choice (0x09) / 2 condition tabs
@@ -772,7 +780,7 @@ def _activate_choice_entry(label: str, priority: int = 0) -> list[bytes]:
         field(b"PRKC", bytes.fromhex("01")),  # Target tab
         field(b"CTDA", _ctda_get_dead_eq_0()),  # living only — leave corpses to Cannibal
         field(b"EPFT", bytes.fromhex("04")),  # Activate text
-        field(b"EPFB", bytes.fromhex("0000")),
+        field(b"EPFB", u16(entry_id & 0xFFFF)),
         field(b"EPF2", zstr(label)),
         field(b"EPF3", bytes.fromhex("0000")),  # not Replace Default / not Run Immediately
         field(b"PRKF", b""),
@@ -807,11 +815,16 @@ def build_victim_trade_perk_payload() -> bytes:
 
 
 def build_slavery_perk_payload() -> bytes:
-    """PERK with Enslave + Free labels (living). Both run the same script toggle.
+    """PERK with Enslave (entry_id=0) + Take Her (entry_id=1) labels (living), each with
+    its own real EPFB now — auiEntryID reliably tells SlaveryPerkScript.OnEntryRun which
+    button was actually clicked (see _activate_choice_entry's docstring: EPFB=0 for both
+    was the bug that made auiEntryID look unreliable). IsOurSlave-based routing is kept
+    only as a fallback for an unexpected auiEntryID value, not the primary path anymore.
 
-    FO4 opens the multi-activate dialog when Talk + Force Trade + these two are present.
-    Collapsing to one "Slavery" choice removed that dialog. auiEntryID is unreliable
-    (shared EPFB) — perk script uses IsOurSlave to Free vs Enslave for either label.
+    FO4 opens the multi-activate dialog once Talk + Force Trade + these two are present
+    (4 entries total) — a scrollable list, not a failure state. "Take Her" replaced
+    "Free" — see PickmansWhisperVictimsScript.MCMFreeAimedSlave for the direct one-click
+    free path.
     """
     perk_vmad = build_vmad_scripts(
         ["PickmansWhisperSlaveryPerkScript"],
@@ -828,7 +841,7 @@ def build_slavery_perk_payload() -> bytes:
         field(b"DATA", bytes.fromhex("0000010100")),
     ]
     parts.extend(_activate_choice_entry("Enslave", priority=0))
-    parts.extend(_activate_choice_entry("Free", priority=1))
+    parts.extend(_activate_choice_entry("Take Her", priority=1))
     return b"".join(parts)
 
 
@@ -1004,7 +1017,7 @@ def main() -> None:
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
     print(f"  PERK 0x{FID_PERK_VICTIM_TRADE:08X} PW_VictimTradeActivate (Force Trade, living)")
-    print(f"  PERK 0x{FID_PERK_SLAVERY:08X} PW_SlaveryActivate (Enslave/Free labels, toggle script)")
+    print(f"  PERK 0x{FID_PERK_SLAVERY:08X} PW_SlaveryActivate (Enslave/Take Her labels, toggle script)")
     print(f"  OTFT 0x{FID_OTFT_EMPTY:08X} PW_EmptyOutfit")
     print("  Proximity cloak MGEF/SPEL chain retired (0x870-0x873 gap)")
     print(

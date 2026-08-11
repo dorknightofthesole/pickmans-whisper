@@ -68,7 +68,7 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 
 ## Slice E — named kill voice + soft Necromantic intimacy
 
-Special lines when the player has a personal stake (Potential Victims name) and soft suite hooks with Necromantic. **No** `Necromantic.esp` master; no AAF/sex code in this mod.
+Special lines when the player has a personal stake (Potential Victims name) and soft suite hooks with Necromantic. **No** `Necromantic.esp` master; no AAF/sex code in this mod outside [Slice U](SLICE_U_SLAVE_SCENE.md) (Slavery scene).
 
 - [x] **E1** — Named-victim kill voice: on a valid blade kill, if the victim has a player-assigned Potential Victim name (`GetVictimOverrideName`), speak a dedicated toast + audio from `ModConfig.txt` (text + optional SNDR stem keys) instead of the generic praise line. Later: optional randomized banks. *(toast shipped; uncomment* `namedKillAudio` *when* `.xwm` *exists)*
 - [x] **E2** — Soft Necromantic intimacy hook: `GetFormFromFile(0x800)` + `RegisterForCustomEvent` `OnNecroSceneStart` / `OnNecroSceneEnd`; named Potential Victim corpse in `akArgs[1]`.
@@ -194,7 +194,7 @@ Large stretch: custom (or heavily edited) **private cells** and quests that turn
 - [ ] **Q3 — Butcher shop** — Player-openable butcher shop (cell + vendor / workbench loop). Soft-stack with Slice **N** Cannibal / butcher-shop stretch — decide whether Q3 *is* that stretch or a fuller shop quest.
 - [ ] **Q4 — Pickman's house as player home** — Make **Pickman's Gallery / house** a proper player home (ownership, storage, bed, safe return). Likely the **priority** pillar of Q; may unlock before or alongside Q1–Q3.
 
-Honor direction: no AAF/sex content here; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
+Honor direction: no AAF/sex content here beyond the scoped [Slice U](SLICE_U_SLAVE_SCENE.md) slavery scene; never break essential/protected story NPCs; keep line banks editable; soft complementarity with Necromantic only (no hard master).
 
 ## Slice R — first blade acquire
 
@@ -224,13 +224,25 @@ Honor direction: never urge/reward essential story kills; living-only activate s
 
 Enslave a living eligible NPC who has slave gear so she **follows and teleports** with the player. Not a vanilla companion (`CurrentCompanionFaction`); remains a Whisper victim (notice / blade kill / beat-before-kill). Contract: `tools/test_slavery.py`. Config: `ModConfig.txt` `slaveryMinCha` (SSOT).
 
-- [x] **T1 — Perk Enslave / Free** — PERK `PW_SlaveryActivate` living-only activate choices; fragment → Main → `PickmansWhisperSlaveryScript`.
+- [x] **T1 — Perk Enslave / Take Her** — PERK `PW_SlaveryActivate` living-only activate choices; fragment → Main → `PickmansWhisperSlaveryScript`. "Take Her" replaced the original "Free" label — see [Slice U](SLICE_U_SLAVE_SCENE.md); direct one-click free moved to an MCM button (`PickmansWhisperVictimsScript.MCMFreeAimedSlave`).
 - [x] **T2 — Slave-gear gate** — Inventory item name contains `slave` (SSOT on Slavery script). Auto after Force Trade close; manual Enslave also requires calm hunger + CHA ≥ `slaveryMinCha`.
 - [x] **T3 — Follow without companion faction** — `SetPlayerTeammate(True, False, False)`; latch `Slave` FormID; one at a time; never `SetEssential` here.
 - [x] **T4 — Kill / whisper eligibility** — `IsValidTarget` allows our slave teammate; still rejects other teammates and `CurrentCompanionFaction`.
 - [x] **T5 — Cell warp** — PlayerAlias `OnLocationChange` → `WarpSlaveToPlayerIfNeeded` (`MoveTo` if unloaded / far).
 
 **Status: Implemented — awaiting in-game confirm.**
+
+## Slice U — Slave Scene (AAF)
+
+Deliberate, scoped exception to the "no AAF" direction rule (see [DIRECTION.md](DIRECTION.md)) — a real two-actor AAF scene between the player and an already-enslaved NPC, replacing the old "Free" activate choice. Reference implementation: `D:\GitHub\aaf-necromantic` (same author, same AAF Papyrus API) for the CTD-avoidance patterns this reuses. Contract: `tools/test_slave_scene.py`. Config: `ModConfig.txt` `aafSlaveSceneDurationSeconds` / `aafSlaveSceneIncludeTags` (SSOT — tag-based AAF position auto-select, no hand-curated position-ID list since installed AAF packs vary per user). Full design doc: [SLICE_U_SLAVE_SCENE.md](SLICE_U_SLAVE_SCENE.md).
+
+- [x] **U1 — Perk label swap** — `PW_SlaveryActivate`'s "already a slave" choice relabeled **Take Her**; `PickmansWhisperSlaveryPerkScript.OnEntryRun` routes it to `TryStartSlaveSceneFromActivate` instead of `TryFreeSlaveFromActivate`.
+- [x] **U2 — Two-actor AAF scene** — New `PickmansWhisperSlaveSceneScript`; `actors = new Actor[2]` (player + target, unlike Necromantic's solo `new Actor[1]`); `settings.position = ""` + `settings.includeTags` from ModConfig (tag-based auto-select).
+- [x] **U3 — CTD-avoidance parity** — Interior-only by default (MCM `bAllowExteriorSlaveScene:Debug` override), `EnsureAAFStoppedForRestart` before every start, watchdog poll + hard max-duration timer (`OnSceneEnd` is flaky), careful event re-registration on `OnAAFReady`.
+- [x] **U4 — MCM status / cancel / free** — Victims page status row (`sSlaveScene`) + "Free (no scene)" button (`MCMFreeAimedSlave`, direct one-click free now that the activate menu no longer has one); Debug page exterior-allow toggle + "Cancel slave scene" button.
+- [x] **U5 — Docs reversal** — [DIRECTION.md](DIRECTION.md) / this file's "no AAF" rules scoped to name this one exception explicitly rather than left contradictory.
+
+**Status: Implemented — awaiting in-game confirm (cannot verify actual AAF scene start/CTD behavior without a live AAF install + animation packs; static checks only confirm the code is wired correctly).**
 
 ## Risks
 
@@ -252,4 +264,5 @@ Enslave a living eligible NPC who has slave gear so she **follows and teleports*
 - First blade (R): one-shot first-acquire vs inventory churn / legendary instance FormIDs; don’t double-fire with Gallery bond; policy when they stop carrying still undecided.
 - Force Trade (S): perk must stay living-only so it never replaces Eat Corpse; one-time strip latch is session-script state (cap 32) — oldest drops if many victims; slave pacify is name-substring heuristic (mod gear naming).
 - Slavery (T): `SetPlayerTeammate` must stay excepted in `IsValidTarget` or kills/whispers break; never add `CurrentCompanionFaction`; warp is best-effort MoveTo (no Followers quest); one slave at a time; slave-gear name heuristic only.
+- Slave scene (U): tag-based position selection depends entirely on what AAF packs the user has installed — must fail loud (toast + trace) if the configured tag resolves to nothing, never silently no-op; exteriors are CTD-prone for AAF scene starts (interior-only default); `OnSceneEnd`/`OnAnimationStart` are documented-flaky in the reference implementation, especially with the player as a scene participant — watchdog + max-duration timer are load-bearing, not just cleanup; never let this feature's `aeCombatState==0`-adjacent or essential-state code paths cross with Slice K's essential-actor protected-collapse race (see BeatBeforeKillScript's own top-of-file note).
 

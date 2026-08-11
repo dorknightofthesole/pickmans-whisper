@@ -62,6 +62,7 @@ $PscVictimTrade = "PickmansWhisperVictimTradeScript.psc"
 $PscVictimTradePerk = "PickmansWhisperVictimTradePerkScript.psc"
 $PscSlavery = "PickmansWhisperSlaveryScript.psc"
 $PscSlaveryPerk = "PickmansWhisperSlaveryPerkScript.psc"
+$PscSlaveScene = "PickmansWhisperSlaveSceneScript.psc"
 
 Write-Host "==> Pickman's Whisper local build + deploy"
 Write-Host "    ROOT=$Root"
@@ -318,10 +319,16 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_victim_trade.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Slavery (Enslave/Free follow) contract test"
+Write-Host "==> Slavery (Enslave/Take Her follow) contract test"
 & python (Join-Path $Root "tools\test_slavery.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_slavery.py failed with exit code $LASTEXITCODE"
+}
+
+Write-Host "==> Slave scene (AAF, Slice U) contract test"
+& python (Join-Path $Root "tools\test_slave_scene.py")
+if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
+  throw "test_slave_scene.py failed with exit code $LASTEXITCODE"
 }
 
 Write-Host "==> Blade hit / kill-credit ActorValue (AVIF) contract test"
@@ -354,10 +361,10 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "build_hunger_spell_esp.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscVoiceScan + $PscAlias + $PscBuffTracker + $PscBeatBeforeKill + $PscKillReward + $PscModConfig + $PscTargetScan + $PscVictimTrade + $PscVictimTradePerk + $PscSlavery + $PscSlaveryPerk"
+Write-Host "==> Compiling $Psc + $PscBed + $PscDecay + $PscWoundLab + $PscVictims + $PscDesperateRename + $PscVoiceScan + $PscAlias + $PscBuffTracker + $PscBeatBeforeKill + $PscKillReward + $PscModConfig + $PscTargetScan + $PscVictimTrade + $PscVictimTradePerk + $PscSlavery + $PscSlaveryPerk + $PscSlaveScene"
 Push-Location $Src
 try {
-  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscVoiceScan, $PscAlias, $PscBuffTracker, $PscBeatBeforeKill, $PscKillReward, $PscModConfig, $PscTargetScan, $PscVictimTrade, $PscVictimTradePerk, $PscSlavery, $PscSlaveryPerk)) {
+  foreach ($script in @($Psc, $PscBed, $PscDecay, $PscWoundLab, $PscVictims, $PscDesperateRename, $PscVoiceScan, $PscAlias, $PscBuffTracker, $PscBeatBeforeKill, $PscKillReward, $PscModConfig, $PscTargetScan, $PscVictimTrade, $PscVictimTradePerk, $PscSlavery, $PscSlaveryPerk, $PscSlaveScene)) {
     if (-not (Test-Path $script)) { throw "missing $Src\$script" }
     Write-Host "    Caprica $script"
     & $Caprica $script -g fallout4 -i "$Stubs;$Src" -f (Join-Path $Stubs "Institute_Papyrus_Flags.flg") -o $PexOut
@@ -386,6 +393,7 @@ $PexVictimTrade = Join-Path $PexOut "PickmansWhisperVictimTradeScript.pex"
 $PexVictimTradePerk = Join-Path $PexOut "PickmansWhisperVictimTradePerkScript.pex"
 $PexSlavery = Join-Path $PexOut "PickmansWhisperSlaveryScript.pex"
 $PexSlaveryPerk = Join-Path $PexOut "PickmansWhisperSlaveryPerkScript.pex"
+$PexSlaveScene = Join-Path $PexOut "PickmansWhisperSlaveSceneScript.pex"
 if (-not (Test-Path $Pex)) { throw "compile produced no main .pex" }
 if (-not (Test-Path $PexBed)) { throw "compile produced no BedGift .pex" }
 if (-not (Test-Path $PexDecay)) { throw "compile produced no CorpseDecay .pex" }
@@ -403,6 +411,7 @@ if (-not (Test-Path $PexVictimTrade)) { throw "compile produced no VictimTrade .
 if (-not (Test-Path $PexVictimTradePerk)) { throw "compile produced no VictimTradePerk .pex" }
 if (-not (Test-Path $PexSlavery)) { throw "compile produced no Slavery .pex" }
 if (-not (Test-Path $PexSlaveryPerk)) { throw "compile produced no SlaveryPerk .pex" }
+if (-not (Test-Path $PexSlaveScene)) { throw "compile produced no SlaveScene .pex" }
 
 Write-Host "==> Deploying to $Deploy"
 @(
@@ -437,6 +446,7 @@ Copy-Item -Force $PexVictimTrade (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexVictimTradePerk (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexSlavery (Join-Path $Deploy "Scripts\")
 Copy-Item -Force $PexSlaveryPerk (Join-Path $Deploy "Scripts\")
+Copy-Item -Force $PexSlaveScene (Join-Path $Deploy "Scripts\")
 Copy-Item -Force (Join-Path $Src $Psc) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscBed) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscDecay) (Join-Path $Deploy "Scripts\Source\User\")
@@ -454,6 +464,7 @@ Copy-Item -Force (Join-Path $Src $PscVictimTrade) (Join-Path $Deploy "Scripts\So
 Copy-Item -Force (Join-Path $Src $PscVictimTradePerk) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscSlavery) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Src $PscSlaveryPerk) (Join-Path $Deploy "Scripts\Source\User\")
+Copy-Item -Force (Join-Path $Src $PscSlaveScene) (Join-Path $Deploy "Scripts\Source\User\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\config.json") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini") (Join-Path $Deploy "MCM\Config\PickmansWhisper\")
 Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join-Path $Deploy "MCM\Settings\")
@@ -476,6 +487,15 @@ Sync-DataTree "Materials"
 Sync-DataTree "Meshes"
 Sync-DataTree "Textures"
 Sync-DataTree "F4SE"
+Sync-DataTree "AAF"
+$aafPositionData = Join-Path $Deploy "AAF\PickmansWhisper_positionData.xml"
+if (-not (Test-Path $aafPositionData)) {
+  throw "Deploy missing AAF\PickmansWhisper_positionData.xml (Slice U Take Her)"
+}
+$aafAnimationData = Join-Path $Deploy "AAF\PickmansWhisper_animationData.xml"
+if (-not (Test-Path $aafAnimationData)) {
+  throw "Deploy missing AAF\PickmansWhisper_animationData.xml (Slice U Take Her)"
+}
 $decayMesh = Join-Path $Deploy "Meshes\PickmansWhisper\Decay\NecroBaseFemaleHead.nif"
 if (-not (Test-Path $decayMesh)) {
   throw "Deploy missing Meshes\PickmansWhisper\Decay\NecroBaseFemaleHead.nif"

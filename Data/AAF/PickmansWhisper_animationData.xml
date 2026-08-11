@@ -1,0 +1,62 @@
+<meta title="PickmansWhisper_animationData.xml" version="1.1.0" dataSet="animation"/>
+
+<!--
+  Slice U "Take Her" — genuine two-actor wrappers, cloned from Necromantic's own curated
+  7-position list (D:\GitHub\aaf-necromantic\Data\AAF\Necromantic_animationData.xml) but
+  pairing BOTH halves instead of the solo M-only idle Necromantic uses. Every idleForm
+  below is a REAL, verified F+M pair from rxl_bp70_animations.esp (checked directly
+  against the installed "BP70s Fallout 4 Sex anims 2.8" pack's own
+  rxl_bp70_anims_animationData.xml — same plugin Necromantic already depends on, so no
+  new dependency). frames/offset values are copied exactly from that source, not guessed.
+-->
+<defaults idleSource="rxl_bp70_animations.esp"/>
+
+<animation id="PW_TakeHer_Missionary" frames="160">
+	<actor gender="F" idleForm="802">
+	</actor>
+	<actor gender="M" idleForm="803">
+	</actor>
+</animation>
+
+<animation id="PW_TakeHer_Doggy" frames="300" offset="0,0,0,90:0,0,0,90">
+	<actor gender="F" idleForm="804">
+	</actor>
+	<actor gender="M" idleForm="805">
+	</actor>
+</animation>
+
+<animation id="PW_TakeHer_ProneBone" frames="240">
+	<actor gender="F" idleForm="15F1D">
+	</actor>
+	<actor gender="M" idleForm="15F1E">
+	</actor>
+</animation>
+
+<animation id="PW_TakeHer_RomanticMissionary" frames="320">
+	<actor gender="F" idleForm="A85E">
+	</actor>
+	<actor gender="M" idleForm="A85F">
+	</actor>
+</animation>
+
+<animation id="PW_TakeHer_PitDoggy" frames="160">
+	<actor gender="F" idleForm="5456">
+	</actor>
+	<actor gender="M" idleForm="5457">
+	</actor>
+</animation>
+
+<animation id="PW_TakeHer_Spooning" frames="240">
+	<actor gender="F" idleForm="FC66">
+	</actor>
+	<actor gender="M" idleForm="FC67">
+	</actor>
+</animation>
+
+<animation id="PW_TakeHer_Lotus" frames="15">
+	<actor gender="F" idleForm="808">
+	</actor>
+	<actor gender="M" idleForm="809">
+		<morph id="Erection Up" to="1.1"/>
+	</actor>
+</animation>

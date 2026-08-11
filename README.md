@@ -1,6 +1,6 @@
 # Pickman's Whisper
 
-Fallout 4 companion mod: a voice that bonds with the wielder of **Pickman's Blade**, then feeds a serial **hunger** that is only sated by knife kills. **Not sexual** — stack with [Necromantic](https://github.com/dorknightofthesole/aaf-necromantic) for corpse aftermath play.
+Fallout 4 companion mod: a voice that bonds with the wielder of **Pickman's Blade**, then feeds a serial **hunger** that is only sated by knife kills. **Not sexual by default** — one narrow exception (Slice U: an AAF scene with an already-enslaved NPC) — stack with [Necromantic](https://github.com/dorknightofthesole/aaf-necromantic) for corpse aftermath play.
 
 Suite arc (surface → commitment): **Occult Pact** → **Pickman's Whisper** → **Necromantic**. Soft load order when using all three; no compile-time coupling between mods.
 
@@ -31,12 +31,13 @@ Slice status and planned work: [docs/ROADMAP.md](docs/ROADMAP.md). Product rules
 
 Activate choices appear in the NPC Talk / multi-activate menu when enabled.
 
-- **`]` toggles** Force Trade / Enslave / Free choices (**off by default** so beat/attack keep a clean activate)
+- **`]` toggles** Force Trade / Enslave / Take Her choices (**off by default** so beat/attack keep a clean activate)
 - Choices are **hidden while Pickman's Blade is drawn** (extra activate options block attack)
 - **Force Trade** — open her inventory (`OpenInventory`); first trade strips outfit-locked gear once; later trades keep gear you dressed her in
 - Gates: living eligible target, **knife calm** (low hunger), player Charisma ≥ `victimTradeMinCha` / `slaveryMinCha` in `ModConfig.txt`
 - Inventory item names containing **`slave`** (case-insensitive) → pacify on Trade close and **auto-enslave**
-- **Enslave / Free** — follow + cross-cell warp; **not** a vanilla companion (still a Whisper victim you can kill)
+- **Enslave** — follow + cross-cell warp; **not** a vanilla companion (still a Whisper victim you can kill)
+- **Take Her** ([Slice U](docs/SLICE_U_SLAVE_SCENE.md), needs AAF) — once she's already enslaved, this choice replaces the old direct "Free" with a two-actor AAF scene instead. Direct freeing (no scene) moved to an MCM button on the Victims page.
 - One slave at a time
 
 **Follow tip (in-game):** a collar / any `"slave"`-named item is enough to **enslave**, but she usually **will not walk-follow** until her **arms are bound** (slave bindings or similar gear). The bindings put her in a restrained AI/idle state; without them, teammate + pathing often leave her rooted even after the “she follows” toast. Collar = yours; bindings = she marches.
@@ -47,6 +48,7 @@ Activate choices appear in the NPC Talk / multi-activate menu when enabled.
 - [Mod Configuration Menu](https://www.nexusmods.com/fallout4/mods/21497) (MCM)
 - [Garden of Eden Papyrus Script Extender](https://www.nexusmods.com/fallout4/mods/74160) (scans, inventory helpers, config file load)
 - [LooksMenu](https://www.nexusmods.com/fallout4/mods/21483) (corpse decay overlays)
+- Optional: [Advanced Animation Framework](https://www.nexusmods.com/fallout4/mods/31304) (`AAF.esm`) + at least one animation pack tagged for 2-actor scenes — only needed for the Slavery "Take Her" activate choice (Slice U); everything else in this mod works without it
 
 Optional config under `Data/PickmansWhisper/config/` (editable; reload via MCM Voice or reopen MCM / reload save):
 
@@ -56,7 +58,7 @@ Optional config under `Data/PickmansWhisper/config/` (editable; reload via MCM V
 
 Slave gear (collar / bindings) comes from whatever slave-equipment mods you use; this mod only looks for the substring **`slave`** in item display names.
 
-No AAF / BP70. Necromantic is a recommended companion, not a hard dependency.
+One AAF feature (Slavery "Take Her" scene, [Slice U](docs/SLICE_U_SLAVE_SCENE.md) — needs AAF.esm, gated on the target already being enslaved); no BP70. Necromantic is a recommended companion, not a hard dependency.
 
 ## Install (MO2)
 
