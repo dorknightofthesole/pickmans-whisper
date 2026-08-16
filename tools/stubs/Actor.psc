@@ -60,8 +60,11 @@ Int Function GetSleepState() Native
 Bool Function HasDetectionLOS(ObjectReference akOther) Native
 
 ; FO4 native — body part strings match CK Body Part Data (e.g. "Head1", "LeftArm1").
-; For corpses: abForceDismember=True, abForceExplode=False. Prefer abForceBloodyMess=False —
-; True often gibs/explodes the head instead of a clean sever.
+; For a clean sever: abForceDismember=True, abForceExplode=False, abForceBloodyMess=False.
+; abForceExplode=True is what actually gibs/explodes the part — abForceBloodyMess alone
+; (with abForceExplode=False) was tried first and only nudges blood-decal goriness; it
+; left a "gib" call looking identical to a plain clean sever in-game (Execute Smash Head In,
+; confirmed live). Pass both True together for a reliable gib.
 Function Dismember(String asBodyPart, Bool abForceExplode = False, Bool abForceDismember = False, Bool abForceBloodyMess = False) Native
 Bool Function IsDismembered(String asBodyPart) Native
 Event OnPlayerLoadGame()

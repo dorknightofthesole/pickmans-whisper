@@ -3,8 +3,16 @@ Scriptname PickmansWhisperExecuteScript extends Quest
 new hotkey (\). Fully isolated from the existing corpse-sever feature (Slice F, / key,
 PW_SeverLimbMenu, SeverCorpseLimb) — different hotkey, different MSG menu
 (PW_ExecuteMenu), different Dismember call site; zero changes to any existing corpse-sever
-code or behavior. Decapitate requires Pickman's Blade equipped (Main.IsBladeEquipped, same
-gate as every other blade feature). Smash Head In requires one of a small curated set of
+code or behavior. Requires Bond (Main.IsHungerUnlocked, checked once in
+TryExecuteAimedVictim — the entry point) — without it, a never-bonded save could execute
+victims with a bare heavy blunt weapon and no Pickman's Blade at all, since Smash Head In
+needs no blade and Decapitate only needs the blade EQUIPPED, not bonded (Bond needs the
+blade AND the Lady Killer perk together, Slice N). Decapitate additionally requires
+Pickman's Blade equipped (Main.IsBladeEquipped, same gate as every other blade feature).
+Dismember call uses abForceExplode=abSmash / abForceBloodyMess=abSmash — abForceExplode
+is the flag that actually gibs the head; abForceBloodyMess alone (tried first) only
+nudges blood-decal goriness and left Smash looking identical to a clean Decapitate
+in-game (reported, fixed). Smash Head In requires one of a small curated set of
 real, verified heavy blunt melee WEAP forms (BaseballBat/Sledgehammer/SuperSledge/
 PipeWrench/PoolCue) — FO4 has no generic "blunt" keyword shared across these (confirmed by
 scanning Fallout4.esm's own KWDA lists directly: each only carries its own weapon-specific
@@ -144,6 +152,18 @@ Function TryExecuteAimedVictim()
 		m.DiagNotify("Pickman's Whisper: execute unavailable during Necromantic scene")
 		Return
 	EndIf
+	; Rule: Bond means the player has both the blade AND the Lady Killer perk (Slice N). A
+	; player can have the blade EQUIPPED without ever having bonded (Bond needs both), and
+	; Smash Head In needs no blade at all — without this check a fresh, never-bonded save
+	; could execute victims from the very first heavy blunt weapon it finds. IsHungerUnlocked
+	; is a pure alias for BondStarted (checked once here, the true entry point — Bond is a
+	; one-way latch that cannot change value between here and TryDecapitate/TrySmashHeadIn,
+	; so re-checking there would be redundant).
+	If !m.IsHungerUnlocked()
+		m.DiagNotify("Pickman's Whisper: execute unavailable — bond with Pickman's Blade first")
+		Debug.Trace("PickmansWhisper: execute skip | not bonded")
+		Return
+	EndIf
 	If !m.IsBladeEquipped() && !IsHeavyBluntMeleeEquipped()
 		m.DiagNotify("Pickman's Whisper: draw Pickman's Blade or a heavy blunt weapon for the execute menu")
 		Return
@@ -227,16 +247,20 @@ Function ExecuteKill(Actor ak, Bool abSmash)
 		Debug.Trace("PickmansWhisper: execute — corpse 3D not loaded post-kill, skipping dismember visual id=0x" + GardenOfEden.GetHexFormID(ak))
 		Return
 	EndIf
-	ak.Dismember("Head1", False, True, abSmash)
+	; abForceExplode is what actually switches between a clean stump (False) and a
+	; gibbed/exploded head (True) — abForceBloodyMess alone (the flag this used to key
+	; off of) only nudges blood-decal goriness and left Smash looking identical to a
+	; plain Decapitate (reported: "Smash head in is severing the head"). Both flags now
+	; follow abSmash; Decapitate (abSmash=False) is unchanged — False/True/False, same
+	; as the untouched corpse-sever call in MainQuestScript.psc.
+	ak.Dismember("Head1", abSmash, True, abSmash)
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If decay
 		decay.QueueStripBodyDecayAfterDismember(ak)
 	EndIf
 	If abSmash
-		Debug.Notification("Pickman's Whisper: head smashed in")
 		Debug.Trace("PickmansWhisper: execute smash id=0x" + GardenOfEden.GetHexFormID(ak))
 	Else
-		Debug.Notification("Pickman's Whisper: decapitated")
 		Debug.Trace("PickmansWhisper: execute decapitate id=0x" + GardenOfEden.GetHexFormID(ak))
 	EndIf
 EndFunction

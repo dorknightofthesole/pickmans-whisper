@@ -8,6 +8,10 @@ hotkey, different menu, different Dismember call site, SeverCorpseLimb untouched
 
 Locks:
   - New script exists, extends Quest, attached to Main's VMAD script list
+  - Requires Bond (Main.IsHungerUnlocked()), checked once in TryExecuteAimedVictim (the
+    entry point) — without it, a never-bonded save could execute victims with a bare heavy
+    blunt weapon and no Pickman's Blade at all (Smash Head In needs no blade; Decapitate
+    only needs the blade equipped, not bonded — Bond needs blade + Lady Killer together)
   - Decapitate requires Main.IsBladeEquipped(); Smash Head In requires one of 5 verified
     Fallout4.esm heavy-blunt-melee WEAP forms (curated list, not a keyword check — FO4 has
     no shared "blunt" keyword across these, confirmed by direct ESM inspection)
@@ -77,6 +81,10 @@ def extract_function(src: str, name: str) -> str:
     return src[start : start + end_m.end()]
 
 
+def strip_comment_lines(fn: str) -> str:
+    return "\n".join(ln for ln in fn.splitlines() if not ln.strip().startswith(";"))
+
+
 def get_record_edid_zlib(data: bytes, sig: bytes, fid: int) -> bytes | None:
     target = fid.to_bytes(4, "little")
     start = 0
@@ -123,6 +131,23 @@ def test_script_exists_and_isolated() -> None:
     ok("PickmansWhisperExecuteScript.psc exists, extends Quest")
 
 
+def test_bond_gate(text: str) -> None:
+    entry = extract_function(text, "TryExecuteAimedVictim")
+    entry_code_only = strip_comment_lines(entry)
+    if "IsHungerUnlocked()" not in entry_code_only:
+        fail("TryExecuteAimedVictim must gate on Main.IsHungerUnlocked() (outside comments) — "
+             "without it, Smash Head In needs no blade at all and could execute victims on a "
+             "never-bonded save; Decapitate only needs the blade equipped, not bonded")
+    # Bond check must come before the weapon-equipped check, so a not-yet-bonded player with
+    # a bat already equipped gets an accurate "bond first" message, not a confusing
+    # "draw a weapon" one.
+    idx_bond = entry_code_only.find("IsHungerUnlocked()")
+    idx_weapon = entry_code_only.find("IsHeavyBluntMeleeEquipped()")
+    if idx_weapon < 0 or idx_bond < 0 or idx_bond > idx_weapon:
+        fail("TryExecuteAimedVictim must check IsHungerUnlocked() before the blade-or-blunt-weapon check")
+    ok("TryExecuteAimedVictim gates on Main.IsHungerUnlocked() (Bond) before the weapon check")
+
+
 def test_weapon_formids(text: str) -> None:
     for fid in FID_HEAVY_BLUNT:
         needle = f"0x{fid:08X}"
@@ -166,13 +191,15 @@ def test_kill_sequence(text: str) -> None:
         fail("ExecuteKill must call RegisterTarget, then KillSilent(player), then Dismember — in that order")
     if "KillSilent(player)" not in kill:
         fail("ExecuteKill must pass the player as killer to KillSilent (Protected actors can survive a killerless KillSilent — established gotcha elsewhere in this mod)")
-    if "Dismember(\"Head1\", False, True, abSmash)" not in kill:
-        fail("ExecuteKill must call Dismember with abForceExplode=False, abForceDismember=True, abForceBloodyMess=abSmash")
+    if "Dismember(\"Head1\", abSmash, True, abSmash)" not in kill:
+        fail("ExecuteKill must call Dismember with abForceExplode=abSmash, abForceDismember=True, abForceBloodyMess=abSmash "
+             "(abForceExplode=False regardless of abSmash was the original bug: Smash Head In looked identical to a clean "
+             "Decapitate in-game because only abForceBloodyMess varied — abForceExplode is the flag that actually gibs)")
     if "ProcessKnifeKill" in kill or "SatiateHunger" in kill or "RewardKill" in kill:
         fail("ExecuteKill must NOT call reward-crediting functions directly — it relies entirely on the existing OnDeath pipeline via RegisterTarget")
     if "QueueStripBodyDecayAfterDismember" not in kill:
         fail("ExecuteKill should queue the same post-dismember decay-overlay strip corpse-sever already does, for visual consistency")
-    ok("ExecuteKill: RegisterTarget -> KillSilent(player) -> Dismember(\"Head1\", False, True, abSmash), no direct reward-crediting calls")
+    ok("ExecuteKill: RegisterTarget -> KillSilent(player) -> Dismember(\"Head1\", abSmash, True, abSmash), no direct reward-crediting calls")
 
 
 def test_no_impact_on_corpse_sever() -> None:
@@ -276,6 +303,7 @@ def main() -> int:
 
     test_script_exists_and_isolated()
     execute_text = EXECUTE_PSC.read_text(encoding="utf-8", errors="replace")
+    test_bond_gate(execute_text)
     test_weapon_formids(execute_text)
     test_eligibility_gate(execute_text)
     test_kill_sequence(execute_text)
