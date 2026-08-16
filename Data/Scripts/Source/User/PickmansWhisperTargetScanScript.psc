@@ -71,7 +71,7 @@ Function ScanAndCleanTargets()
             ; TODO unregister with the MainQuest
             TrackedTargets.Remove(i)
             Debug.Trace("PW: Cleaned up target -> " + currentTarget.GetDisplayName())
-            Debug.Notification("PW: Cleaned up target -> " + currentTarget.GetDisplayName())
+            ; Debug.Notification("PW: Cleaned up target -> " + currentTarget.GetDisplayName())
             MainQuest.UnRegisterTarget(currentTarget)
         EndIf
     EndWhile

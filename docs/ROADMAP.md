@@ -16,23 +16,30 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 | **I** | Desperate hunger: rename nearby NPCs (knife-voice suffix)                                      | **I1–I2 verified in-game** — [SLICE_I_DESPERATE_RENAME.md](SLICE_I_DESPERATE_RENAME.md)                                                              |
 | **J** | Retire KillerScan + thin Main via Alias scripts (e.g. MCM Alias)                               | **J1 implemented** — awaiting in-game confirm                                                                                                        |
 | **K** | Victim “beat before kill” — temp essential + fight back (unarmed exception)                    | Planned (was Slice Q / earlier J; code/comments may still say J or Q)                                                                                |
-| **L** | Slow hunger stages (days) + peak-hunger wait rewards                                           | Planned                                                                                                                                              |
-| **N** | Perk gates; optional butcher cell / Cannibal hooks                                             | Planned                                                                                                                                              |
+| **L** | Slow hunger stages (days) + Calm-state AGI/CHA reward                                          | **Done** — awaiting in-game confirm                                                                                                                  |
+| **N** | Perk gates (Lady Killer hard-gates Bond); optional butcher cell / Cannibal hooks                | **Done** — awaiting in-game confirm                                                                                                                  |
 | **O** | Witness support: flee/scream or attack; rumors of the "killer"                                 | Planned                                                                                                                                              |
 | **P** | Infamy / serial-killer whispers                                                                | Planned                                                                                                                                              |
 | **Q** | Private cells + quests (Combat Zone stage, Culte des Ghouls, butcher shop, Pickman house home) | Planned                                                                                                                                              |
-| **R** | First blade acquire (inventory) — quest beat when the knife enters the player’s hands          | Planned                                                                                                                                              |
+| **R** | First blade acquire (inventory) — quest beat when the knife enters the player’s hands          | **R1/R2 done** — verified in-game; R3 (stop-carrying policy) open                                                                                    |
 | **S** | Force Trade — activate-choice inventory + one-time strip + slave pacify                        | **Done** — verified in-game                                                                                                                          |
 | **T** | Slavery — Enslave/Free follow + collar gate; killable (not vanilla companion)                  | **Implemented** — awaiting in-game confirm                                                                                                           |
+| **V** | Stronger patience boon — "permanent" (temporal) SPECIAL raise + perk grant (e.g. Intimidation)  | Idea only — not scheduled                                                                                                                            |
+| **W** | Execute — instant kill on a living victim (Decapitate / Smash Head In), new \\ hotkey           | **Done** — awaiting in-game confirm                                                                                                                  |
+
+
 
 
 ## Slice A — trigger, toast, hunger, MCM
 
-- [x] Bond on `PickmanGallery01` enter and/or blade acquire/equip.
+- [x] Bond on blade acquire/equip. Hard rule: Bond means the player first acquired the blade — it can never start before that, structurally enforced inside `StartBond` itself via `PlayerHasBlade()` (not just by every caller happening to already gate on it), so a future caller (or the MCM debug force-bond button) can't accidentally start Bond with no blade ever owned. (Originally also triggered on `PickmanGallery01` enter alone — removed: confusing to see "bond active" on an old save standing in the Gallery before ever owning the blade.)
+- [x] Gallery-entry welcome dialog decoupled from Bond entirely — `bondIntroGreeting`'s once-ever `Debug.MessageBox` now fires from `AnnounceGalleryIntro`, triggered by `RunBondPoll`'s `SeenGallery` latch on first Gallery entry, not from `StartBond`. The line is Gallery-flavored ("welcome to the room"), Bond is blade-flavored ("you found me") — the mechanics no longer need to share a trigger. `AnnounceBladeAcquire` (Slice R1) also switched from `Debug.Notification` to `Debug.MessageBox` for the same guaranteed-seen reasoning. MCM debug button renamed "Test: reset bond + gallery intro (debug)" — resets both `BondStarted` and `SeenGallery` so either can be retested independently.
 - [x] Trust line bank + hunger band toasts.
 - [x] Hunger 0–100 with AGI/CHA withdrawal stand-in (Necromantic craving pattern).
 - [x] MCM: How To Use, Hunger, Voice, Debug.
 - [x] Satiation UI copy present; full clear on knife kill reserved for B.
+
+
 
 ## Slice B — knife kills + satiation
 
@@ -42,6 +49,8 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - [x] **Blade identity (B27):** GoE equipped-slot name / OMOD pair (`Knife` `0x913CA` + bleed `0x1E7C20` + stealth `0x187A10`). Do **not** trust `GetEquippedWeapon` name alone (reports Combat Knife) or LVLI `0x22595F` as the drawn WEAP.
 - [x] Valid target: adult **female** non-**essential** human, seen **non-hostile** while alive (Protected settlers **do** count after you aggro them); skips men, hostiles-from-first-sight (raiders), children, teammates, ghoul/SM/synth/robot.
 - [x] Only kills with **Pickman's Blade** drawn count; gun with blade only in inventory must **not** sate.
+
+
 
 ## Slice C — NPC scan + comments + fixation
 
@@ -56,6 +65,8 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
   - [x] **P3+P4** — Potential Victims (merged): MCM Victims page ↔ FormID table + GoE2 `SetDisplayName` (world name) so `{name}` matches aim label; cap 32; lazy re-apply when seen; optional `VictimsHold` RefCollectionAlias (`tools/test_potential_victims.py`).
   - [x] **P5** — Sleep recognition: `SleepRecognitionLines.txt` when 2nd look and `GetSleepState() >= 3` (`tools/test_sleep_recognition.py`).
 
+
+
 ## Slice D — audio
 
 - [x] **D0-POC** — MCM Debug **Play test whisper (EndIt)** → `Sound.Play` on `PW_Whisper_EndIt` (`0x807`).
@@ -65,6 +76,8 @@ Status source of truth for this repo. Suite framing: [DIRECTION.md](DIRECTION.md
 - Map keys are `.xwm` under `Data/Sound/PickmansWhisper/`. Blank Calm/Restless/Hungry/Starving maps until clips exist.
 - Docs: [AUDIO.md](AUDIO.md), [CREATE_SNDR_XEDIT.md](CREATE_SNDR_XEDIT.md).
 - Voice features require owning Pickman's Blade (`IsVoiceWeaponReady` → `PlayerHasBlade`); kills / butcher still require it drawn (`IsBladeEquipped`).
+
+
 
 ## Slice E — named kill voice + soft Necromantic intimacy
 
@@ -78,6 +91,8 @@ Special lines when the player has a personal stake (Potential Victims name) and 
 
 - Honor direction rules: not sexual here; soft complementarity only; blade-drawn voice gate still applies.
 
+
+
 ## Slice F — blade corpse sever
 
 Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (verified in-game).
@@ -86,6 +101,8 @@ Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (veri
 - [x] Limb picker via MSG `PW_SeverLimbMenu` (`0x806`) → `Actor.Dismember(part, False, True, False)` (force sever, no BloodyMess gib).
 - [x] Skip Necromantic scene latch. Hacksaw / other weapons later.
 - [x] Contract: `tools/test_corpse_sever.py`.
+
+
 
 ## Slice G — bed corpse hallucination
 
@@ -97,6 +114,8 @@ Design + G1: [BED_CORPSE_HALLUCINATION.md](BED_CORPSE_HALLUCINATION.md). Contrac
 - On wake: player finds the corpse; pose via BedGift timer; no sync Wait on SleepStop.
 - Despawn via BedGift oneshot timer after present.
 - MCM Voice toggle + Debug force/clear; no custom corpse mesh.
+
+
 
 ## Slice H — corpse decay (body + face) / consume + victim places
 
@@ -135,7 +154,8 @@ Architecture cleanup after the event-driven cloak / OnHit / OnDeath / KillReward
 
 - [x] **J1 — Deprecate and remove KillerScan** — **J1 implemented** — awaiting in-game confirm. Retire `PickmansWhisperKillerScanScript` and the poll-driven TargetSnapshot / cadence fan-out once notice, fixation, decay sync, bed gift, and related listeners are driven by events (or thin dedicated hosts). Update contracts (`test_no_killer_scan.py`, arming docs) so they no longer require the scanner. Protect proven load/arm behavior until the replacement is verified — then delete, don’t leave a zombie poller.
 - [x] **J2 — Thin MainQuestScript via Alias scripts** — Move more feature/MCM surface out of `PickmansWhisperMainQuestScript` onto quest Alias scripts (same pattern as ModConfigAlias, KillRewardAlias, PlayerAlias). Example: MCM CallFunction / panel refresh into its own Alias. Main stays a thin router; Caprica cast-through-Quest rule still applies. Follow [modular-feature-scripts](.cursor/rules/modular-feature-scripts.mdc).
-- [ ] J3 **— Deprecate Bond —** Remove all MCM and code references to bond.
+
+
 
 ## Slice K — victim beat-before-kill (temp essential)
 
@@ -149,21 +169,25 @@ Formerly roadmap **Slice Q** (and earlier **J**; scripts/tests may still say J /
 
 Honor direction: this is **player-opted / auto beat** essential on eligible targets only — not a loophole to immortalize story NPCs.
 
-## Slice L — slow hunger + peak wait rewards
+## Slice L — slow hunger + Calm-state reward
 
-Stretch the hunger climb so each stage lasts **days** of game time (not a quick meter fill). Reward patience when the player waits until hunger is peaking before killing.
+Stretch the hunger climb so each stage lasts **days** of game time (not a quick meter fill). Reward the player for being sated (Calm) instead of just neutral.
 
-- **Pace:** climb from calm → desperate over at least ~3 game days; prefer ~1 week+ to reach 100% (tunable MCM / config). Stage bands stay the five C3 whisper stages; only the rise rate / thresholds stretch.
-- **Peak reward (TBD — draft):** waiting until high hunger (e.g. starving/desperate) before a valid blade kill grants a temporary bonus — candidate: **attribute bonuses that last until hunger drops back to stage 2 (restless)** (or similar clear exit). Exact bonuses / magnitude undecided; design before implement.
-- Do **not** break C3 stage file mapping while tuning rise rate; prefer finishing **Slice J** (KillScanner gone) before relying on scan-tied hunger ticks.
-- Soft-stack with Necromantic craving feel; no ESP master dependency.
+- [x] **Pace** — `GetHungerTimeGainPerHour`'s default/fallback (Papyrus fallback + `fTimeGain:Hunger` MCM slider default + both `settings.ini` copies) currently **1.0/hr** (was 5.0, then 0.5 — 0.5 turned out to drag too much per live feedback): ~25h per 25-point band (Calm/Restless), ~20h per 20-point band (Hungry/Starving) — roughly a day per stage; 0→100 ~4.2 game-days, calm→desperate (90) ~3.75 days. Bands are unequal width so a single rate can't make every stage exactly 24h; 1.0 is the closest clean round number. Still fully MCM-tunable (slider unchanged, 0–15 step 0.5). The delta-based climb math in `RunHungerTick` (already correct — scales with real elapsed game-time, handles sleep/fast-travel) was not touched; this is a default-value change only. Stage bands (25/50/70/90, the five C3 whisper stages) untouched — nothing depends on climb rate, only on `HungerLevel`'s current value.
+- [x] **Calm-state reward, patience-gated** (the "peak wait" draft, realized) — `SyncCalmBonusSpell` grants a flat **+4 AGI / +4 CHA** (`ModValue`, no real Spell/MGEF, same mechanism as the existing hunger-addiction penalty) while `HungerLevel < 25.0` (Calm) **AND** `CalmBonusEligible`, cleared the instant either isn't true. Mirrors `SyncHungerAddictionSpell`'s exact level-based recompute-and-diff shape (no timer, no edge-detection) and `HungerSpecialPenaltyDepth`'s depth-capped-at-1 save-safety bookkeeping (`CalmBonusApplied`/`CalmBonusDepth`), wired into the same 5 call sites (`HandleGameResume`, `RunHungerTick` x2, `ApplyHungerDelta`, `SatiateHunger`) so it self-corrects on every hunger mutation and on load. Calm (`<25`) and Addicted (`>=` `fAddictedAt:Hunger`, MCM floor 25) can never overlap, so the penalty already clears itself the instant the bonus would apply — no extra "remove the penalty" step needed. Magnitude and threshold hardcoded (no MCM slider, matching the penalty's own hardcoded -1/-1); no dedicated repair-stack debug button (the existing "Test: satiate hunger (debug)" button already exercises the full apply path via `SatiateHunger`; `ShowHungerInfo` surfaces `CalmBonusApplied`/`CalmBonusEligible` and live patience-hours progress). Contract: `tools/test_hunger_pace_calm_bonus.py`.
+  - **Patience gate:** the bonus is earned, not automatic — only granted if hunger was **continuously** at/above Desperate (`HungerLevel >= 90`) for at least **`CALM_BONUS_PATIENCE_HOURS` = 13 game-hours** immediately before the kill/satiation. `SyncDesperateTracking` (same recompute-and-diff shape, no edge-detection) stamps `DesperateEnteredGameTime` the moment Desperate is reached and clears it the moment hunger drops back below 90 before a kill consumes it — no cumulative credit across dips. `SatiateHunger` reads that timestamp into `CalmBonusEligible` *before* resetting `HungerLevel` to 0 (order matters — `SyncDesperateTracking` would otherwise clear the timestamp first). Satiation itself (hunger reset, sated window, `BondIntensity`, kill-crediting) stays entirely unconditional on hunger level or patience, exactly as before — only the bonus is gated.
+
+
 
 ## Slice N — perk / stretch
 
-- Soft-gate or enhance via Lady Killer / Black Widow.
-- Optional Cannibal; stretch butcher-shop cell.
+- [x] **Lady Killer hard-gates Bond** — `StartBond` requires `PlayerHasLadyKillerPerk()` (any of the 3 additive ranks, same shape as `PlayerHasCannibalPerk()`) in addition to the existing `PlayerHasBlade()` rule (Slice R). Without Lady Killer, owning/equipping the blade does nothing — hunger stays locked (`IsHungerUnlocked()` is a pure alias for `BondStarted`). The perk check is LIVE, not a one-time snapshot: `RunBondPoll` already re-calls `StartBond("trigger")` every ~4s real-time whenever `!BondStarted`, so acquiring Lady Killer later (even long after the blade) unlocks Bond on the very next poll tick — no new polling loop needed, `BondStarted` stays a true one-way latch. FormIDs (`LadyKiller01/02/03`) verified directly against `Fallout4.esm` PERK records, not guessed. MCM Hunger page distinguishes "locked (needs Lady Killer perk)" from the plain "locked (visit gallery or take the blade)" when only the perk is missing. Contract: `tools/test_lady_killer_bond_gate.py`.
+- Not gated on Cannibal — considered and rejected as too restrictive. Cannibal already has its own, separate role: the eat-ripe-corpse Endurance bonus (Slice H P5, `ateRipeCorpseEndBuffAmount/MaxDelta/Hours` — currently +2 END per eat, capped at +4, decaying 2 game-hours after the last eat) relies on `PlayerHasCannibalPerk()` as *detection* logic (no vanilla "ate a corpse" event exists; the perk possession is what distinguishes a Cannibal heal from a Stimpak heal), not a Bond gate.
+- Black Widow noted alongside Lady Killer in earlier drafts but not wired — same-gender-only concept doesn't apply the same way; left for a future decision if ever revisited.
 - Occult Pact bridges documented only until that mod exists.
 - Soft with **H**: Cannibal / blade-eat consume path that clears Victims (clear body + face decay visuals first).
+
+
 
 ## Slice O — witnesses
 
@@ -177,6 +201,8 @@ NPCs who witness a knife kill (or catch the player mid-crime) react instead of i
 - Room to expand later: bounties, faction/settlement reactions, escalating heat, witnesses that must be silenced.
 - Honor `.cursor/rules/pickmans-whisper-direction.mdc`: never punish or trigger hostile reactions around essential/protected story NPCs in a way that breaks main quests.
 
+
+
 ## Slice P — infamy
 
 Serial-killer reputation that builds as the player leaves a trail. Soft with **O** (witnesses / rumors) and **Q** (public performances). Honor direction: never urge or reward killing **essential** / protected story NPCs.
@@ -184,6 +210,8 @@ Serial-killer reputation that builds as the player leaves a trail. Soft with **O
 - [ ] **P1 — Infamy on non-essential kill (named worth more)** — When the player kills a **non-essential** NPC (blade kill path / same gates as Slice B where applicable), increase an infamy score (or stage). **Named** victims raise it **more** than unnamed; essentials / story-protected never raise infamy. Persist across saves; MCM Debug readout optional.
 - [ ] **P2 — Infamy-staged whispers** — Line banks that escalate with infamy (new serial killer in the Commonwealth → references to past murders). Optional: world/rumor name that differs from a Potential Victim override so the player still recognizes “Cindy.”
 - [ ] **P3 — Whisper cadence after murder** — Ambient / notice pressure ramps shortly after an infamy-raising kill (cooldown so it does not spam).
+
+
 
 ## Slice Q — private cells + quests (stage, cult, shop, home)
 
@@ -202,9 +230,11 @@ Today `OnItemAdded` / `OnItemRemoved` on **MainQuestScript** only flip ownership
 
 Design a real first-acquire beat when Pickman’s Blade first enters the player inventory.
 
-- [ ] **R1 — First acquire moment** — On first `OnItemAdded` that resolves as Pickman’s Blade (once per playthrough / save-persisted), deliver a dedicated toast / audio / quest stage (editable banks). Distinct from Gallery enter and from later re-equips. Soft with **A** bond intro; may eventually replace or subsume parts of `StartBond("added")` / **J3** bond deprecate.
-- [ ] **R2 — Re-acquire vs first** — Later adds (lost and found, console, stash) must not replay the first-acquire beat; optional quieter “knife returned” line TBD.
+- [x] **R1 — First acquire moment** — `MarkOwnedBlade` (hooked off `Actor.OnItemAdded`, plus `RunBondPoll`'s fallback detection net) fires `AnnounceBladeAcquire()` the one time `SeenBlade` flips True — a true one-time event. Message dialog (`Debug.MessageBox`, not a toast) + optional audio from ModConfig `bladeAcquireToast`/`bladeAcquireAudio` (editable banks). Unlike every other voice line, the dialog half is NOT gated on `IsVoiceWeaponReady` or `IsVoiceEnabled` — fires at acquire regardless of drawn state or the master voice toggle (only `iVoiceDelivery` mode applies); the audio half still requires blade-in-hand (shared `PlayWhisperXwmByFile` machinery). Distinct from Gallery enter (`SeenGallery`/`AnnounceGalleryIntro`) and from later re-equips (R2). Contract: `tools/test_blade_acquire.py`.
+- [x] **R2 — Re-acquire vs first** — Already covered by the `SeenBlade` latch `MarkOwnedBlade` guards on — later adds (lost and found, console, stash) all route through the same function but the `!SeenBlade` branch (and therefore `AnnounceBladeAcquire`) only ever runs once per save. No separate quieter "knife returned" line added.
 - [ ] **R3 — Stop carrying (open)** — Unclear what should happen if the player drops, stores, or otherwise stops carrying the blade: mute voice only, freeze hunger, full “quest paused,” keep ownership forever once claimed, etc. Decide before coding removal side effects beyond today’s `OwnedPickmansBlade` clear.
+
+**R1/R2 confirmed in-game** (2026-08-10): first-acquire `MessageBox` fires correctly on genuine first blade acquire; `DebugResetBond` ("Test: reset bond + gallery intro (debug)") correctly clears both `BondStarted` and `SeenGallery` for retesting. R3 (stop-carrying policy) remains open — not part of what shipped here.
 
 Honor direction: editable lines; no essential-NPC pressure; blade still gates kills / satiation when drawn.
 
@@ -244,6 +274,28 @@ Deliberate, scoped exception to the "no AAF" direction rule (see [DIRECTION.md](
 
 **Status: Implemented — awaiting in-game confirm (cannot verify actual AAF scene start/CTD behavior without a live AAF install + animation packs; static checks only confirm the code is wired correctly).**
 
+## Slice V — stronger patience boon (idea only, not scheduled)
+
+Draft idea, not designed or implemented — something to work on later, not part of the current Slice L patience boon (`SyncCalmBonusSpell`, +4 AGI/CHA, `CalmBonusEligible` gate).
+
+- Instead of (or as a stronger tier above) the current temporary +4 AGI/CHA: a "permanent" SPECIAL point raise, plus grant a perk (Lady Killer/Black Widow-adjacent candidate: **Intimidation**, unverified — no FormID looked up yet).
+- "Permanent" is in quotes deliberately — per the user, this should still be **temporal, like the current boon** (reversible/expiring), not a true forever change to the player's base SPECIAL. Exact meaning of "permanently raise a SPECIAL attr" while also being temporal needs to be resolved before design: candidates include raising the ActorValue base (not just a ModValue delta, unlike the current Calm bonus) for the duration, or simply a much longer/harder-to-lose expiry condition than "leaving Calm."
+- Perk grant/removal would need the same idempotent apply/clear + save-safety bookkeeping shape already established for `HungerSpecialPenaltyDepth`/`CalmBonusDepth` (`Actor.AddPerk`/`RemovePerk`, not `ModValue` — different mechanism than the current SPECIAL bonus).
+- Open questions: what earns this tier (longer patience threshold than 13h? multiple patience-boon kills in a row? something else)? Does it stack with or replace the existing +4 AGI/CHA boon? Which perk (Intimidation vs. something else)? Exact SPECIAL point(s) affected?
+
+## Slice W — Execute (instant kill on a living victim)
+
+Leverages the existing corpse-sever gore mechanism (Slice F) but applied to a still-LIVING, eligible victim instead of a corpse — an instant kill via **Decapitate** or **Smash Head In**. New hotkey (`\`), new script, new MSG menu — zero changes to the existing corpse-sever feature. Contract: `tools/test_execute_kill.py`.
+
+- [x] **W1 — New isolated script** — `PickmansWhisperExecuteScript` (extends `Quest`, attached to Main's VMAD like every other feature script) owns all aim/menu/weapon-check/kill logic. Reaches `MainQuestScript`/`VictimsScript`/`CorpseDecayScript` only via the established `(Self as Quest) as X` sibling-cast pattern (`Main()`/`Victims()`/`CorpseDecay()` accessors) — no logic added to `MainQuestScript` beyond a 3-line `Execute()` cast, a thin `TryExecuteAimedVictim()` forwarder, and one small `IsNecroSceneActive()` getter (needed because `NecroSceneActive` is a plain script var, not cross-script-readable). No measurable performance concern: this is hotkey-driven (fires only on an actual keypress, not a per-frame/per-tick poll), and cross-script casts are the same mechanism dozens of existing feature scripts in this mod already use at far higher call frequency.
+- [x] **W2 — Hotkey** — `\` (`KEY_EXECUTE = 220`, `VK_OEM_5`) registered on `PlayerAliasScript` (Quest key registration is unreliable — established convention), distinct from the existing `/` corpse-sever key (`KEY_BUTCHER = 191`) and `]` dialog toggle (`KEY_DIALOG_ACTIVATE = 221`), neither of which changed.
+- [x] **W3 — Aim + menu** — Reuses `VictimsScript.ResolveVictimsAimActor()` (the existing general-purpose living-actor aim resolver — camera + activate-target + cache) rather than duplicating camera-resolution logic, plus a range check. New `PW_ExecuteMenu` MSG (built in `tools/build_hunger_spell_esp.py`, same field-order convention as the existing `PW_SeverLimbMenu`): **Sever Head** / **Smash Head In** / **Cancel**.
+- [x] **W4 — Weapon gates, per-option** — **Decapitate** requires `Main.IsBladeEquipped()` (same gate as every other blade feature in this mod). **Smash Head In** requires one of 5 real, verified heavy-blunt-melee `WEAP` forms — BaseballBat/Sledgehammer/SuperSledge/PipeWrench/PoolCue — confirmed by scanning `Fallout4.esm`'s own `KWDA` (keyword) lists directly: FO4 has **no shared "blunt" keyword** across these (each only carries its own weapon-specific `ma_*` animation keyword plus the generic `WeaponTypeMelee1H/2H` handedness keyword, which is also shared by bladed weapons like Shishkebab) — a curated FormID list is the only honest option here, not invented keyword logic. The menu opens if *either* weapon type is equipped; the specific choice is validated (and rejected with a clear toast) against its specific weapon requirement at selection time.
+- [x] **W5 — Eligibility** — Both paths hard-gate on `Main.IsValidTarget(ak, False)` — **non-hostile only** (ambush-style, matching most of this mod's other features, not a combat finisher) — the same essential/protected-NPC-safe check every other kill-adjacent feature in this mod relies on. Re-validated immediately before the kill (menu `Show()` blocks while open; target state could change).
+- [x] **W6 — Kill sequence** — `RegisterTarget(ak)` (defensive — guarantees `OnDeath` is hooked even if ambient `TargetScan` hasn't caught her yet) → `ak.KillSilent(player)` (passing the player as killer — this mod has already hit the "a killerless `KillSilent` can leave Protected actors alive" gotcha elsewhere and works around it this exact way) → `Dismember("Head1", False, True, abSmash)` (`abForceBloodyMess=False` for a clean Sever Head, `=True` for the gorier Smash Head In — the same flag this codebase already found gibs the head, previously deliberately avoided for corpses, now exactly the desired effect) → `CorpseDecay().QueueStripBodyDecayAfterDismember(ak)` for stump-visual consistency with the existing corpse-sever feature. **No new kill-crediting code** — `OnDeath` fires from any death cause, and since she's registered, the existing `RewardKill → ProcessKnifeKill` pipeline (hunger satiation, decay stamp, named-kill voice) picks it up automatically, exactly like a normal blade kill.
+
+**Status: Implemented — awaiting in-game confirm.** The one thing that could not be verified from code alone: whether `Dismember` immediately after `KillSilent` looks right in the same frame, or needs a beat of delay for the ragdoll to settle first. Built to fail loud (trace + toast, `Is3DLoaded()` guard before the `Dismember` call) rather than silently no-op if this needs revisiting.
+
 ## Risks
 
 - Audio without dialogue may need F4SE / custom sound forms.
@@ -260,8 +312,8 @@ Deliberate, scoped exception to the "no AAF" direction rule (see [DIRECTION.md](
 - Hunger pacing (L): long climbs must stay fun (not “forgot the mod is installed”); peak rewards must not soft-lock or break SPECIAL balance.
 - Witnesses (O): reliable "who actually saw it" detection (LOS/distance) without false positives; forcing flee/hostile AI states cleanly; not aggroing essential/protected NPCs.
 - Infamy (P): define “named” vs display-name / Potential Victim overrides for the higher weight; unnamed still awards a smaller bump; never award infamy for essentials; soft-stack with O rumors without double-counting every ambient toast.
-- Private cells / quests (Q): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs N overlap; Pickman house ownership without breaking Gallery bond trigger.
-- First blade (R): one-shot first-acquire vs inventory churn / legendary instance FormIDs; don’t double-fire with Gallery bond; policy when they stop carrying still undecided.
+- Private cells / quests (Q): Combat Zone / Tommy Lonegan vanilla quest conflicts; captive NPC sourcing without stealing essentials; Culte des Ghouls cell + payment loop; butcher shop vs N overlap. (Gallery no longer triggers Bond on its own — see R — so Pickman house ownership no longer needs to route around that.)
+- First blade (R): one-shot first-acquire vs inventory churn / legendary instance FormIDs; Bond trigger no longer includes Gallery-enter-alone (removed — see Slice A); policy when they stop carrying still undecided.
 - Force Trade (S): perk must stay living-only so it never replaces Eat Corpse; one-time strip latch is session-script state (cap 32) — oldest drops if many victims; slave pacify is name-substring heuristic (mod gear naming).
 - Slavery (T): `SetPlayerTeammate` must stay excepted in `IsValidTarget` or kills/whispers break; never add `CurrentCompanionFaction`; warp is best-effort MoveTo (no Followers quest); one slave at a time; slave-gear name heuristic only.
 - Slave scene (U): tag-based position selection depends entirely on what AAF packs the user has installed — must fail loud (toast + trace) if the configured tag resolves to nothing, never silently no-op; exteriors are CTD-prone for AAF scene starts (interior-only default); `OnSceneEnd`/`OnAnimationStart` are documented-flaky in the reference implementation, especially with the player as a scene participant — watchdog + max-duration timer are load-bearing, not just cleanup; never let this feature's `aeCombatState==0`-adjacent or essential-state code paths cross with Slice K's essential-actor protected-collapse race (see BeatBeforeKillScript's own top-of-file note).

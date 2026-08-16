@@ -116,6 +116,15 @@
           }
         },
         {
+          "id": "sDesperatePatience:Hunger",
+          "text": "Desperate patience",
+          "type": "textinput",
+          "help": "Continuous hours spent at/above Desperate (90) hunger — killing before 13h earns no patience boon; dipping below 90 resets this to 0.",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
           "text": "Show hunger info",
           "type": "button",
           "action": {
@@ -158,9 +167,9 @@
           }
         },
         {
-          "text": "Test: reset bond (debug)",
+          "text": "Test: reset bond + gallery intro (debug)",
           "type": "button",
-          "help": "Clears BondStarted so the next bond poll re-triggers StartBond and the bond toast — lets you retest bonding without hunting for a pre-bond save.",
+          "help": "Clears BondStarted and SeenGallery so the next bond poll re-triggers StartBond (if the blade is owned/equipped) and the Gallery intro dialog (if you're standing in the Gallery) — lets you retest either without hunting for a pre-bond save.",
           "action": {
             "type": "CallFunction",
             "form": "PickmansWhisper.esp|800",
@@ -189,7 +198,7 @@
           "id": "fTimeGain:Hunger",
           "text": "Hunger per game-hour",
           "type": "slider",
-          "help": "Idle growth while bonded and not sated. Default 5.",
+          "help": "Idle growth while bonded and not sated. Default 1.0 (~1 day per stage; ~4 game-days to full hunger).",
           "valueOptions": {
             "min": 0,
             "max": 15,
@@ -364,6 +373,35 @@
           }
         },
         {
+          "text": "Name / rename",
+          "type": "section"
+        },
+        {
+          "text": "Type a real name, then \"Apply name\". That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
+          "type": "text",
+          "html": true
+        },
+        {
+          "id": "sVictimName:Victims",
+          "text": "New name",
+          "type": "textinput",
+          "help": "Real name only (e.g. Marie). Not Settler/Resident. Then press \"Apply name\".",
+          "valueOptions": {
+            "sourceType": "ModSettingString"
+          }
+        },
+        {
+          "text": "Apply name",
+          "type": "button",
+          "help": "GardenOfEden2.SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
+          "action": {
+            "type": "CallFunction",
+            "form": "PickmansWhisper.esp|800",
+            "function": "MCMNameAimedVictim",
+            "scriptName": "PickmansWhisperVictimsScript"
+          }
+        },
+        {
           "text": "Beat before kill (temp essential)",
           "type": "section"
         },
@@ -409,35 +447,6 @@
             "type": "CallFunction",
             "form": "PickmansWhisper.esp|800",
             "function": "MCMFreeAimedSlave",
-            "scriptName": "PickmansWhisperVictimsScript"
-          }
-        },
-        {
-          "text": "Name / rename",
-          "type": "section"
-        },
-        {
-          "text": "Type a real name, then \"Apply name\". That becomes her world/HUD name and fills {name} in whispers. Generics (Settler, Resident) are rejected.",
-          "type": "text",
-          "html": true
-        },
-        {
-          "id": "sVictimName:Victims",
-          "text": "New name",
-          "type": "textinput",
-          "help": "Real name only (e.g. Marie). Not Settler/Resident. Then press \"Apply name\".",
-          "valueOptions": {
-            "sourceType": "ModSettingString"
-          }
-        },
-        {
-          "text": "Apply name",
-          "type": "button",
-          "help": "GardenOfEden2.SetDisplayName on the aimed / last-look actor + save FormID↔name for whispers.",
-          "action": {
-            "type": "CallFunction",
-            "form": "PickmansWhisper.esp|800",
-            "function": "MCMNameAimedVictim",
             "scriptName": "PickmansWhisperVictimsScript"
           }
         },

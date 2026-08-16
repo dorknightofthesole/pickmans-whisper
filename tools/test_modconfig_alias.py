@@ -182,7 +182,7 @@ def main() -> None:
     if "Something in the gallery leans closer" in psc:
         fail("Main must not hard-code bond intro (ModConfig BondIntroGreeting is source of truth)")
     if "ModConfigAlias.BondIntroGreeting" not in psc:
-        fail("StartBond must read ModConfigAlias.BondIntroGreeting")
+        fail("AnnounceGalleryIntro must read ModConfigAlias.BondIntroGreeting")
     alias_psc = (
         ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
     ).read_text(encoding="utf-8", errors="replace")
@@ -200,7 +200,7 @@ def main() -> None:
         if m and "StartBond" in m.group(0):
             fail("RewardKill must not StartBond (PlayerAlias blade-equipped owns it)")
     ok(
-        "bondIntroGreeting ships in ModConfig.txt; StartBond reads ModConfigAlias; "
+        "bondIntroGreeting ships in ModConfig.txt; AnnounceGalleryIntro reads ModConfigAlias; "
         "equip path owns bond"
     )
 

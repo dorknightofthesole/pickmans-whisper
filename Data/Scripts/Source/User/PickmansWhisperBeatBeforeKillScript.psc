@@ -187,7 +187,7 @@ Function ToastEssentialChange(Actor ak, Bool abNowEssential)
 		verify = "\n\nWARNING: SetEssential did not take — IsEssential() reports " + ak.IsEssential()
 	EndIf
 	; MessageBox (not Notification) — confirmed Notification is easy to miss mid-combat.
-	Debug.MessageBox("Pickman's Whisper: " + label + " is now " + stateWord + verify)
+	; Debug.MessageBox("Pickman's Whisper: " + label + " is now " + stateWord + verify)
 	Debug.Trace("PickmansWhisper: beat-before-kill essential=" + abNowEssential + " id=0x" + GardenOfEden.GetHexFormID(ak) + " name=" + label)
 EndFunction
 

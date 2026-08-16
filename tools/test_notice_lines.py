@@ -814,8 +814,18 @@ def test_ambient_notice_no_dialog_mcm_scan_keeps_dialog() -> None:
 
     if "Function DiagNotify(" not in main_text:
         errors.append("Main must define DiagNotify (Trace + Notification; no MessageBox pause)")
-    if "Debug.MessageBox(" in main_text:
-        errors.append("Main must not Debug.MessageBox (use DiagNotify)")
+    # AnnounceGalleryIntro (Gallery entry) and AnnounceBladeAcquire (Slice R1, first blade
+    # acquire) are deliberate, narrow exceptions: genuine once-per-save events (guarded by
+    # SeenGallery / SeenBlade, never retried) are not the ambient/auto-repeating notice-line
+    # traffic this rule guards against, so they are carved out of the blanket scan rather
+    # than weakening the rule for the actually-ambient paths below.
+    main_text_no_once_ever = main_text
+    for once_ever_fn in ("AnnounceGalleryIntro", "AnnounceBladeAcquire"):
+        m = re.search(rf"Function {once_ever_fn}\([^)]*\)(.*?)EndFunction", main_text_no_once_ever, re.S)
+        if m:
+            main_text_no_once_ever = main_text_no_once_ever[: m.start()] + main_text_no_once_ever[m.end() :]
+    if "Debug.MessageBox(" in main_text_no_once_ever:
+        errors.append("Main must not Debug.MessageBox outside AnnounceGalleryIntro/AnnounceBladeAcquire's once-ever dialogs (use DiagNotify)")
     if "Debug.MessageBox(" in text:
         errors.append("VoiceAlias must not Debug.MessageBox (use Main().DiagNotify)")
 

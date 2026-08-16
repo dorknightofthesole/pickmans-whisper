@@ -309,7 +309,7 @@ Function EndSlaveScene(Bool abNatural)
 	ScenePhase = "Idle"
 	SceneTarget = None
 	Debug.Trace("PickmansWhisper: slave scene [" + SCENE_BUILD_TAG + "] — ended gen=" + SceneGeneration + " natural=" + abNatural + " lastStatus=" + LastOnSceneInitStatus)
-	Debug.Notification("PickmansWhisper: Slavery — scene ended")
+	; Debug.Notification("PickmansWhisper: Slavery — scene ended")
 EndFunction
 
 ; MCM Debug "Cancel slave scene" button.
@@ -323,7 +323,7 @@ Function CancelSlaveScene()
 		AAF_API.StopScene()
 	EndIf
 	EndSlaveScene(False)
-	Debug.Notification("PickmansWhisper: Slavery — scene cancelled")
+	; Debug.Notification("PickmansWhisper: Slavery — scene cancelled")
 EndFunction
 
 Event OnTimer(Int aiTimerID)
@@ -366,7 +366,7 @@ Event AAF:AAF_API.OnSceneInit(AAF:AAF_API akSender, Var[] akArgs)
 	; about akArgs without first confirming AAF's real OnSceneInit signature.
 	If status != 0
 		Debug.Trace("PickmansWhisper: slave scene [" + SCENE_BUILD_TAG + "] — OnSceneInit failed status=" + status + " gen=" + SceneGeneration + " position='" + LastPositionId + "' duration=" + LastDuration + " argCount=" + argCount)
-		Debug.Notification("PickmansWhisper: Slavery — scene failed to start, status=" + status + " (position '" + LastPositionId + "' — is BP70's rxl_bp70_animations.esp installed and active?)")
+		; Debug.Notification("PickmansWhisper: Slavery — scene failed to start, status=" + status + " (position '" + LastPositionId + "' — is BP70's rxl_bp70_animations.esp installed and active?)")
 		EndSlaveScene(False)
 		Return
 	EndIf

@@ -260,7 +260,7 @@ Function StartSlavery(Actor akTarget)
 	EndIf
 	If IsVanillaCompanion(akTarget)
 		Debug.Trace("PickmansWhisper: slavery skip start | vanilla companion id=" + akTarget.GetFormID())
-		Debug.Notification("PickmansWhisper: Slavery — that is a real companion")
+		; Debug.Notification("PickmansWhisper: Slavery — that is a real companion")
 		Return
 	EndIf
 	If Slave && Slave != akTarget

@@ -14,8 +14,12 @@ Int FID_MAIN_QUEST = 0x00000800
 Int KEY_BUTCHER = 191
 ; ] — VK_OEM_6 = 221. Toggles Force Trade / Enslave / Free activate choices (default off).
 Int KEY_DIALOG_ACTIVATE = 221
+; Slice W execute menu (Decapitate / Smash Head In on a LIVING victim) — \ on US keyboards
+; = VK_OEM_5 = 220. Distinct from the / butcher key (corpse-only) and ] dialog toggle.
+Int KEY_EXECUTE = 220
 Bool ButcherKeyRegistered = False
 Bool DialogActivateKeyRegistered = False
+Bool ExecuteKeyRegistered = False
 ; Slice H P5 — magic-effect-apply detection lives here, not on the Quest. A Quest-level
 ; RegisterForMagicEffectApplyEvent(PlayerRef, ...) was tried first and confirmed dead
 ; live (an unfiltered sniff variant caught zero effects over two minutes of play, even
@@ -36,6 +40,7 @@ Event OnAliasInit()
 	EnsurePlayerFill()
 	RegisterButcherKey()
 	RegisterDialogActivateKey()
+	RegisterExecuteKey()
 	RegisterMagicEffectDetect()
 	CheckIfBladeEquipped()
 	PickmansWhisperBedGiftScript bed = GetBedGift()
@@ -58,6 +63,7 @@ Event OnPlayerLoadGame()
 	EnsurePlayerFill()
 	RegisterButcherKey()
 	RegisterDialogActivateKey()
+	RegisterExecuteKey()
 	RegisterMagicEffectDetect()
 	CheckIfBladeEquipped()
 	PickmansWhisperBedGiftScript bed = GetBedGift()
@@ -237,14 +243,32 @@ Function RegisterDialogActivateKey()
 	Debug.Trace("PickmansWhisper: alias registered dialog-activate toggle key " + KEY_DIALOG_ACTIVATE)
 EndFunction
 
+Function RegisterExecuteKey()
+	If ExecuteKeyRegistered
+		UnregisterForKey(KEY_EXECUTE)
+	EndIf
+	RegisterForKey(KEY_EXECUTE)
+	ExecuteKeyRegistered = True
+	Debug.Trace("PickmansWhisper: alias registered execute key " + KEY_EXECUTE)
+EndFunction
+
 Event OnKeyDown(Int keyCode)
 	If keyCode == KEY_DIALOG_ACTIVATE
 		PickmansWhisperMainQuestScript mainToggle = GetMain()
 		If !mainToggle
-			Debug.Notification("PickmansWhisper: Trade/Enslave toggle — main quest missing")
+			Debug.Trace("PickmansWhisper: Trade/Enslave toggle — main quest missing")
 			Return
 		EndIf
 		mainToggle.ToggleDialogActivateChoices()
+		Return
+	EndIf
+	If keyCode == KEY_EXECUTE
+		PickmansWhisperMainQuestScript mainExecute = GetMain()
+		If !mainExecute
+			Debug.Notification("Pickman's Whisper: execute menu — main quest missing")
+			Return
+		EndIf
+		mainExecute.TryExecuteAimedVictim()
 		Return
 	EndIf
 	If keyCode != KEY_BUTCHER

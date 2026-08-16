@@ -467,7 +467,7 @@ Function LookFixation(Actor akTarget)
 		LastFixationStatus = "skip: fixation table full"
 		WriteFixationStatusToMcm()
 		Debug.Trace("PickmansWhisper: fixation skip | table full")
-		Debug.Notification("PickmansWhisper: fixation skip | table full")
+		; Debug.Notification("PickmansWhisper: fixation skip | table full")
 		Return
 	EndIf
 
@@ -1387,7 +1387,7 @@ Function SpeakFixationStageWhisper(Actor ak, String npcName)
 	If !line || GardenOfEden.StrLength(line) < 1
 		LastFixationStatus = "seen x2 — stage line skipped (bank empty)"
 		WriteFixationStatusToMcm()
-		Debug.Notification("PW Debug: seen x2 — stage line skipped (bank empty)")
+		; Debug.Notification("PW Debug: seen x2 — stage line skipped (bank empty)")
 		Debug.Trace("PW Debug: seen x2 — stage line skipped (bank empty)")
 		Return
 	EndIf
@@ -1746,7 +1746,7 @@ Function PlayNoticeAudio(Int stage, Int index)
 	String[] bank = GetAudioBankForStage(stage)
 	Int count = GetAudioCountForStage(stage)
 	If count <= 0 || !bank
-		Debug.Notification("Pickman's Whisper: no audio map for " + GetNoticeStageName(stage))
+		; Debug.Notification("Pickman's Whisper: no audio map for " + GetNoticeStageName(stage))
 		Debug.Trace("PickmansWhisper: ERROR PlayNoticeAudio empty map stage=" + stage)
 		Return
 	EndIf

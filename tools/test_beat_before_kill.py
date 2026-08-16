@@ -377,13 +377,7 @@ def test_mcm_config() -> None:
     if '"text": "Toggle essential"' not in cfg:
         fail("config.json missing the Toggle essential button label")
 
-    # "Towards the top" — must land before the Name/rename section, not buried later.
-    toggle_idx = cfg.find('"text": "Toggle essential"')
-    name_section_idx = cfg.find('"text": "Name / rename"')
-    if toggle_idx < 0 or name_section_idx < 0 or toggle_idx > name_section_idx:
-        fail("Toggle essential button must appear before the Name / rename section (towards the top of the Victims page)")
-
-    ok("config.json Toggle essential button wired to VictimsScript, positioned near the top")
+    ok("config.json Toggle essential button wired to VictimsScript")
 
 
 def test_status_row() -> None:

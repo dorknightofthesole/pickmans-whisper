@@ -15,6 +15,8 @@ Float Property BedGiftCooldownDays = -1.0 Auto
 Float Property BedGiftWoundAlpha = -1.0 Auto
 String Property NamedKillToast = "" Auto
 String Property NamedKillAudio = "" Auto
+String Property BladeAcquireToast = "" Auto
+String Property BladeAcquireAudio = "" Auto
 String Property EatRipeCorpseToast = "" Auto
 String Property AteRipeCorpseToast = "" Auto
 Float Property EatRipeCorpseEndBuffAmount = -1.0 Auto
@@ -380,6 +382,8 @@ Function LoadModConfig()
 	String nextDesperateNameSuffix = ""
 	String nextNamedKillToast = ""
 	String nextNamedKillAudio = ""
+	String nextBladeAcquireToast = ""
+	String nextBladeAcquireAudio = ""
 	String nextEatRipeCorpseToast = ""
 	String nextAteRipeCorpseToast = ""
 	Float nextEatRipeCorpseEndBuffAmount = -1.0
@@ -459,6 +463,10 @@ Function LoadModConfig()
 					nextNamedKillToast = val
 				ElseIf key == "namedKillAudio"
 					nextNamedKillAudio = val
+				ElseIf key == "bladeAcquireToast"
+					nextBladeAcquireToast = val
+				ElseIf key == "bladeAcquireAudio"
+					nextBladeAcquireAudio = val
 				ElseIf key == "eatRipeCorpseToast"
 					nextEatRipeCorpseToast = val
 				ElseIf key == "ateRipeCorpseToast"
@@ -532,6 +540,8 @@ Function LoadModConfig()
 	DesperateNameSuffix = nextDesperateNameSuffix
 	NamedKillToast = nextNamedKillToast
 	NamedKillAudio = nextNamedKillAudio
+	BladeAcquireToast = nextBladeAcquireToast
+	BladeAcquireAudio = nextBladeAcquireAudio
 	EatRipeCorpseToast = nextEatRipeCorpseToast
 	AteRipeCorpseToast = nextAteRipeCorpseToast
 	EatRipeCorpseEndBuffAmount = nextEatRipeCorpseEndBuffAmount
@@ -618,6 +628,9 @@ Function LoadModConfig()
 	EndIf
 	If NamedKillToast
 		status += "namedKill "
+	EndIf
+	If BladeAcquireToast
+		status += "bladeAcquire "
 	EndIf
 	If VictimTradeMinCha > 0
 		status += "victimTradeCha "

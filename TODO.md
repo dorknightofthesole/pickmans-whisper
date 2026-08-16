@@ -64,9 +64,9 @@ See docs/ROADMAP.md Slice J. Do not start until event-driven kill/notice path is
 - [ ] **bedGiftWoundAlpha Main expose** — `tools/test_corpse_decay.py` assertion that Main must load/expose `bedGiftWoundAlpha` / `GetBedGiftWoundAlpha` is commented out. Review after ModConfigAlias move: confirm opacity is read from ModConfigAlias (or CorpseDecay) only, then either restore a correct contract or delete the dead Main-facing assert. Related: `test_bed_hallucination.py`, `test_decay_stage_modconfig.py`.
 - [ ] **Prune unused Caprica stubs** — after the FO4/F4SE/GoE honesty audit, `tools/stubs/` still keeps every type Caprica may need (inheritance, param types, soft deps). Do a **compile-driven** orphan pass later: remove only stubs proven unnecessary (not a text-scan guess). Keep the live `test_stub_natives.py` source check; never reintroduce fake/Skyrim natives to silence Caprica.
 - [ ] **K** Victim beat-before-kill (temp essential + fight back; unarmed exception) — was Slice Q / earlier J
-- [ ] **L** Slow hunger stages (days) + peak-wait reward (attr bonuses until stage 2 — TBD)
+- [x] **L** Slow hunger stages (days) + Calm-state +2 AGI/CHA reward
 - [ ] **M** Corpse hold / preserve sync with Necromantic
-- [ ] **N** Lady Killer / Black Widow soft gates; Cannibal stretch
+- [x] **N** Lady Killer hard-gates Bond (live-checked, unlocks on later acquire too); Cannibal stays eat-detection only, not a Bond gate
 - [ ] **O** Witnesses / killer rumors
 - [ ] **P** Infamy whispers
 - [ ] **Q** Private cells + quests (Combat Zone, Culte des Ghouls, butcher shop, Pickman house)

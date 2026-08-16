@@ -41,6 +41,6 @@ TargetScan replaces the Glowing One proximity-cloak bus and thins Main’s NPC t
 
 ## Locked policy defaults
 
-- Hunger unlocks on first bond (gallery **or** blade), not after N kills.
+- Hunger unlocks on first bond. Bond means the player has both Pickman's Blade AND the Lady Killer perk — it can never start before both are true (structurally enforced in `StartBond` via `PlayerHasBlade()` + `PlayerHasLadyKillerPerk()`, not just by trusting callers; Gallery entry alone does not trigger Bond). Not after N kills. Not gated on Cannibal — considered and rejected as too restrictive; Cannibal's role stays limited to eat-ripe-corpse detection (Slice H P5).
 - Satiation (B+): only kills **with** Pickman's Blade fully clear hunger.
 - Corpse hold (E): duplicate Necromantic pattern; both mods may hold the same body when stacked.

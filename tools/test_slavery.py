@@ -260,8 +260,8 @@ def test_esp_builder() -> None:
         fail("ESP builder must attach SlaveryPerkScript to PERK VMAD")
     if "SlaveryActivatePerk" not in text:
         fail("ESP builder must bind SlaveryActivatePerk property")
-    if "NEXT_OID = 0x0000087B" not in text:
-        fail("ESP builder NEXT_OID must be past slavery PERK")
+    if "NEXT_OID = 0x0000087C" not in text:
+        fail("ESP builder NEXT_OID must be past slavery PERK (and Slice W's execute menu MESG)")
     if "'Perk Entry ID (unique)'" not in text and "Perk Entry ID" not in text:
         fail("_activate_choice_entry must document EPFB as xEdit's 'Perk Entry ID (unique)' "
              "field — this was a real, confirmed bug: every entry sharing EPFB=0000 meant "

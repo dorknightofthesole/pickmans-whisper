@@ -28,8 +28,8 @@ INTIMACY_END_AUDIO = (
 MOD_CONFIG = ROOT / "Data" / "PickmansWhisper" / "config" / "ModConfig.txt"
 SOUND_DIR = ROOT / "Data" / "Sound" / "PickmansWhisper"
 SNDR_IDS_PATH = ROOT / "Data" / "PickmansWhisper" / "config" / "WhisperSndrIds.txt"
-# namedIntimacyAudio retired (E5 banks). namedKillAudio still optional.
-MOD_CONFIG_AUDIO_KEYS = ("namedKillAudio",)
+# namedIntimacyAudio retired (E5 banks). namedKillAudio / bladeAcquireAudio still optional.
+MOD_CONFIG_AUDIO_KEYS = ("namedKillAudio", "bladeAcquireAudio")
 
 FID_QUEST = 0x01000800
 FID_SPEL = 0x01000801
@@ -69,8 +69,9 @@ FID_AV_TARGET_TRACKER_EXPIRATION = 0x01000877  # PW_TargetTrackerExpiration
 FID_PERK_VICTIM_TRADE = 0x01000878  # PW_VictimTradeActivate (Talk + Force Trade)
 FID_OTFT_EMPTY = 0x01000879  # PW_EmptyOutfit — strip default outfits for Force Trade
 FID_PERK_SLAVERY = 0x0100087A  # PW_SlaveryActivate (Talk + Enslave / Take Her)
+FID_EXECUTE_MSG = 0x0100087B  # PW_ExecuteMenu (Slice W — Decapitate / Smash Head In)
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
-NEXT_OID = 0x0000087B  # == (FID_PERK_SLAVERY & 0xFFFFFF) + 1
+NEXT_OID = 0x0000087C  # == (FID_EXECUTE_MSG & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
@@ -351,6 +352,7 @@ def build_main_quest_payload() -> bytes:
         "PickmansWhisperVictimTradeScript",
         "PickmansWhisperSlaveryScript",
         "PickmansWhisperSlaveSceneScript",
+        "PickmansWhisperExecuteScript",
     ]
     trade_perk_prop = build_vmad_object_form_property(
         "TradeActivatePerk", FID_PERK_VICTIM_TRADE
@@ -613,7 +615,7 @@ def build_whisper_sndr_payload(edid_stem: str, map_key: str) -> bytes:
 
 
 def parse_modconfig_audio_files() -> list[str]:
-    """Optional namedKillAudio .xwm keys from ModConfig.txt."""
+    """Optional namedKillAudio / bladeAcquireAudio .xwm keys from ModConfig.txt."""
     if not MOD_CONFIG.is_file():
         return []
     out: list[str] = []
@@ -871,8 +873,28 @@ def build_sever_limb_menu_payload() -> bytes:
     return b"".join(parts)
 
 
+def build_execute_menu_payload() -> bytes:
+    """MESG message-box for Slice W (instant kill on a living victim). Same field-order
+    convention as build_sever_limb_menu_payload — do not emit TNAM."""
+    buttons = (
+        "Sever Head",
+        "Smash Head In",
+        "Cancel",
+    )
+    parts = [
+        field(b"EDID", zstr("PW_ExecuteMenu")),
+        field(b"DESC", zstr("Execute her how?")),
+        field(b"FULL", zstr("Pickmans Whisper - Execute")),
+        field(b"INAM", u32(0)),
+        field(b"DNAM", u32(0x00000001)),  # Message Box
+    ]
+    for label in buttons:
+        parts.append(field(b"ITXT", zstr(label)))
+    return b"".join(parts)
+
+
 def collect_sndr_records() -> list[bytes]:
-    """Emit SNDRs for Desperate + E5 intimacy maps + optional ModConfig namedKillAudio."""
+    """Emit SNDRs for Desperate + E5 intimacy maps + optional ModConfig namedKillAudio/bladeAcquireAudio."""
     files: list[str] = []
     seen: set[str] = set()
 
@@ -948,6 +970,7 @@ def main() -> None:
         ),
     )
     msg_rec = record(b"MESG", FID_SEVER_MSG, build_sever_limb_menu_payload())
+    msg_execute = record(b"MESG", FID_EXECUTE_MSG, build_execute_menu_payload())
     perk_trade = record(
         b"PERK", FID_PERK_VICTIM_TRADE, build_victim_trade_perk_payload()
     )
@@ -989,9 +1012,9 @@ def main() -> None:
     arma_blob = b"".join(arma_recs)
     armo_blob = b"".join(armo_recs)
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + MESG + 2x PERK + OTFT + 4 AVIF + N SNDR + N ARMA + N ARMO
+    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + 2x MESG + 2x PERK + OTFT + 4 AVIF + N SNDR + N ARMA + N ARMO
     # (proximity cloak MGEF/SPEL chain retired)
-    num_records = 14 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
+    num_records = 15 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
@@ -1002,7 +1025,7 @@ def main() -> None:
         )
         + group(b"MGEF", mgef_agi + mgef_cha)
         + group(b"SPEL", spel_rec)
-        + group(b"MESG", msg_rec)
+        + group(b"MESG", msg_rec + msg_execute)
         + group(b"PERK", perk_trade + perk_slavery)
         + group(b"OTFT", otft_empty)
         + group(b"ARMA", arma_blob)
@@ -1016,6 +1039,7 @@ def main() -> None:
     print(f"  MGEF 0x{FID_MGEF_AGI:08X} / 0x{FID_MGEF_CHA:08X} ValueMod AGI/CHA")
     print(f"  SPEL 0x{FID_SPEL:08X} Knife Hunger Ability + CTDA")
     print(f"  MESG 0x{FID_SEVER_MSG:08X} PW_SeverLimbMenu")
+    print(f"  MESG 0x{FID_EXECUTE_MSG:08X} PW_ExecuteMenu (Slice W)")
     print(f"  PERK 0x{FID_PERK_VICTIM_TRADE:08X} PW_VictimTradeActivate (Force Trade, living)")
     print(f"  PERK 0x{FID_PERK_SLAVERY:08X} PW_SlaveryActivate (Enslave/Take Her labels, toggle script)")
     print(f"  OTFT 0x{FID_OTFT_EMPTY:08X} PW_EmptyOutfit")

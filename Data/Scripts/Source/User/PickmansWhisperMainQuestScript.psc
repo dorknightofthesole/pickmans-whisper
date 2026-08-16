@@ -14,6 +14,10 @@ Cell PickmanGalleryCell
 Perk CannibalPerk1
 Perk CannibalPerk2
 Perk CannibalPerk3
+; Slice N — Lady Killer perk ranks. Bond requirement, same additive-ranks shape as Cannibal.
+Perk LadyKillerPerk1
+Perk LadyKillerPerk2
+Perk LadyKillerPerk3
 ; Slice H P5 — RestoreHealthGeneric is the shared/generic heal MGEF the vanilla
 ; PerkCannibalHeal spell applies (verified against Fallout4.esm; also used by Stimpaks
 ; etc., so it is NOT cannibal-exclusive on its own — see NotePendingEatRipeReward /
@@ -25,7 +29,6 @@ Bool DebugSniffMagicEffects = False
 ; --- Bond (Auto = saved with the quest) ----------------------------------------
 Bool Property BondStarted = False Auto
 Float Property BondStartGameTime = 0.0 Auto
-Bool Property IntroToastShown = False Auto
 Bool Property SeenGallery = False Auto
 Bool Property SeenBlade = False Auto
 ; True once we've seen a unique Pickman's Blade instance (name match). Template FormID
@@ -77,11 +80,32 @@ Float Property HungerLevel = 0.0 Auto ; 0–100 once bonded
 Float Property SatedUntilGameTime = 0.0 Auto
 Float LastHungerPollGameTime = 0.0
 Int LastHungerBand = 0 ; 0/25/50/70/90
+; Patience-gated Calm bonus follow-up — game-time stamp of when HungerLevel most recently
+; became continuously >= 90 (Desperate); 0.0 = not currently tracking. Cleared the instant
+; HungerLevel drops back below 90 before being consumed by a kill (continuous only, no
+; cumulative credit across dips) — see SyncDesperateTracking.
+Float DesperateEnteredGameTime = 0.0
+Float CALM_BONUS_PATIENCE_HOURS = 13.0
 Bool HungerWasSated
 Bool Property HungerAddictionApplied = False Auto
 Bool Property HungerStatPenaltyApplied = False Auto
 ; How many ModValue(-1) pairs this mod has applied (0 or 1). Survives loads; blocks re-apply.
 Int Property HungerSpecialPenaltyDepth = 0 Auto
+; Slice L — Calm-state reward. Mirrors HungerStatPenaltyApplied/HungerSpecialPenaltyDepth's
+; shape exactly (same ModValue-against-a-live-save risk), but +4/+4 AGI/CHA instead of -1/-1,
+; and gated on HungerLevel < 25.0 (Calm) instead of >= GetHungerAddictedThreshold(). Calm and
+; Addicted bands can never overlap (Calm ends at 25, MCM's Addicted-threshold floor is 25), so
+; clearing the penalty on Calm entry needs no extra code — SyncHungerAddictionSpell already
+; does that on its own the moment HungerLevel drops. Also requires CalmBonusEligible — earned
+; only by a kill/satiation that follows >= CALM_BONUS_PATIENCE_HOURS of continuous Desperate
+; hunger (see SatiateHunger/SyncDesperateTracking); satiation itself is always unconditional
+; regardless of hunger level, only this bonus is patience-gated.
+Bool Property CalmBonusApplied = False Auto
+; How many ModValue(+4) pairs this mod has applied (0 or 1). Survives loads; blocks re-apply.
+Int Property CalmBonusDepth = 0 Auto
+; Set by SatiateHunger right before HungerLevel resets; consumed/reset the moment the Calm
+; bonus is cleared (leaving Calm) so a future satiation must re-earn it from scratch.
+Bool Property CalmBonusEligible = False Auto
 Spell KnifeHungerSpell
 MagicEffect KnifeHungerAgiEffect
 MagicEffect KnifeHungerChaEffect
@@ -117,6 +141,10 @@ Int FID_PICKMAN_GALLERY = 0x000379C5
 Int FID_PERK_CANNIBAL_1 = 0x0004B259 ; Cannibal01 (Hole in the Wall quest reward)
 Int FID_PERK_CANNIBAL_2 = 0x001D1A62 ; Cannibal02
 Int FID_PERK_CANNIBAL_3 = 0x001D1A63 ; Cannibal03
+; Slice N — verified against Fallout4.esm PERK records directly (scanned EDID, not guessed).
+Int FID_PERK_LADYKILLER_1 = 0x00019AA3 ; LadyKiller01
+Int FID_PERK_LADYKILLER_2 = 0x00065E33 ; LadyKiller02
+Int FID_PERK_LADYKILLER_3 = 0x00065E34 ; LadyKiller03
 Int FID_MGEF_RESTORE_HEALTH_GENERIC = 0x00023735 ; RestoreHealthGeneric
 ; Local forms (PickmansWhisper.esp) — low word for GetFormFromFile
 Int FID_HUNGER_SPEL = 0x00000801
@@ -335,6 +363,9 @@ Function HandleGameResume(String reason)
 	RefreshBladeOwnershipFromEquip()
 	ReconcileHungerSpecialPenaltyFlags()
 	SyncHungerAddictionSpell()
+	ReconcileCalmBonusFlags()
+	SyncDesperateTracking()
+	SyncCalmBonusSpell()
 	If VoiceAlias
 		VoiceAlias.LastNoticeToastRealTime = 0.0
 		VoiceAlias.LastNoticeDiagRealTime = 0.0
@@ -427,7 +458,7 @@ Function RegisterTarget(Actor akTarget)
 		EndIf
 
 	ElseIf IsTargetDead && isPickmansBladeEquipped
-		Debug.Notification("PW RegisterTarget: Target " + akTarget.GetDisplayName() + " is dead. She belongs to the knife now.")
+		Debug.Notification(akTarget.GetDisplayName() + " is dead. She belongs to the knife now.")
 		; Slice H — NoWait so LooksMenu Wait never stalls TargetScan / RegisterTarget.
 		PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 		If decay
@@ -498,31 +529,36 @@ Function RewardKill(Actor akSender)
 	ProcessKnifeKill(akSender)
 EndFunction
 
+; Rule: Bond means the player first acquired Pickman's Blade AND already has the Lady
+; Killer perk (Slice N — the mod demands it; without it the blade does nothing) — it can
+; never start before both are true. Enforced once here, at the single call site, rather
+; than trusting every caller (RunBondPoll, MarkOwnedBlade, PlayerAlias's blade-equipped
+; path, the MCM debug force-bond button) to already respect it. The Lady Killer half is a
+; LIVE check, not a one-time snapshot: RunBondPoll already re-calls StartBond("trigger")
+; every ~4s real-time whenever !BondStarted, so the moment the player picks up Lady Killer
+; later (even long after already owning/equipping the blade), the very next poll tick
+; passes this check and latches Bond — no new polling loop needed, BondStarted itself
+; stays a true one-way latch exactly as before.
 Function StartBond(String reason)
 	If BondStarted
+		Return
+	EndIf
+	If !PlayerHasBlade()
+		Debug.Trace("PickmansWhisper: bond blocked | blade not yet acquired (reason=" + reason + ")")
+		Return
+	EndIf
+	If !PlayerHasLadyKillerPerk()
+		Debug.Trace("PickmansWhisper: bond blocked | no Lady Killer perk (reason=" + reason + ")")
 		Return
 	EndIf
 
 	BondStarted = True
 	BondStartGameTime = Utility.GetCurrentGameTime()
 	Debug.Trace("PickmansWhisper: bond started (" + reason + ")")
-	; Always-visible status toast — not gated by voice settings or the once-ever intro
-	; line, so re-bonding on a not-yet-bonded save is obvious instead of requiring an
-	; MCM Debug check every few seconds to see when it catches up.
-	Debug.Notification("Pickman's Whisper: bond active")
-
-	If !IntroToastShown
-		IntroToastShown = True
-		String line = ""
-		If ModConfigAlias
-			line = ModConfigAlias.BondIntroGreeting
-		EndIf
-		If !line || GardenOfEden.StrLength(line) < 1
-			Debug.Trace("PickmansWhisper: ERROR bond intro — bondIntroGreeting missing/empty (ModConfig)")
-		Else
-			ToastVoice(line)
-		EndIf
-	EndIf
+	; Always-visible status toast — not gated by voice settings, so re-bonding on a
+	; not-yet-bonded save is obvious instead of requiring an MCM Debug check every few
+	; seconds to see when it catches up.
+	; Debug.Notification("Pickman's Whisper: bond active")
 
 	RefreshHungerPanel(False)
 	If !RefreshDebugBusy
@@ -683,6 +719,12 @@ Actor Function GetFacedSeverCorpse()
 		i += 1
 	EndWhile
 	Return best
+EndFunction
+
+; NecroSceneActive is a plain script var (not a Property), so cross-script readers (e.g.
+; PickmansWhisperExecuteScript) need this getter rather than direct field access.
+Bool Function IsNecroSceneActive()
+	Return NecroSceneActive
 EndFunction
 
 ; Aim corpse + blade → butcher Message.Show → Dismember.
@@ -1070,6 +1112,15 @@ Function ResolveVanillaForms()
 	If !CannibalPerk3
 		CannibalPerk3 = Game.GetFormFromFile(FID_PERK_CANNIBAL_3, "Fallout4.esm") as Perk
 	EndIf
+	If !LadyKillerPerk1
+		LadyKillerPerk1 = Game.GetFormFromFile(FID_PERK_LADYKILLER_1, "Fallout4.esm") as Perk
+	EndIf
+	If !LadyKillerPerk2
+		LadyKillerPerk2 = Game.GetFormFromFile(FID_PERK_LADYKILLER_2, "Fallout4.esm") as Perk
+	EndIf
+	If !LadyKillerPerk3
+		LadyKillerPerk3 = Game.GetFormFromFile(FID_PERK_LADYKILLER_3, "Fallout4.esm") as Perk
+	EndIf
 	If !RestoreHealthGenericEffect
 		RestoreHealthGenericEffect = Game.GetFormFromFile(FID_MGEF_RESTORE_HEALTH_GENERIC, "Fallout4.esm") as MagicEffect
 	EndIf
@@ -1088,6 +1139,24 @@ Bool Function PlayerHasCannibalPerk()
 		Return True
 	EndIf
 	If CannibalPerk3 && PlayerRef.HasPerk(CannibalPerk3)
+		Return True
+	EndIf
+	Return False
+EndFunction
+
+; Slice N — Bond requirement. Any rank, same additive-ranks reasoning as PlayerHasCannibalPerk.
+Bool Function PlayerHasLadyKillerPerk()
+	If !PlayerRef
+		Return False
+	EndIf
+	ResolveVanillaForms()
+	If LadyKillerPerk1 && PlayerRef.HasPerk(LadyKillerPerk1)
+		Return True
+	EndIf
+	If LadyKillerPerk2 && PlayerRef.HasPerk(LadyKillerPerk2)
+		Return True
+	EndIf
+	If LadyKillerPerk3 && PlayerRef.HasPerk(LadyKillerPerk3)
 		Return True
 	EndIf
 	Return False
@@ -1171,15 +1240,43 @@ Function RunBondPoll()
 	If inGallery && !SeenGallery
 		SeenGallery = True
 		Debug.Trace("PickmansWhisper: entered Pickman Gallery")
+		AnnounceGalleryIntro()
 	EndIf
+	; Routes through MarkOwnedBlade (not a raw SeenBlade set) so the R1 first-acquire voice
+	; line fires from whichever detection path notices first — this poll is a fallback net,
+	; OnItemAdded->MarkOwnedBlade is the primary path.
 	If hasBlade && !SeenBlade
-		SeenBlade = True
-		Debug.Trace("PickmansWhisper: acquired Pickman's Blade")
+		MarkOwnedBlade("poll-detect")
 	EndIf
 
-	If !BondStarted && (inGallery || hasBlade || equipped)
+	; Gallery entry alone no longer triggers Bond (was inGallery || hasBlade || equipped) —
+	; Bond now requires real blade ownership/equip, not just standing in the room. SeenGallery
+	; above still tracks/traces the visit and fires the gallery-intro dialog; it no longer
+	; starts Bond itself.
+	If !BondStarted && (hasBlade || equipped)
 		StartBond("trigger")
 	EndIf
+EndFunction
+
+; Once-per-save "welcome to the Gallery" message dialog, fired the one time SeenGallery
+; flips True (see RunBondPoll). Decoupled from Bond/blade entirely — bondIntroGreeting's
+; default ModConfig text is Gallery-flavored, so it belongs to the room, not to blade
+; ownership or Bond's game-state unlock (see StartBond's own rule: Bond requires
+; PlayerHasBlade, independent of this). Message dialog (not a toast) for the same reason
+; as AnnounceBladeAcquire: SeenGallery is already latched True by the time this runs, so
+; there is no later retry — no gate here beyond the empty-line check would risk silently
+; eating the only chance this line ever gets.
+Function AnnounceGalleryIntro()
+	String line = ""
+	If ModConfigAlias
+		line = ModConfigAlias.BondIntroGreeting
+	EndIf
+	If !line || GardenOfEden.StrLength(line) < 1
+		Debug.Trace("PickmansWhisper: ERROR gallery intro — bondIntroGreeting missing/empty (ModConfig)")
+		Return
+	EndIf
+	Debug.MessageBox(line)
+	Debug.Trace("PickmansWhisper: gallery intro voice | " + line)
 EndFunction
 
 Bool Function IsPlayerInGallery()
@@ -1386,10 +1483,53 @@ Function MarkOwnedBlade(String reason)
 	If !SeenBlade
 		SeenBlade = True
 		Debug.Trace("PickmansWhisper: acquired Pickman's Blade (" + reason + ")")
+		AnnounceBladeAcquire()
 	EndIf
 	If !BondStarted
 		StartBond(reason)
 	EndIf
+EndFunction
+
+; Slice R1 — once-per-save first-acquire voice line, fired the one time SeenBlade flips
+; True (see MarkOwnedBlade). Message dialog (not a toast) so this once-ever line is
+; guaranteed seen — same reasoning as StartBond's bond-intro dialog: SeenBlade is already
+; latched True by the time this runs, so there is no later retry. Deliberately NOT gated
+; on IsVoiceWeaponReady OR IsVoiceEnabled like every other voice line in this mod — this
+; is the acquire moment itself (may happen while sheathed), and any gate here could
+; silently eat the only chance it gets — confirmed live (Papyrus.0.log) this event fired
+; but produced zero visible output while still gated on IsVoiceEnabled. Missing
+; bladeAcquireToast = skip (Trace only; no fallback line, unlike namedKillToast's
+; generic-praise fallback).
+Function AnnounceBladeAcquire()
+	If !ModConfigAlias || !ModConfigAlias.BladeAcquireToast
+		Debug.Trace("PickmansWhisper: blade acquire skip | bladeAcquireToast missing/empty (ModConfig)")
+		Return
+	EndIf
+	String line = ModConfigAlias.BladeAcquireToast
+	If !VoiceAlias
+		Debug.Trace("PickmansWhisper: blade acquire — VoiceAlias unbound, plain MessageBox fallback")
+		Debug.MessageBox(line)
+		Return
+	EndIf
+	Int mode = VoiceAlias.GetVoiceDeliveryMode()
+	If mode != 1
+		Debug.MessageBox(line)
+	EndIf
+	If mode != 2
+		If ModConfigAlias.BladeAcquireAudio
+			; NOTE: PlayWhisperXwmByFile itself still gates on IsVoiceWeaponReady (shared
+			; machinery with namedKillAudio etc.) — if bladeAcquireAudio is ever set, the
+			; audio half of this event stays blade-in-hand-only even though the dialog
+			; above isn't. Not fixed here (touching PlayWhisperXwmByFile affects every
+			; other audio-driven feature); revisit if this ever ships a real .xwm.
+			VoiceAlias.PlayWhisperXwmByFile(ModConfigAlias.BladeAcquireAudio)
+		ElseIf mode == 1
+			; Audio-only with no audio key — still deliver the dialog so the moment is not silent.
+			Debug.MessageBox(line)
+			Debug.Trace("PickmansWhisper: bladeAcquireAudio missing — dialog fallback for audio-only mode")
+		EndIf
+	EndIf
+	Debug.Trace("PickmansWhisper: blade acquire voice | " + line)
 EndFunction
 
 Function RefreshBladeOwnershipFromEquip()
@@ -1516,14 +1656,14 @@ Function ToggleDialogActivateChoices()
 	SyncDialogActivatePerks()
 	If DialogActivateChoicesEnabled
 		If BladeCurrentlyDrawn
-			Debug.Notification("PickmansWhisper: Trade/Slavery ON — sheath blade to use")
+			; Debug.Notification("PickmansWhisper: Trade/Slavery ON — sheath blade to use")
 			Debug.Trace("PickmansWhisper: dialog activate choices ON (hidden while blade drawn)")
 		Else
-			Debug.Notification("PickmansWhisper: Trade/Slavery ON — ] again before fighting")
+			; Debug.Notification("PickmansWhisper: Trade/Slavery ON — ] again before fighting")
 			Debug.Trace("PickmansWhisper: dialog activate choices ON")
 		EndIf
 	Else
-		Debug.Notification("PickmansWhisper: Trade/Slavery OFF")
+		; Debug.Notification("PickmansWhisper: Trade/Slavery OFF")
 		Debug.Trace("PickmansWhisper: dialog activate choices OFF")
 	EndIf
 EndFunction
@@ -2396,6 +2536,20 @@ PickmansWhisperSlaveSceneScript Function SlaveScene()
 	Return (Self as Quest) as PickmansWhisperSlaveSceneScript
 EndFunction
 
+PickmansWhisperExecuteScript Function Execute()
+	Return (Self as Quest) as PickmansWhisperExecuteScript
+EndFunction
+
+; Hotkey entry point (\ — PlayerAliasScript.KEY_EXECUTE) → feature script. Slice W.
+Function TryExecuteAimedVictim()
+	PickmansWhisperExecuteScript ex = Execute()
+	If !ex
+		Debug.Notification("Pickman's Whisper: execute menu — script missing")
+		Return
+	EndIf
+	ex.TryExecuteAimedVictim()
+EndFunction
+
 ; Perk OnEntryRun → feature script (activate choice Trade).
 Function TryForceVictimTradeFromActivate(Actor akTarget)
 	PickmansWhisperVictimTradeScript trade = VictimTrade()
@@ -2802,8 +2956,14 @@ Bool Function IsHungerAddictionSpellEnabled()
 	Return True
 EndFunction
 
+; Slice L pace: 1.0/hr -> ~25h per 25-point band (Calm/Restless), ~20h per 20-point band
+; (Hungry/Starving) — roughly a day per stage, per feedback that 0.5/hr (~8.3 game-days to
+; 100) dragged too much. Calm->desperate (90) ~90h (~3.75 days); 0->100 ~100h (~4.2 days).
+; Bands are unequal width (25/25/20/20) so a single rate can't make every stage exactly 24h
+; — 1.0 is the closest clean round number. Delta-based math in RunHungerTick already scales
+; correctly with any rate; this is purely a default/fallback tuning value, not a formula change.
 Float Function GetHungerTimeGainPerHour()
-	Float v = 5.0
+	Float v = 1.0
 	If MCM.IsInstalled()
 		v = MCM.GetModSettingFloat(MOD_NAME, "fTimeGain:Hunger")
 	EndIf
@@ -2860,6 +3020,8 @@ Function RunHungerTick()
 		LastHungerPollGameTime = Utility.GetCurrentGameTime()
 		HungerWasSated = False
 		SyncHungerAddictionSpell()
+		SyncDesperateTracking()
+		SyncCalmBonusSpell()
 		Return
 	EndIf
 	If Utility.IsInMenuMode()
@@ -2901,6 +3063,8 @@ Function RunHungerTick()
 	HungerWasSated = satedNow
 	LastHungerPollGameTime = now
 	SyncHungerAddictionSpell()
+	SyncDesperateTracking()
+	SyncCalmBonusSpell()
 	RefreshHungerPanel(False)
 EndFunction
 
@@ -2918,6 +3082,8 @@ Function ApplyHungerDelta(Float amount, String reason)
 	Debug.Trace("PickmansWhisper: hunger " + before + " -> " + HungerLevel + " (" + reason + ")")
 	MaybeToastHungerBand(before, HungerLevel)
 	SyncHungerAddictionSpell()
+	SyncDesperateTracking()
+	SyncCalmBonusSpell()
 EndFunction
 
 Function MaybeToastHungerBand(Float before, Float after)
@@ -3462,8 +3628,14 @@ Bool Function MaybeSpeakNamedKillVoice(Actor victim)
 EndFunction
 
 ; Call after a valid knife kill (or MCM debug). Clears meter + sated window.
+; Satiation itself is always unconditional on a valid kill, regardless of hunger level —
+; the patience-gated Calm bonus below is a separate, additional check layered on top, not
+; a requirement for satiating.
 Function SatiateHunger()
 	Float now = Utility.GetCurrentGameTime()
+	; Read DesperateEnteredGameTime BEFORE HungerLevel resets — SyncDesperateTracking below
+	; would otherwise immediately clear it once HungerLevel drops under 90.
+	CalmBonusEligible = DesperateEnteredGameTime > 0.0 && (now - DesperateEnteredGameTime) * 24.0 >= CALM_BONUS_PATIENCE_HOURS
 	LastHungerPollGameTime = now
 	HungerLevel = 0.0
 	LastHungerBand = 0
@@ -3471,8 +3643,10 @@ Function SatiateHunger()
 	HungerWasSated = True
 	BondIntensity = BondIntensity + 1.0
 	SyncHungerAddictionSpell()
+	SyncDesperateTracking()
+	SyncCalmBonusSpell()
 	RefreshHungerPanel(False)
-	Debug.Trace("PickmansWhisper: hunger satiated until " + SatedUntilGameTime)
+	Debug.Trace("PickmansWhisper: hunger satiated until " + SatedUntilGameTime + " calmBonusEligible=" + CalmBonusEligible)
 EndFunction
 
 String Function FormatSpecialSnapshot()
@@ -3661,6 +3835,138 @@ Function SyncHungerAddictionSpell()
 	EndIf
 EndFunction
 
+; Align flags with depth after load / script updates so Sync never ModValue twice. Mirrors
+; ReconcileHungerSpecialPenaltyFlags.
+Function ReconcileCalmBonusFlags()
+	If CalmBonusDepth < 0
+		CalmBonusDepth = 0
+	EndIf
+	If CalmBonusDepth > 1
+		Debug.Trace("PickmansWhisper: calm bonus depth was " + CalmBonusDepth + " — capping bookkeeping at 1")
+		CalmBonusDepth = 1
+	EndIf
+	If CalmBonusDepth > 0
+		CalmBonusApplied = True
+	ElseIf CalmBonusApplied
+		CalmBonusDepth = 1
+		Debug.Trace("PickmansWhisper: calm bonus depth reconciled from flag -> 1")
+	EndIf
+EndFunction
+
+Function ApplyCalmBonus()
+	If !PlayerRef
+		Return
+	EndIf
+	ReconcileCalmBonusFlags()
+	; Idempotent — never ModValue again while depth already accounts for a live bonus.
+	If CalmBonusApplied || CalmBonusDepth > 0
+		CalmBonusApplied = True
+		If CalmBonusDepth < 1
+			CalmBonusDepth = 1
+		EndIf
+		Debug.Trace("PickmansWhisper: calm bonus +4 skipped (already applied depth=" + CalmBonusDepth + ") " + FormatSpecialSnapshot())
+		Return
+	EndIf
+	ActorValue avAgi = Game.GetForm(0x000002C7) as ActorValue
+	ActorValue avCha = Game.GetForm(0x000002C5) as ActorValue
+	If !avAgi
+		avAgi = Game.GetFormFromFile(0x000002C7, "Fallout4.esm") as ActorValue
+	EndIf
+	If !avCha
+		avCha = Game.GetFormFromFile(0x000002C5, "Fallout4.esm") as ActorValue
+	EndIf
+	If avAgi
+		PlayerRef.ModValue(avAgi, 4.0)
+	EndIf
+	If avCha
+		PlayerRef.ModValue(avCha, 4.0)
+	EndIf
+	CalmBonusDepth = 1
+	CalmBonusApplied = True
+	Debug.Trace("PickmansWhisper: calm bonus +4 applied (patience earned) " + FormatSpecialSnapshot())
+	Debug.Notification("Pickman's Whisper: patience rewarded — AGI/CHA +4")
+EndFunction
+
+Function ClearCalmBonus()
+	If !PlayerRef
+		Return
+	EndIf
+	ReconcileCalmBonusFlags()
+	Int n = CalmBonusDepth
+	If n < 1 && !CalmBonusApplied
+		Return
+	EndIf
+	If n < 1
+		n = 1
+	EndIf
+	ActorValue avAgi = Game.GetForm(0x000002C7) as ActorValue
+	ActorValue avCha = Game.GetForm(0x000002C5) as ActorValue
+	If !avAgi
+		avAgi = Game.GetFormFromFile(0x000002C7, "Fallout4.esm") as ActorValue
+	EndIf
+	If !avCha
+		avCha = Game.GetFormFromFile(0x000002C5, "Fallout4.esm") as ActorValue
+	EndIf
+	Int i = 0
+	While i < n
+		If avAgi
+			PlayerRef.ModValue(avAgi, -4.0)
+		EndIf
+		If avCha
+			PlayerRef.ModValue(avCha, -4.0)
+		EndIf
+		i += 1
+	EndWhile
+	CalmBonusDepth = 0
+	CalmBonusApplied = False
+	Debug.Trace("PickmansWhisper: calm bonus -4 removed " + FormatSpecialSnapshot())
+EndFunction
+
+; Live recompute (same shape as SyncCalmBonusSpell/SyncHungerAddictionSpell) — tracks
+; CONTINUOUS time at/above Desperate (90). Stamps entry the moment HungerLevel is >= 90
+; and not yet tracked; clears it the moment HungerLevel drops back below 90 before being
+; consumed by a kill — no cumulative credit across dips, matching the confirmed design.
+; Called from the same sites SyncHungerAddictionSpell/SyncCalmBonusSpell are, EXCEPT
+; SatiateHunger, which reads DesperateEnteredGameTime itself first (for eligibility)
+; before this would clear it.
+Function SyncDesperateTracking()
+	If HungerLevel >= 90.0
+		If DesperateEnteredGameTime <= 0.0
+			DesperateEnteredGameTime = Utility.GetCurrentGameTime()
+			Debug.Trace("PickmansWhisper: entered Desperate — patience clock started")
+		EndIf
+	ElseIf DesperateEnteredGameTime > 0.0
+		DesperateEnteredGameTime = 0.0
+		Debug.Trace("PickmansWhisper: left Desperate before satiating — patience clock reset")
+	EndIf
+EndFunction
+
+; Slice L — Calm-state reward. Same level-based recompute-and-diff shape as
+; SyncHungerAddictionSpell: recomputes band membership fresh every call (no edge-detection,
+; no timer) and diffs against CalmBonusApplied/CalmBonusDepth. Also requires
+; CalmBonusEligible (set by SatiateHunger, earned only via >= CALM_BONUS_PATIENCE_HOURS of
+; continuous Desperate hunger before that kill) — reset the moment the bonus is cleared, so
+; leaving Calm always consumes the earn regardless of whether it was ever applied (e.g. MCM
+; toggled the addiction spell off, or some other reason ApplyCalmBonus never fired). Called
+; from the same sites SyncHungerAddictionSpell is (RunHungerTick x2, ApplyHungerDelta,
+; SatiateHunger, HandleGameResume) so it self-corrects on every hunger mutation and on load.
+Function SyncCalmBonusSpell()
+	If !PlayerRef
+		Return
+	EndIf
+	ReconcileCalmBonusFlags()
+	Bool want = IsHungerUnlocked() && HungerLevel < 25.0 && CalmBonusEligible
+	If want
+		If !CalmBonusApplied && CalmBonusDepth <= 0
+			ApplyCalmBonus()
+		EndIf
+	ElseIf CalmBonusApplied || CalmBonusDepth > 0 || CalmBonusEligible
+		ClearCalmBonus()
+		CalmBonusEligible = False
+		Debug.Trace("PickmansWhisper: calm bonus cleared")
+	EndIf
+EndFunction
+
 ; MCM — each click undoes one rogue AGI/CHA pair. Keeps a single legitimate penalty if still addicted.
 Function RepairHungerSpecialStacks()
 	; Immediate toast — proves MCM CallFunction reached the body (prior jam starved this).
@@ -3769,9 +4075,14 @@ Function RefreshHungerPanel(Bool refreshMenu = True)
 		Return
 	EndIf
 	If !IsHungerUnlocked()
-		MCM.SetModSettingString(MOD_NAME, "sHungerLevel:Hunger", "locked (visit gallery or take the blade)")
+		If PlayerHasBlade() && !PlayerHasLadyKillerPerk()
+			MCM.SetModSettingString(MOD_NAME, "sHungerLevel:Hunger", "locked (needs Lady Killer perk)")
+		Else
+			MCM.SetModSettingString(MOD_NAME, "sHungerLevel:Hunger", "locked (visit gallery or take the blade)")
+		EndIf
 		MCM.SetModSettingString(MOD_NAME, "sHungerSated:Hunger", "—")
 		MCM.SetModSettingString(MOD_NAME, "sBondState:Hunger", "not bonded")
+		MCM.SetModSettingString(MOD_NAME, "sDesperatePatience:Hunger", "—")
 	Else
 		Int lvl = HungerLevel as Int
 		String band = GetHungerBandLabel(HungerLevel)
@@ -3786,6 +4097,16 @@ Function RefreshHungerPanel(Bool refreshMenu = True)
 			MCM.SetModSettingString(MOD_NAME, "sHungerSated:Hunger", "no — kill with Pickman's Blade")
 		EndIf
 		MCM.SetModSettingString(MOD_NAME, "sBondState:Hunger", "bonded | intensity " + (BondIntensity as Int) + " | kills " + KnifeKillCount)
+		If DesperateEnteredGameTime > 0.0
+			Float desperateHours = (Utility.GetCurrentGameTime() - DesperateEnteredGameTime) * 24.0
+			If desperateHours >= CALM_BONUS_PATIENCE_HOURS
+				MCM.SetModSettingString(MOD_NAME, "sDesperatePatience:Hunger", (desperateHours as Int) + "h / " + (CALM_BONUS_PATIENCE_HOURS as Int) + "h (boon ready)")
+			Else
+				MCM.SetModSettingString(MOD_NAME, "sDesperatePatience:Hunger", (desperateHours as Int) + "h / " + (CALM_BONUS_PATIENCE_HOURS as Int) + "h")
+			EndIf
+		Else
+			MCM.SetModSettingString(MOD_NAME, "sDesperatePatience:Hunger", "not desperate")
+		EndIf
 	EndIf
 	If refreshMenu
 		MCM.RefreshMenu()
@@ -3811,6 +4132,13 @@ Function ShowHungerInfo()
 	msg += "Knife kills (sating): " + KnifeKillCount + "\n"
 	msg += "Addicted at: " + (GetHungerAddictedThreshold() as Int) + "\n"
 	msg += "Withdrawal flag: " + HungerStatPenaltyApplied + "\n"
+	msg += "Calm bonus flag: " + CalmBonusApplied + " (eligible=" + CalmBonusEligible + ")\n"
+	If DesperateEnteredGameTime > 0.0
+		Float desperateHours = (Utility.GetCurrentGameTime() - DesperateEnteredGameTime) * 24.0
+		msg += "Desperate patience: " + (desperateHours as Int) + "h / " + (CALM_BONUS_PATIENCE_HOURS as Int) + "h\n"
+	Else
+		msg += "Desperate patience: not tracking (not currently Desperate)\n"
+	EndIf
 	msg += "SPECIAL now: " + FormatSpecialSnapshot() + "\n"
 	msg += "\nRises with unused knife-time after bonding.\n"
 	msg += "Killing a non-essential human with Pickman's Blade sates hunger."
@@ -3839,6 +4167,8 @@ Function ForceHungerAddictedTest()
 	HungerSpecialPenaltyDepth = 0
 	String before = FormatSpecialSnapshot()
 	SyncHungerAddictionSpell()
+	SyncDesperateTracking()
+	SyncCalmBonusSpell()
 	RefreshHungerPanel(True)
 	String msg = "Hunger forced to 80.\nBefore: " + before + "\nAfter: " + FormatSpecialSnapshot() + "\n"
 	msg += "Withdrawal flag: " + HungerStatPenaltyApplied + " depth=" + HungerSpecialPenaltyDepth
@@ -3846,6 +4176,14 @@ Function ForceHungerAddictedTest()
 EndFunction
 
 Function DebugForceBond()
+	If !PlayerHasBlade()
+		DiagNotify("Pickman's Whisper\n\nBond blocked — Pickman's Blade not yet acquired. Bond can never start before the blade (give/equip it first).")
+		Return
+	EndIf
+	If !PlayerHasLadyKillerPerk()
+		DiagNotify("Pickman's Whisper\n\nBond blocked — Lady Killer perk not yet acquired. Bond can never start without it (give/take the perk first).")
+		Return
+	EndIf
 	StartBond("mcm-debug")
 	RefreshDebugStatus()
 	DiagNotify("Pickman's Whisper\n\nBond forced. Hunger unlocked.")
@@ -3955,15 +4293,15 @@ EndFunction
 ; hunting for a genuinely pre-bond save. This lets the next RunBondPoll (~4s, since
 ; the blade is presumably already equipped) re-trigger StartBond on demand.
 Function DebugResetBond()
-	If !BondStarted
-		DiagNotify("Pickman's Whisper\n\nAlready unbonded — StartBond hasn't fired yet.")
+	If !BondStarted && !SeenGallery
+		DiagNotify("Pickman's Whisper\n\nNothing to reset — neither Bond nor the Gallery intro have fired yet.")
 		Return
 	EndIf
 	BondStarted = False
-	IntroToastShown = False
 	BondStartGameTime = 0.0
-	Debug.Trace("PickmansWhisper: DEBUG bond reset — awaiting next RunBondPoll")
-	DiagNotify("Pickman's Whisper\n\nBond reset (debug). Next bond poll (~4s, if blade is equipped/owned) re-triggers StartBond and the bond toast.")
+	SeenGallery = False
+	Debug.Trace("PickmansWhisper: DEBUG bond + gallery intro reset — awaiting next RunBondPoll")
+	DiagNotify("Pickman's Whisper\n\nBond + Gallery intro reset (debug). Next bond poll (~4s): Bond re-triggers if the blade is equipped/owned; the Gallery intro dialog re-triggers if you're standing in the Gallery.")
 EndFunction
 
 Function DebugReloadLines()

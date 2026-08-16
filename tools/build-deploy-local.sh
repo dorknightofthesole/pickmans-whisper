@@ -71,6 +71,7 @@ PSC_KILL_REWARD="PickmansWhisperKillRewardScript.psc"
 # types from source), but a .sh-only deploy is already broken for anything Slavery-related
 # before this feature; that gap needs its own follow-up pass, not papered over here.
 PSC_SLAVE_SCENE="PickmansWhisperSlaveSceneScript.psc"
+PSC_EXECUTE="PickmansWhisperExecuteScript.psc"
 
 to_win_path() {
   local p="$1"
@@ -173,6 +174,18 @@ python "$ROOT/tools/test_beat_before_kill.py" || exit 1
 echo "==> Slave scene (AAF, Slice U) contract test"
 python "$ROOT/tools/test_slave_scene.py" || exit 1
 
+echo "==> Blade acquire (Slice R1) contract test"
+python "$ROOT/tools/test_blade_acquire.py" || exit 1
+
+echo "==> Hunger pace + Calm bonus (Slice L) contract test"
+python "$ROOT/tools/test_hunger_pace_calm_bonus.py" || exit 1
+
+echo "==> Lady Killer bond gate (Slice N) contract test"
+python "$ROOT/tools/test_lady_killer_bond_gate.py" || exit 1
+
+echo "==> Execute kill (Slice W) contract test"
+python "$ROOT/tools/test_execute_kill.py" || exit 1
+
 echo "==> KillerScan retirement contract test"
 python "$ROOT/tools/test_no_killer_scan.py" || exit 1
 
@@ -204,10 +217,10 @@ python "$ROOT/tools/test_decay_face_stage_equip.py" || exit 1
 echo "==> Rebuilding PickmansWhisper.esp (Knife Hunger SPEL)"
 python "$ROOT/tools/build_hunger_spell_esp.py"
 
-echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_KILL_REWARD + $PSC_SLAVE_SCENE"
+echo "==> Compiling $PSC + $PSC_BED + $PSC_DECAY + $PSC_WOUND_LAB + $PSC_VICTIMS + $PSC_VOICE_SCAN + $PSC_ALIAS + $PSC_BUFF_TRACKER + $PSC_BEAT_BEFORE_KILL + $PSC_KILL_REWARD + $PSC_SLAVE_SCENE + $PSC_EXECUTE"
 (
   cd "$SRC"
-  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_KILL_REWARD" "$PSC_SLAVE_SCENE"; do
+  for script in "$PSC" "$PSC_BED" "$PSC_DECAY" "$PSC_WOUND_LAB" "$PSC_VICTIMS" "$PSC_VOICE_SCAN" "$PSC_ALIAS" "$PSC_BUFF_TRACKER" "$PSC_BEAT_BEFORE_KILL" "$PSC_KILL_REWARD" "$PSC_SLAVE_SCENE" "$PSC_EXECUTE"; do
     if [[ ! -f "$script" ]]; then
       echo "ERROR: missing $SRC/$script" >&2
       exit 1
@@ -265,6 +278,10 @@ if [[ ! -f "$PEX_OUT/PickmansWhisperSlaveSceneScript.pex" ]]; then
   echo "ERROR: compile produced no SlaveScene .pex" >&2
   exit 1
 fi
+if [[ ! -f "$PEX_OUT/PickmansWhisperExecuteScript.pex" ]]; then
+  echo "ERROR: compile produced no Execute .pex" >&2
+  exit 1
+fi
 
 echo "==> Deploying to $DEPLOY"
 mkdir -p \
@@ -290,6 +307,7 @@ cp -f "$PEX_OUT/PickmansWhisperBuffTrackerScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperBeatBeforeKillScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperKillRewardScript.pex" "$DEPLOY/Scripts/"
 cp -f "$PEX_OUT/PickmansWhisperSlaveSceneScript.pex" "$DEPLOY/Scripts/"
+cp -f "$PEX_OUT/PickmansWhisperExecuteScript.pex" "$DEPLOY/Scripts/"
 cp -f "$SRC/PickmansWhisperMainQuestScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBedGiftScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperCorpseDecayScript.psc" "$DEPLOY/Scripts/Source/User/"
@@ -301,6 +319,7 @@ cp -f "$SRC/PickmansWhisperBuffTrackerScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperBeatBeforeKillScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperKillRewardScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$SRC/PickmansWhisperSlaveSceneScript.psc" "$DEPLOY/Scripts/Source/User/"
+cp -f "$SRC/PickmansWhisperExecuteScript.psc" "$DEPLOY/Scripts/Source/User/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/config.json" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Config/PickmansWhisper/settings.ini" "$DEPLOY/MCM/Config/PickmansWhisper/"
 cp -f "$ROOT/Data/MCM/Settings/PickmansWhisper.ini" "$DEPLOY/MCM/Settings/"

@@ -197,12 +197,59 @@ def test_start_bond_equip_path() -> None:
     if "StartBond" in rew:
         fail("RewardKill must not StartBond")
     bond = fn_body(psc, "StartBond")
-    if "ModConfigAlias.BondIntroGreeting" not in bond:
-        fail("StartBond must still read ModConfigAlias.BondIntroGreeting")
+    if "ModConfigAlias.BondIntroGreeting" in bond:
+        fail("StartBond must NOT read ModConfigAlias.BondIntroGreeting — that line moved to "
+             "AnnounceGalleryIntro (Gallery entry), decoupled from Bond/blade entirely")
+    if "Debug.MessageBox" in bond:
+        fail("StartBond must NOT call Debug.MessageBox directly — the once-ever intro dialog "
+             "moved to AnnounceGalleryIntro, triggered on Gallery entry (SeenGallery), not on Bond start")
     if "ArmRuntimeLoops" in bond:
         fail("StartBond must not ArmRuntimeLoops (load/init arms scanners)")
     if "LastHungerPollGameTime" in bond or "LastKnifeActivityGameTime" in bond:
         fail("StartBond is bond latch only — no hunger/activity stamps")
+
+    gallery_intro = fn_body(psc, "AnnounceGalleryIntro")
+    gallery_intro_code_only = "\n".join(
+        ln for ln in gallery_intro.splitlines() if not ln.strip().startswith(";")
+    )
+    if "ModConfigAlias.BondIntroGreeting" not in gallery_intro:
+        fail("AnnounceGalleryIntro must read ModConfigAlias.BondIntroGreeting")
+    if "Debug.MessageBox(line)" not in gallery_intro_code_only:
+        fail("AnnounceGalleryIntro's once-ever Gallery welcome must use Debug.MessageBox (guaranteed-seen dialog, not a toast that can be missed)")
+    if "ToastVoice(line)" in gallery_intro_code_only:
+        fail("AnnounceGalleryIntro must not deliver the line via ToastVoice — that gates on IsVoiceWeaponReady/IsInMenuMode, either of which could permanently eat the only chance this once-ever line gets")
+    if "IsVoiceEnabled" in gallery_intro_code_only:
+        fail("AnnounceGalleryIntro's Debug.MessageBox(line) call must NOT be gated on IsVoiceEnabled (outside comments) — "
+             "confirmed live this exact gate made the blade-acquire dialog fire with zero visible output; "
+             "the Gallery intro must not repeat that mistake since SeenGallery has no later retry either")
+
+    # Rule: Bond means the player first acquired the blade — must never start without it,
+    # enforced once inside StartBond itself (not just trusted at every call site).
+    m = re.search(r"If\s+BondStarted\s*\n\s*Return\s*\n\s*EndIf\s*\n(.*?)BondStarted\s*=\s*True", bond, re.S)
+    if not m:
+        fail("StartBond must check !PlayerHasBlade() after the BondStarted guard and before setting BondStarted = True")
+    guard_gap = m.group(1)
+    if "PlayerHasBlade()" not in guard_gap:
+        fail("StartBond must guard on !PlayerHasBlade() before BondStarted = True — bond can never start before the blade is acquired")
+
+    force = fn_body(psc, "DebugForceBond")
+    if "PlayerHasBlade()" not in force:
+        fail("DebugForceBond must check PlayerHasBlade() itself and report an accurate blocked message — "
+             "otherwise it always claims 'Bond forced' even when StartBond silently refused")
+
+    poll = fn_body(psc, "RunBondPoll")
+    poll_code_only = "\n".join(
+        ln for ln in poll.splitlines() if not ln.strip().startswith(";")
+    )
+    if "inGallery || hasBlade" in poll_code_only or "(inGallery ||" in poll_code_only:
+        fail("RunBondPoll must not trigger StartBond on Gallery entry alone (outside comments) — "
+             "bond now requires real blade ownership/equip (hasBlade || equipped); confirmed live "
+             "that Gallery-alone triggering an old save's 'bond active' toast before the blade was "
+             "ever owned read as a bug")
+    if "hasBlade || equipped" not in poll_code_only:
+        fail("RunBondPoll must trigger StartBond on (hasBlade || equipped)")
+    if "AnnounceGalleryIntro()" not in poll_code_only:
+        fail("RunBondPoll must call AnnounceGalleryIntro() inside its SeenGallery-latch branch")
     if "LastKnifeActivityGameTime" in psc:
         fail("LastKnifeActivityGameTime retired (was write-only)")
     if "Function NoteKnifeActivity" in psc:

@@ -2,7 +2,10 @@
 # Edit and reload via MCM Voice > Reload line banks (or reopen MCM / reload save).
 # Blank and # lines ignored. Values are everything after the first '='.
 #
-# bondIntroGreeting — once-ever toast when bond first starts (StartBond). Missing/empty = skip toast (Trace).
+# bondIntroGreeting — once-ever Message dialog (Debug.MessageBox) the first time the player
+#   enters Pickman's Gallery (AnnounceGalleryIntro, fired from RunBondPoll's SeenGallery
+#   latch). Decoupled from Bond/blade entirely — Bond itself requires the blade
+#   (StartBond's PlayerHasBlade rule) and no longer shows this line. Missing/empty = skip (Trace).
 # hungerWithdrawalToast — when satiation ends and hunger starts climbing again. Missing/empty = skip (Trace).
 # renamePromptFemaleNPC — toast after 3+ counted looks (LookFixation) while she is still unnamed.
 # hitWhisper — blade OnHit encouragement (VoiceAlias toast for now; may become audio later).
@@ -17,6 +20,20 @@
 # namedKillToast / namedKillAudio — Slice E1: valid blade kill of a named Potential Victim.
 #   {name} is replaced with the Victim override name. Omit audio key until the .xwm exists
 #   (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key → generic praise.
+# bladeAcquireToast / bladeAcquireAudio — Slice R1: once-per-save first-acquire moment,
+#   fired the first time Pickman's Blade enters the player's inventory (hooked off Main's
+#   existing OnItemAdded -> MarkOwnedBlade, guarded by the SeenBlade latch so re-acquires
+#   / re-equips never replay it — a true one-time event). No {name} placeholder (this is
+#   about the player, not an NPC). Delivered as a Message dialog (Debug.MessageBox), not a
+#   toast — same reasoning as bondIntroGreeting/AnnounceGalleryIntro: SeenBlade is already
+#   latched by the time this runs, so a swallowed line here would never get a retry.
+#   Unlike every other voice line, NOT gated on IsVoiceWeaponReady OR IsVoiceEnabled —
+#   this is the acquire moment itself (may happen while the blade is sheathed) — only
+#   iVoiceDelivery mode still applies. (The AUDIO half still requires blade-in-hand —
+#   shared PlayWhisperXwmByFile machinery with namedKillAudio.) Omit audio key until the
+#   .xwm exists (rebuild ESP so WhisperSndrIds gets the stem). Missing toast key →
+#   silently skipped (Trace only, no fallback line — unlike namedKillToast there is no
+#   generic praise to fall back to).
 # eatRipeCorpseToast — Slice H P4: Cannibal-perk nag once a tracked knife-kill corpse hits
 #   Black Putrefaction (max decay stage). {name} -> Victim override name, or "her" if unnamed.
 #   Max once per game-hour (all ripe corpses share one cooldown). Missing/empty key = no nag.
@@ -68,6 +85,8 @@ bedGiftWoundAlpha=0.40
 desperateNameSuffix= Dumb Bitch
 namedKillToast={name} is yours forever now.
 # namedKillAudio=NamedKill.xwm
+bladeAcquireToast=You hear a voice in the back of your head that you've never heard before, yet, there is something familiar about it, like an old friend whom you never knew.
+# bladeAcquireAudio=BladeAcquire.xwm
 eatRipeCorpseToast=Eat {name} before she is too ripe.
 ateRipeCorpseToast={name} was delicious, though a bit ripe.
 ateRipeCorpseEndBuffAmount=2
