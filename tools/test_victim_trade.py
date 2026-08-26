@@ -203,8 +203,8 @@ def test_esp_builder() -> None:
         fail("ESP builder must bind TradeActivatePerk property")
     if "EmptyOutfit" not in text:
         fail("ESP builder must bind EmptyOutfit property")
-    if "NEXT_OID = 0x0000087C" not in text:
-        fail("ESP builder NEXT_OID must be past slavery PERK (and Slice W's execute menu MESG)")
+    if "NEXT_OID = 0x0000087F" not in text:
+        fail("ESP builder NEXT_OID must be past slavery PERK / execute MESG / mutilated body records")
     ok("ESP builder PERK Force Trade (living) + empty OTFT + VMAD wiring")
 
 

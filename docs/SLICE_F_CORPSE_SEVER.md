@@ -1,6 +1,6 @@
 # Slice F — butcher menu (blade corpse sever)
 
-Aim reticule at a dead adult female, wield **Pickman's Blade**, press **`/`** (`VK_OEM_2` = 191). **Butcher menu** (`Message.Show`) → `Actor.Dismember(part, False, True, False)`.
+Aim reticule at a dead adult female, wield **Pickman's Blade**, press **`/`** (`VK_OEM_2` = 191). **Butcher menu** (`Message.Show`) → `Actor.Dismember(part, False, True, False)` for Head / arms / legs. **Cut Off Tits** swaps the corpse onto a slot-33 mutilated-body ARMO and `PlaceAtMe`s the cut-off **MISC** beside her (not a Dismember bone).
 
 ## Notes
 
@@ -10,6 +10,12 @@ Aim reticule at a dead adult female, wield **Pickman's Blade**, press **`/`** (`
 - Gore: force dismember, **no** ForceBloodyMess (True gibs/explodes heads), **no** force-explode.
 - Skip while `NecroSceneActive`. Blade-not-drawn / bad aim toast (not silent).
 - MSG `PW_SeverLimbMenu` FormID `0x806` in `PickmansWhisper.esp`.
+- **Cut Off Tits** (implemented — awaiting in-game confirm): ARMA/ARMO `0x87C`/`0x87D` + weighted MISC `0x87E` (Havok drop).
+
+### Cut Off Tits assets
+
+- Body: `Data/Meshes/PickmansWhisper/Characters/FemaleBody_Mutilated_Tits.nif` — Fusion Girl Reduced + vanilla `basehumanFemaleskin.bgsm` / `FemaleBody_d.dds`.
+- Prop: `Data/Meshes/PickmansWhisper/Props/FemaleBody_Prop_Tits.nif` — same skin on the flesh; cut surface uses vanilla **`Materials\Gore\GoreHumanLeg.BGSM`**. Re-export must keep that gore material.
 
 ## Verify
 

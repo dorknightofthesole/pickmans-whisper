@@ -100,6 +100,7 @@ Working note: [SLICE_F_CORPSE_SEVER.md](SLICE_F_CORPSE_SEVER.md). **Done** (veri
 
 - [x] Aim reticule at a dead adult female; wield **Pickman's Blade**; press `/` (`VK_OEM_2` = 191).
 - [x] Limb picker via MSG `PW_SeverLimbMenu` (`0x806`) → `Actor.Dismember(part, False, True, False)` (force sever, no BloodyMess gib).
+- [ ] **Cut Off Tits** — slot-33 mutilated body ARMO + weighted MISC prop (Havok drop). Prop cut surface: vanilla `Materials\Gore\GoreHumanLeg.BGSM` (see [SLICE_F](SLICE_F_CORPSE_SEVER.md)). Implemented — awaiting in-game confirm.
 - [x] Skip Necromantic scene latch. Hacksaw / other weapons later.
 - [x] Contract: `tools/test_corpse_sever.py`.
 

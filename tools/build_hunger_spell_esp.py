@@ -70,8 +70,20 @@ FID_PERK_VICTIM_TRADE = 0x01000878  # PW_VictimTradeActivate (Talk + Force Trade
 FID_OTFT_EMPTY = 0x01000879  # PW_EmptyOutfit — strip default outfits for Force Trade
 FID_PERK_SLAVERY = 0x0100087A  # PW_SlaveryActivate (Talk + Enslave / Take Her)
 FID_EXECUTE_MSG = 0x0100087B  # PW_ExecuteMenu (Slice W — Decapitate / Smash Head In)
+# Slot-33 mutilated female body (Cut Off Tits butcher option) + dropped MISC prop.
+FID_MUTILATED_BODY_ARMA = 0x0100087C
+FID_MUTILATED_BODY_ARMO = 0x0100087D
+FID_CUT_OFF_TITS_MISC = 0x0100087E
+# BOD2 bit 3 = biped 33 Body (slot 30 + 3).
+BOD2_SLOT_33 = struct.pack("<I", 0x00000008)
+RECORD_FLAG_NONPLAYABLE = 0x00000004
+MUTILATED_BODY_MESH = ROOT / "Data" / "Meshes" / "PickmansWhisper" / "Characters" / "FemaleBody_Mutilated_Tits.nif"
+MUTILATED_BODY_MESH_REL = "PickmansWhisper\\Characters\\FemaleBody_Mutilated_Tits.nif"
+# Cut surface on this nif: vanilla Materials\Gore\GoreHumanLeg.BGSM (see docs/SLICE_F_CORPSE_SEVER.md).
+CUT_OFF_TITS_PROP_MESH = ROOT / "Data" / "Meshes" / "PickmansWhisper" / "Props" / "FemaleBody_Prop_Tits.nif"
+CUT_OFF_TITS_PROP_MESH_REL = "PickmansWhisper\\Props\\FemaleBody_Prop_Tits.nif"
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
-NEXT_OID = 0x0000087C  # == (FID_EXECUTE_MSG & 0xFFFFFF) + 1
+NEXT_OID = 0x0000087F  # == (FID_CUT_OFF_TITS_MISC & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
@@ -744,6 +756,81 @@ def collect_decay_face_armor_records() -> tuple[list[bytes], list[bytes]]:
     return armas, armos
 
 
+def build_mutilated_body_arma_payload() -> bytes:
+    """ARMA — female body mesh only, biped 33, HumanRace."""
+    # MO3T: same 20-byte dump as decay-face ARMAs.
+    mo3t = b"\x04\x00\x00\x00" + (b"\x00" * 16)
+    return b"".join(
+        [
+            field(b"EDID", zstr("PickmansWhisper_MutilatedFemaleBody_ARMA")),
+            field(b"BOD2", BOD2_SLOT_33),
+            field(b"RNAM", u32(FID_HUMAN_RACE)),
+            field(b"DNAM", b"\x00" * 12),
+            field(b"MOD3", zstr(MUTILATED_BODY_MESH_REL)),
+            field(b"MO3T", mo3t),
+        ]
+    )
+
+
+def build_mutilated_body_armo_payload() -> bytes:
+    """ARMO — slot 33 body skin; Non-Playable so it is not corpse loot."""
+    return b"".join(
+        [
+            field(b"EDID", zstr("PickmansWhisper_MutilatedFemaleBody_ARMO")),
+            field(b"OBND", b"\x00" * 12),
+            field(b"FULL", zstr("PW Mutilated Body")),
+            field(b"BOD2", BOD2_SLOT_33),
+            field(b"RNAM", u32(FID_HUMAN_RACE)),
+            field(b"DESC", zstr("")),
+            field(b"INDX", b"\x00\x00"),
+            field(b"MODL", u32(FID_MUTILATED_BODY_ARMA)),
+            field(b"DATA", b"\x00" * 12),
+            field(b"FNAM", b"\x00" * 8),
+        ]
+    )
+
+
+def build_cut_off_tits_misc_payload() -> bytes:
+    """MISC world prop — inventory weight + Havok so PlaceAtMe can fall."""
+    modt = b"\x04\x00\x00\x00" + (b"\x00" * 16)
+    # AABB from FemaleBody_Prop_Tits.nif verts (game units), padded 1.
+    obnd = struct.pack("<6h", -12, -8, -8, 12, 5, 8)
+    return b"".join(
+        [
+            field(b"EDID", zstr("PickmansWhisper_PropCutOffTits")),
+            field(b"OBND", obnd),
+            field(b"FULL", zstr("Cut Off Tits")),
+            field(b"MODL", zstr(CUT_OFF_TITS_PROP_MESH_REL)),
+            field(b"MODT", modt),
+            field(b"DATA", struct.pack("<If", 0, 3.0)),
+        ]
+    )
+
+
+def collect_mutilated_body_records() -> tuple[bytes, bytes, bytes]:
+    """ARMA + ARMO + MISC for Cut Off Tits. Fail loud if either NIF is missing."""
+    if not MUTILATED_BODY_MESH.is_file():
+        raise SystemExit(f"Missing mutilated body NIF: {MUTILATED_BODY_MESH}")
+    if not CUT_OFF_TITS_PROP_MESH.is_file():
+        raise SystemExit(f"Missing cut-off tits prop NIF: {CUT_OFF_TITS_PROP_MESH}")
+    arma = record(b"ARMA", FID_MUTILATED_BODY_ARMA, build_mutilated_body_arma_payload())
+    armo = record(
+        b"ARMO",
+        FID_MUTILATED_BODY_ARMO,
+        build_mutilated_body_armo_payload(),
+        flags=RECORD_FLAG_NONPLAYABLE,
+    )
+    misc = record(b"MISC", FID_CUT_OFF_TITS_MISC, build_cut_off_tits_misc_payload())
+    print(
+        f"  ARMA 0x{FID_MUTILATED_BODY_ARMA:08X} / ARMO 0x{FID_MUTILATED_BODY_ARMO:08X} "
+        f"MutilatedFemaleBody -> Meshes\\{MUTILATED_BODY_MESH_REL}"
+    )
+    print(
+        f"  MISC 0x{FID_CUT_OFF_TITS_MISC:08X} PropCutOffTits -> Meshes\\{CUT_OFF_TITS_PROP_MESH_REL}"
+    )
+    return arma, armo, misc
+
+
 def build_empty_outfit_payload() -> bytes:
     """OTFT with zero items — clears ActorBase default outfit for Force Trade strip."""
     return b"".join(
@@ -859,6 +946,7 @@ def build_sever_limb_menu_payload() -> bytes:
         "Right Arm",
         "Left Leg",
         "Right Leg",
+        "Cut Off Tits",
         "Cancel",
     )
     parts = [
@@ -1009,12 +1097,13 @@ def main() -> None:
     sndr_recs = collect_sndr_records()
     sndr_blob = b"".join(sndr_recs)
     arma_recs, armo_recs = collect_decay_face_armor_records()
-    arma_blob = b"".join(arma_recs)
-    armo_blob = b"".join(armo_recs)
+    mut_arma, mut_armo, cut_misc = collect_mutilated_body_records()
+    arma_blob = b"".join(arma_recs) + mut_arma
+    armo_blob = b"".join(armo_recs) + mut_armo
 
-    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + 2x MESG + 2x PERK + OTFT + 4 AVIF + N SNDR + N ARMA + N ARMO
-    # (proximity cloak MGEF/SPEL chain retired)
-    num_records = 15 + len(sndr_recs) + len(arma_recs) + len(armo_recs)
+    # 2x QUST + SPEL + GLOB + 2x MGEF hunger + 2x MESG + 2x PERK + OTFT + 4 AVIF
+    # + N SNDR + N ARMA + N ARMO + MISC (proximity cloak MGEF/SPEL chain retired)
+    num_records = 15 + len(sndr_recs) + len(arma_recs) + len(armo_recs) + 3
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
@@ -1028,6 +1117,7 @@ def main() -> None:
         + group(b"MESG", msg_rec + msg_execute)
         + group(b"PERK", perk_trade + perk_slavery)
         + group(b"OTFT", otft_empty)
+        + group(b"MISC", cut_misc)
         + group(b"ARMA", arma_blob)
         + group(b"ARMO", armo_blob)
         + group(b"QUST", main_q + player_q)
@@ -1051,6 +1141,7 @@ def main() -> None:
         f"0x{FID_AV_TARGET_TRACKER_EXPIRATION:08X} PW_TargetTrackerExpiration"
     )
     print(f"  ARMA/ARMO decay face variants={len(arma_recs)} (biped 54)")
+    print("  ARMA/ARMO mutilated female body (biped 33) + MISC cut-off tits prop")
     print(
         f"  QUST 0x{FID_QUEST:08X} PickmansWhisperMain + VoiceAlias ALST {ALIAS_VOICE_ID} "
         f"(TrackedNPCs alias retired)"

@@ -727,7 +727,7 @@ Bool Function IsNecroSceneActive()
 	Return NecroSceneActive
 EndFunction
 
-; Aim corpse + blade → butcher Message.Show → Dismember.
+; Aim corpse + blade → butcher Message.Show → Dismember limbs, or Cut Off Tits body swap.
 ; abIgnoreMenuMode: True for MCM Debug (victims aim cache + allow while MCM open).
 Function TrySeverAimedCorpse(Bool abIgnoreMenuMode = False)
 	; Do not soft-fail on IsInMenuMode for the hotkey — some HUD mods leave it sticky.
@@ -754,15 +754,22 @@ Function TrySeverAimedCorpse(Bool abIgnoreMenuMode = False)
 		Return
 	EndIf
 	Int btn = SeverLimbMenu.Show()
-	; 0 Head / 1 LArm / 2 RArm / 3 LLeg / 4 RLeg / 5 Cancel
+	; 0 Head / 1 LArm / 2 RArm / 3 LLeg / 4 RLeg / 5 Cut Off Tits / 6 Cancel
 	If btn < 0
 		DiagNotify("Pickman's Whisper: butcher Show failed (btn=" + btn + ")")
 		Debug.Trace("PickmansWhisper: ERROR SeverLimbMenu.Show returned " + btn)
 		Return
 	EndIf
-	If btn >= 5
+
+	If btn >= 6
 		Return
 	EndIf
+
+	If btn == 5
+		ApplyMutilatedBodyOnCorpse(aimed)
+		Return
+	EndIf
+
 	String part = SeverButtonToPart(btn)
 	If !part
 		Return
@@ -823,6 +830,7 @@ Function SeverCorpseLimb(Actor ak, String partName)
 	; LooksMenu body overlays glow at stump edges — strip PW decay skins after butcher.
 	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
 	If decay
+		decay.ReequipMutilatedBodyIfNeeded(ak)
 		decay.QueueStripBodyDecayAfterDismember(ak)
 	EndIf
 EndFunction
@@ -2395,6 +2403,16 @@ EndFunction
 
 PickmansWhisperCorpseDecayScript Function CorpseDecay()
 	Return (Self as Quest) as PickmansWhisperCorpseDecayScript
+EndFunction
+
+Function ApplyMutilatedBodyOnCorpse(Actor akCorpse)
+	PickmansWhisperCorpseDecayScript decay = CorpseDecay()
+	If decay
+		decay.ApplyMutilatedBodyOnCorpse(akCorpse)
+	Else
+		Debug.Trace("PickmansWhisper: ERROR ApplyMutilatedBodyOnCorpse — CorpseDecay missing")
+		Debug.Notification("Pickman's Whisper: CorpseDecay missing — rebuild ESP")
+	EndIf
 EndFunction
 
 

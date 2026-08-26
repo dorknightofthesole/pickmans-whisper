@@ -20,7 +20,7 @@ Slice status and planned work: [docs/ROADMAP.md](docs/ROADMAP.md). Product rules
 
 ### Blade play
 
-- **Corpse sever** — blade drawn, aim a dead adult woman, press `/` for limb menu
+- **Corpse sever** — blade drawn, aim a dead adult woman, press `/` for the limb menu (including **Cut Off Tits**)
 - **Beat before kill** — unarmed struggle path on tracked victims (blade sheathed for clean activate)
 - **Bed gift** — occasional sleep hallucination corpse near the bed
 - **Corpse decay** — tracked knife-kill bodies stage through LooksMenu overlays; ripe-corpse eat urge + END buff when Cannibal applies

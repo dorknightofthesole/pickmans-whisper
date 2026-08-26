@@ -365,8 +365,8 @@ def test_esp_builder() -> None:
     text = ESP_BUILDER.read_text(encoding="utf-8", errors="replace")
     if '"PickmansWhisperSlaveSceneScript"' not in text:
         fail("ESP builder must attach PickmansWhisperSlaveSceneScript to the Main quest VMAD")
-    if "NEXT_OID = 0x0000087C" not in text:
-        fail("ESP builder NEXT_OID must match current reality (0x87C, past Slice W's execute menu MESG) — Slice U itself needs no new FormIDs")
+    if "NEXT_OID = 0x0000087F" not in text:
+        fail("ESP builder NEXT_OID must match current reality (0x87F, past mutilated body ARMA/ARMO/STAT) — Slice U itself needs no new FormIDs")
     ok("ESP builder attaches SlaveSceneScript; no new FormIDs")
 
 

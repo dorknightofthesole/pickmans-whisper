@@ -14,6 +14,12 @@ String PLUGIN_PORC_OVERLAYS = "porcOverlays.esl"
 String PLUGIN_SFT = "SFT.esp"
 String PLUGIN_TATTOOS = "SlaveTattoos.esp"
 String PLUGIN_PW = "PickmansWhisper.esp"
+; Cut Off Tits — slot-33 body ARMO + weighted MISC prop (builder FormIDs; contract-locked).
+Int FID_MUTILATED_BODY_ARMO = 0x0000087D
+Int FID_CUT_OFF_TITS_MISC = 0x0000087E
+Int CUT_OFF_TITS_ONCE_MAX = 32
+Float CUT_OFF_TITS_PROP_OFFSET_XY = 64.0
+Float CUT_OFF_TITS_PROP_OFFSET_Z = 6.0
 ; SFT.esp FormLists of Damage / Boxer headparts (female / male). Soft dep — no ESP master.
 Int FID_SFT_DAMAGE_F = 0x000008D ; SFT_Damage
 Int FID_SFT_DAMAGE_M = 0x00000B2 ; SFT_Damage_M
@@ -112,6 +118,9 @@ Float OVERLAY_SYNC_BUSY_MAX_SECONDS = 90.0
 ; MCM Set/Reset queues THIS actor — paint on menu close / next sync (no feature StartTimer).
 Actor PendingAimedDecayActor = None
 Actor PendingDismemberStripActor = None
+; Session latch — Cut Off Tits applied once per corpse FormID (no second prop).
+Int[] CutOffTitsDoneIds
+Int CutOffTitsDoneCount = 0
 Int AimedDecayApplyCode = 2 ; bump when apply path changes — prove PEX loaded in log
 
 ; Victims MCM Set/Reset moves the kill clock, then QueueAimedDecayApply paints that corpse
@@ -2087,6 +2096,168 @@ Function RunPendingDismemberStrip()
 	If ak
 		StripBodyDecayOverlaysForDismember(ak)
 	EndIf
+EndFunction
+
+Bool Function WasCutOffTitsApplied(Actor akCorpse)
+	If !akCorpse || !CutOffTitsDoneIds || CutOffTitsDoneCount <= 0
+		Return False
+	EndIf
+
+	Int id = akCorpse.GetFormID()
+	Int i = 0
+	While i < CutOffTitsDoneCount
+		If CutOffTitsDoneIds[i] == id
+			Return True
+		EndIf
+		i += 1
+	EndWhile
+
+	Return False
+EndFunction
+
+Function MarkCutOffTitsApplied(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+
+	If WasCutOffTitsApplied(akCorpse)
+		Return
+	EndIf
+
+	If !CutOffTitsDoneIds
+		CutOffTitsDoneIds = new Int[CUT_OFF_TITS_ONCE_MAX]
+		CutOffTitsDoneCount = 0
+	EndIf
+
+	If CutOffTitsDoneCount >= CUT_OFF_TITS_ONCE_MAX
+		Int i = 0
+		While i < CUT_OFF_TITS_ONCE_MAX - 1
+			CutOffTitsDoneIds[i] = CutOffTitsDoneIds[i + 1]
+			i += 1
+		EndWhile
+		CutOffTitsDoneCount = CUT_OFF_TITS_ONCE_MAX - 1
+	EndIf
+
+	CutOffTitsDoneIds[CutOffTitsDoneCount] = akCorpse.GetFormID()
+	CutOffTitsDoneCount += 1
+EndFunction
+
+Form Function ResolveMutilatedBodyArmor()
+	Form armor = Game.GetFormFromFile(FID_MUTILATED_BODY_ARMO, PLUGIN_PW)
+	If !armor
+		SetCorpseDecayStatus("ERROR: mutilated body ARMO 0x87D missing — rebuild ESP")
+		Debug.Notification("Pickman's Whisper: mutilated body ARMO missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR ResolveMutilatedBodyArmor GetFormFromFile 0x" + FID_MUTILATED_BODY_ARMO)
+	EndIf
+	Return armor
+EndFunction
+
+Form Function ResolveCutOffTitsMisc()
+	Form misc = Game.GetFormFromFile(FID_CUT_OFF_TITS_MISC, PLUGIN_PW)
+	If !misc
+		SetCorpseDecayStatus("ERROR: cut-off tits MISC 0x87E missing — rebuild ESP")
+		Debug.Notification("Pickman's Whisper: cut-off tits prop missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper: ERROR ResolveCutOffTitsMisc GetFormFromFile 0x" + FID_CUT_OFF_TITS_MISC)
+	EndIf
+	Return misc
+EndFunction
+
+; Re-wear slot-33 ARMO after a later limb Dismember (3D rebuild can flash the default body).
+; Does not PlaceAtMe — the MISC is spawned once on first Cut Off Tits.
+Function ReequipMutilatedBodyIfNeeded(Actor akCorpse)
+	If !akCorpse
+		Return
+	EndIf
+
+	If !WasCutOffTitsApplied(akCorpse)
+		Return
+	EndIf
+
+	Form armor = ResolveMutilatedBodyArmor()
+	If !armor
+		Return
+	EndIf
+
+	If akCorpse.GetItemCount(armor) <= 0
+		akCorpse.AddItem(armor, 1, True)
+	EndIf
+
+	akCorpse.EquipItem(armor, True, True)
+	Debug.Trace("PickmansWhisper: re-equip mutilated body after limb sever id=" + akCorpse.GetFormID())
+EndFunction
+
+Function SpawnCutOffTitsProp(Actor akCorpse)
+	If !akCorpse
+		Debug.Trace("PickmansWhisper: ERROR SpawnCutOffTitsProp — no corpse")
+		Return
+	EndIf
+
+	Form misc = ResolveCutOffTitsMisc()
+	If !misc
+		Return
+	EndIf
+
+	ObjectReference placed = akCorpse.PlaceAtMe(misc, 1, False, False)
+	If !placed
+		SetCorpseDecayStatus("ERROR: PlaceAtMe cut-off tits MISC failed")
+		Debug.Notification("Pickman's Whisper: cut-off tits prop failed to spawn")
+		Debug.Trace("PickmansWhisper: ERROR SpawnCutOffTitsProp PlaceAtMe None id=" + akCorpse.GetFormID())
+		Return
+	EndIf
+
+	placed.MoveTo(akCorpse, CUT_OFF_TITS_PROP_OFFSET_XY, 0.0, CUT_OFF_TITS_PROP_OFFSET_Z, False)
+	; MoveTo keyframes the ref — re-enable Havok so the weighted MISC can fall.
+	GardenOfEden.InitHavok(placed)
+	placed.SetMotionType(placed.Motion_Dynamic)
+	placed.ApplyHavokImpulse(0.0, 0.0, -1.0, 8.0)
+	Debug.Trace("PickmansWhisper: spawned cut-off tits MISC beside id=" + akCorpse.GetFormID())
+EndFunction
+
+; Butcher Cut Off Tits — instance body swap + dropped MISC. Not Dismember (no breast gore bone).
+Function ApplyMutilatedBodyOnCorpse(Actor akCorpse)
+	If !akCorpse
+		Debug.Trace("PickmansWhisper: ERROR ApplyMutilatedBodyOnCorpse — no corpse")
+		Return
+	EndIf
+
+	If !akCorpse.Is3DLoaded()
+		Debug.Notification("Pickman's Whisper: corpse 3D not loaded — try again")
+		Debug.Trace("PickmansWhisper: cut-off tits skip | 3D not loaded id=" + akCorpse.GetFormID())
+		Return
+	EndIf
+
+	If WasCutOffTitsApplied(akCorpse)
+		Debug.Notification("Pickman's Whisper: already severed")
+		Debug.Trace("PickmansWhisper: cut-off tits skip | already applied id=" + akCorpse.GetFormID())
+		Return
+	EndIf
+
+	Form armor = ResolveMutilatedBodyArmor()
+	If !armor
+		Return
+	EndIf
+
+	Form misc = ResolveCutOffTitsMisc()
+	If !misc
+		Return
+	EndIf
+
+	akCorpse.AddItem(armor, 1, True)
+	akCorpse.EquipItem(armor, True, True)
+
+	If akCorpse.GetItemCount(armor) <= 0
+		SetCorpseDecayStatus("ERROR: mutilated body ARMO AddItem failed")
+		Debug.Notification("Pickman's Whisper: mutilated body AddItem failed")
+		Debug.Trace("PickmansWhisper: ERROR ApplyMutilatedBodyOnCorpse AddItem id=" + akCorpse.GetFormID())
+		Return
+	EndIf
+
+	SpawnCutOffTitsProp(akCorpse)
+	MarkCutOffTitsApplied(akCorpse)
+	QueueStripBodyDecayAfterDismember(akCorpse)
+	SetCorpseDecayStatus("cut off tits id=" + akCorpse.GetFormID())
+	Debug.Notification("Pickman's Whisper: cut off tits")
+	Debug.Trace("PickmansWhisper: cut off tits id=" + akCorpse.GetFormID())
 EndFunction
 
 ; MCM Victims — Corpse decay visuals (default OFF). Stage clock advances either way.

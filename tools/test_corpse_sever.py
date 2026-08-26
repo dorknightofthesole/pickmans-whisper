@@ -9,7 +9,7 @@ Locks:
   - Main quest must NOT RegisterForKey (Quest key hooks are unreliable)
   - Quest stub must not shadow ScriptObject RegisterForKey
   - MESG builder: no TNAM (working FO4 menus omit it)
-  - Dismember(part, False, True, False) — force sever, no BloodyMess (heads gib if True)
+  - Cut Off Tits is button 5: EquipItem slot-33 ARMO + PlaceAtMe MISC, not Dismember
   - Gates: IsBladeEquipped, dead+3D, adult female human, skip NecroSceneActive
   - Aim: activate→camera→faced GoE female (Necromantic FindActors shape)→last
   - Kill blade helpers unchanged
@@ -25,6 +25,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PSC = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc"
+DECAY = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperCorpseDecayScript.psc"
 ALIAS = ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperPlayerAliasScript.psc"
 ACTOR_STUB = ROOT / "tools" / "stubs" / "Actor.psc"
 MSG_STUB = ROOT / "tools" / "stubs" / "Message.psc"
@@ -107,7 +108,41 @@ def test_builder() -> None:
         fail("MESG builder must not emit TNAM field (breaks Message.Show vs working mod menus)")
     if "DNAM" not in payload_fn:
         fail("MESG builder must emit DNAM message-box flag")
-    ok("esp builder MSG 0x806 (no TNAM)")
+    if '"Cut Off Tits"' not in payload_fn:
+        fail("butcher menu must include Cut Off Tits before Cancel")
+    if payload_fn.find('"Cut Off Tits"') > payload_fn.find('"Cancel"'):
+        fail("Cut Off Tits ITXT must come before Cancel")
+    for needle in (
+        "FID_MUTILATED_BODY_ARMA = 0x0100087C",
+        "FID_MUTILATED_BODY_ARMO = 0x0100087D",
+        "FID_CUT_OFF_TITS_MISC = 0x0100087E",
+        "NEXT_OID = 0x0000087F",
+        "PickmansWhisper_MutilatedFemaleBody_ARMA",
+        "PickmansWhisper_MutilatedFemaleBody_ARMO",
+        "PickmansWhisper_PropCutOffTits",
+        r"PickmansWhisper\\Characters\\FemaleBody_Mutilated_Tits.nif",
+        r"PickmansWhisper\\Props\\FemaleBody_Prop_Tits.nif",
+        "BOD2_SLOT_33",
+        "RECORD_FLAG_NONPLAYABLE",
+        'group(b"MISC"',
+        'record(b"MISC"',
+    ):
+        if needle not in src:
+            fail(f"builder missing {needle!r}")
+    if "flags=RECORD_FLAG_NONPLAYABLE" not in src and "flags = RECORD_FLAG_NONPLAYABLE" not in src:
+        fail("mutilated body ARMO must be emitted Non-Playable")
+    if 'group(b"STAT"' in src:
+        fail("cut-off tits prop must be MISC (weighted/Havok), not STAT")
+    misc_fn = re.search(
+        r"def build_cut_off_tits_misc_payload\(\).*?(?=\ndef |\Z)",
+        src,
+        re.S,
+    )
+    if not misc_fn:
+        fail("missing build_cut_off_tits_misc_payload")
+    if 'field(b"DATA"' not in misc_fn.group(0) or 'struct.pack("<If"' not in misc_fn.group(0):
+        fail("MISC prop must emit DATA value+weight (uint32 + float)")
+    ok("esp builder MSG 0x806 (no TNAM) + Cut Off Tits ARMA/ARMO/MISC")
 
 
 def test_alias(text: str) -> None:
@@ -196,6 +231,23 @@ def test_psc(text: str) -> None:
         fail("SeverCorpseLimb must not ForceBloodyMess (heads explode)")
     if "EnsureSeverLimbMenu()" not in text:
         fail("must call EnsureSeverLimbMenu from init/load")
+    try_fn = extract_function(text, "TrySeverAimedCorpse")
+    if "btn >= 6" not in try_fn:
+        fail("TrySeverAimedCorpse cancel must be button 6 after Cut Off Tits")
+    if "btn == 5" not in try_fn:
+        fail("TrySeverAimedCorpse button 5 must be Cut Off Tits")
+    if "ApplyMutilatedBodyOnCorpse" not in try_fn:
+        fail("TrySeverAimedCorpse button 5 must ApplyMutilatedBodyOnCorpse")
+    btn5 = try_fn[try_fn.find("btn == 5") :]
+    if "Dismember(" in btn5.split("EndIf")[0]:
+        fail("Cut Off Tits button must not call Dismember")
+    facade = extract_function(text, "ApplyMutilatedBodyOnCorpse")
+    if "decay.ApplyMutilatedBodyOnCorpse" not in facade:
+        fail("Main ApplyMutilatedBodyOnCorpse must forward to CorpseDecay")
+    if "Dismember(" in facade:
+        fail("Main ApplyMutilatedBodyOnCorpse must not Dismember")
+    if "ReequipMutilatedBodyIfNeeded" not in sever:
+        fail("SeverCorpseLimb must ReequipMutilatedBodyIfNeeded after Dismember")
     debug_open = extract_function(text, "DebugOpenButcherMenu")
     if "TrySeverAimedCorpse" not in debug_open or "True" not in debug_open:
         fail("DebugOpenButcherMenu must TrySeverAimedCorpse(True)")
@@ -206,6 +258,61 @@ def test_psc(text: str) -> None:
     if not re.search(r"Return\s+IsBladeEquipped\s*\(\s*\)", kill):
         fail("IsBladeKillWeaponReady must still alias IsBladeEquipped")
     ok("PSC butcher menu + Dismember contract")
+
+
+def test_cut_off_tits_decay() -> None:
+    if not DECAY.is_file():
+        fail(f"missing {DECAY}")
+    decay = DECAY.read_text(encoding="utf-8", errors="replace")
+    if "FID_MUTILATED_BODY_ARMO = 0x0000087D" not in decay:
+        fail("CorpseDecay must use mutilated body ARMO local FormID 0x87D")
+    if "FID_CUT_OFF_TITS_MISC = 0x0000087E" not in decay:
+        fail("CorpseDecay must use cut-off tits MISC local FormID 0x87E")
+    apply = extract_function(decay, "ApplyMutilatedBodyOnCorpse")
+    if re.search(r"\bDismember\s*\(", apply):
+        fail("ApplyMutilatedBodyOnCorpse must not call Dismember")
+    if "EquipItem" not in apply:
+        fail("ApplyMutilatedBodyOnCorpse must EquipItem the slot-33 ARMO")
+    if "SpawnCutOffTitsProp" not in apply:
+        fail("ApplyMutilatedBodyOnCorpse must SpawnCutOffTitsProp once")
+    if "WasCutOffTitsApplied" not in apply:
+        fail("ApplyMutilatedBodyOnCorpse must skip if already latched")
+    spawn = extract_function(decay, "SpawnCutOffTitsProp")
+    if "PlaceAtMe" not in spawn:
+        fail("SpawnCutOffTitsProp must PlaceAtMe the MISC")
+    if "MoveTo" not in spawn:
+        fail("SpawnCutOffTitsProp must MoveTo offset beside the corpse")
+    if "InitHavok" not in spawn:
+        fail("SpawnCutOffTitsProp must InitHavok after MoveTo")
+    if "SetMotionType" not in spawn or "Motion_Dynamic" not in spawn:
+        fail("SpawnCutOffTitsProp must SetMotionType Dynamic so the prop can fall")
+    if "ApplyHavokImpulse" not in spawn:
+        fail("SpawnCutOffTitsProp must ApplyHavokImpulse so the prop drops")
+    reeq = extract_function(decay, "ReequipMutilatedBodyIfNeeded")
+    if "PlaceAtMe(" in reeq:
+        fail("ReequipMutilatedBodyIfNeeded must not spawn a second prop")
+    if "EquipItem" not in reeq:
+        fail("ReequipMutilatedBodyIfNeeded must EquipItem the mutilated ARMO")
+    ok("CorpseDecay Cut Off Tits apply + one-shot MISC + Havok drop + re-equip")
+
+
+def test_prop_nif_has_havok() -> None:
+    nif = (
+        ROOT
+        / "Data"
+        / "Meshes"
+        / "PickmansWhisper"
+        / "Props"
+        / "FemaleBody_Prop_Tits.nif"
+    )
+    if not nif.is_file():
+        fail(f"missing {nif}")
+    data = nif.read_bytes()
+    if b"bhkNPCollisionObject" not in data:
+        fail("prop nif must include FO4 Havok collision (bhkNPCollisionObject)")
+    if b"BSXFlags" not in data:
+        fail("prop nif must include BSXFlags so Havok is enabled")
+    ok("cut-off tits prop nif has Havok collision")
 
 
 def test_mcm_deploy() -> None:
@@ -235,6 +342,8 @@ def main() -> None:
     test_builder()
     test_alias(alias)
     test_psc(text)
+    test_cut_off_tits_decay()
+    test_prop_nif_has_havok()
     test_mcm_deploy()
     print("All corpse-sever (Slice F) contracts passed.")
 
