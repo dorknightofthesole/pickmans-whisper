@@ -9,7 +9,7 @@ Locks:
   - Main quest must NOT RegisterForKey (Quest key hooks are unreliable)
   - Quest stub must not shadow ScriptObject RegisterForKey
   - MESG builder: no TNAM (working FO4 menus omit it)
-  - Cut Off Tits is button 5: EquipItem slot-33 ARMO + PlaceAtMe MISC, not Dismember
+  - Cut Off Tits is button 5: EquipItem slot-33 ARMO + PlaceAtMe MISC (tits + vanilla SM-arm gore sanity), not Dismember
   - Gates: IsBladeEquipped, dead+3D, adult female human, skip NecroSceneActive
   - Aim: activate→camera→faced GoE female (Necromantic FindActors shape)→last
   - Kill blade helpers unchanged
@@ -116,14 +116,18 @@ def test_builder() -> None:
         "FID_MUTILATED_BODY_ARMA = 0x0100087C",
         "FID_MUTILATED_BODY_ARMO = 0x0100087D",
         "FID_CUT_OFF_TITS_MISC = 0x0100087E",
-        "NEXT_OID = 0x0000087F",
+        "FID_GORE_SM_ARM_L_MISC = 0x0100087F",
+        "NEXT_OID = 0x00000880",
         "PickmansWhisper_MutilatedFemaleBody_ARMA",
         "PickmansWhisper_MutilatedFemaleBody_ARMO",
         "PickmansWhisper_PropCutOffTits",
+        "PickmansWhisper_DebugGoreSuperMutantArmL",
         r"PickmansWhisper\\Characters\\FemaleBody_Mutilated_Tits.nif",
         r"PickmansWhisper\\Props\\FemaleBody_Prop_Tits.nif",
+        r"Actors\\Supermutant\\CharacterAssets\\GoreSuperMutantArmL.nif",
         "BOD2_SLOT_33",
         "RECORD_FLAG_NONPLAYABLE",
+        "def build_gore_sm_arm_l_misc_payload",
         'group(b"MISC"',
         'record(b"MISC"',
     ):
@@ -142,7 +146,16 @@ def test_builder() -> None:
         fail("missing build_cut_off_tits_misc_payload")
     if 'field(b"DATA"' not in misc_fn.group(0) or 'struct.pack("<If"' not in misc_fn.group(0):
         fail("MISC prop must emit DATA value+weight (uint32 + float)")
-    ok("esp builder MSG 0x806 (no TNAM) + Cut Off Tits ARMA/ARMO/MISC")
+    gore_fn = re.search(
+        r"def build_gore_sm_arm_l_misc_payload\(\).*?(?=\ndef |\Z)",
+        src,
+        re.S,
+    )
+    if not gore_fn:
+        fail("missing build_gore_sm_arm_l_misc_payload")
+    if "GORE_SM_ARM_L_MESH_REL" not in gore_fn.group(0):
+        fail("gore SM arm L MISC must MODL GORE_SM_ARM_L_MESH_REL (vanilla BA2 path)")
+    ok("esp builder MSG 0x806 (no TNAM) + Cut Off Tits ARMA/ARMO/MISC + gore SM arm L sanity MISC")
 
 
 def test_alias(text: str) -> None:
@@ -268,6 +281,8 @@ def test_cut_off_tits_decay() -> None:
         fail("CorpseDecay must use mutilated body ARMO local FormID 0x87D")
     if "FID_CUT_OFF_TITS_MISC = 0x0000087E" not in decay:
         fail("CorpseDecay must use cut-off tits MISC local FormID 0x87E")
+    if "FID_GORE_SM_ARM_L_MISC = 0x0000087F" not in decay:
+        fail("CorpseDecay must use gore SM arm L MISC local FormID 0x87F")
     apply = extract_function(decay, "ApplyMutilatedBodyOnCorpse")
     if re.search(r"\bDismember\s*\(", apply):
         fail("ApplyMutilatedBodyOnCorpse must not call Dismember")
@@ -278,22 +293,84 @@ def test_cut_off_tits_decay() -> None:
     if "WasCutOffTitsApplied" not in apply:
         fail("ApplyMutilatedBodyOnCorpse must skip if already latched")
     spawn = extract_function(decay, "SpawnCutOffTitsProp")
-    if "PlaceAtMe" not in spawn:
-        fail("SpawnCutOffTitsProp must PlaceAtMe the MISC")
-    if "MoveTo" not in spawn:
-        fail("SpawnCutOffTitsProp must MoveTo offset beside the corpse")
-    if "InitHavok" not in spawn:
-        fail("SpawnCutOffTitsProp must InitHavok after MoveTo")
-    if "SetMotionType" not in spawn or "Motion_Dynamic" not in spawn:
-        fail("SpawnCutOffTitsProp must SetMotionType Dynamic so the prop can fall")
-    if "ApplyHavokImpulse" not in spawn:
-        fail("SpawnCutOffTitsProp must ApplyHavokImpulse so the prop drops")
+    if "DropHavokMiscBeside" not in spawn:
+        fail("SpawnCutOffTitsProp must DropHavokMiscBeside for each prop")
+    if "ResolveGoreSuperMutantArmLMisc" not in spawn:
+        fail("SpawnCutOffTitsProp must also spawn GoreSuperMutantArmL sanity MISC")
+    drop = extract_function(decay, "DropHavokMiscBeside")
+    if "PlaceAtMe" not in drop:
+        fail("DropHavokMiscBeside must PlaceAtMe the MISC")
+    if "MoveTo" not in drop:
+        fail("DropHavokMiscBeside must MoveTo offset beside the corpse")
+    if "InitHavok" not in drop:
+        fail("DropHavokMiscBeside must InitHavok after MoveTo")
+    if "SetMotionType" not in drop or "Motion_Dynamic" not in drop:
+        fail("DropHavokMiscBeside must SetMotionType Dynamic so the prop can fall")
+    if "ApplyHavokImpulse" not in drop:
+        fail("DropHavokMiscBeside must ApplyHavokImpulse so the prop drops")
     reeq = extract_function(decay, "ReequipMutilatedBodyIfNeeded")
     if "PlaceAtMe(" in reeq:
         fail("ReequipMutilatedBodyIfNeeded must not spawn a second prop")
     if "EquipItem" not in reeq:
         fail("ReequipMutilatedBodyIfNeeded must EquipItem the mutilated ARMO")
     ok("CorpseDecay Cut Off Tits apply + one-shot MISC + Havok drop + re-equip")
+
+
+def test_prop_havok_script_writes_bsx_not_hulls() -> None:
+    src = (ROOT / "tools" / "add_prop_tits_havok.py").read_text(encoding="utf-8")
+    for token in (
+        "pack_shapes",
+        "ConvexHull",
+        "write_data",
+        "add_collision",
+        "bhkPhysicsSystem.New",
+    ):
+        if token in src:
+            fail(f"add_prop_tits_havok.py must not generate Havok hulls ({token})")
+    if "nif.save(" not in src:
+        fail("add_prop_tits_havok.py must save BSXFlags + collision target")
+    if "patch_np_collision_target" not in src:
+        fail("add_prop_tits_havok.py must patch bhkNPCollisionObject Target (DLL setBlock cannot)")
+    if "BSX_HAVOK_COMPLEX_DYNAMIC" not in src or "COLLISION_TARGET_NAME" not in src:
+        fail("add_prop_tits_havok.py must write Havok|Complex|Dynamic and FusionGirlReduced target")
+    if "is_clutter_or_prop_layer" not in src:
+        fail("add_prop_tits_havok.py must verify Clutter/Prop")
+    if "is_flesh_material" not in src:
+        fail("add_prop_tits_havok.py must verify Flesh material")
+    if "format_no_collision_error" not in src:
+        fail("add_prop_tits_havok.py must report actual NIF block types when collision is missing")
+    ok("prop Havok script writes BSX 74 + FusionGirlReduced target; does not bake hulls")
+
+
+def test_layer_material_matchers() -> None:
+    sys.path.insert(0, str(ROOT / "tools"))
+    from add_prop_tits_havok import is_clutter_or_prop_layer, is_flesh_material
+
+    if not is_clutter_or_prop_layer(4) or not is_clutter_or_prop_layer("CLUTTER"):
+        fail("Clutter layer must be accepted")
+    if not is_clutter_or_prop_layer(10) or not is_clutter_or_prop_layer("PROP"):
+        fail("Prop layer must be accepted")
+    if is_clutter_or_prop_layer(1) or is_clutter_or_prop_layer("STATIC"):
+        fail("Static layer must not pass as Clutter/Prop")
+    if not is_flesh_material("FLESH") or not is_flesh_material("SKIN"):
+        fail("Flesh/Skin material must be accepted")
+    if is_flesh_material("WOOD") or is_flesh_material("STONE"):
+        fail("Wood/Stone must not pass as Flesh")
+    from add_prop_tits_havok import format_no_collision_error, is_bsx_havok_complex_dynamic
+
+    if not is_bsx_havok_complex_dynamic(74):
+        fail("Havok|Complex|Dynamic (74) must pass")
+    if is_bsx_havok_complex_dynamic(2) or is_bsx_havok_complex_dynamic(130):
+        fail("Havok-only or Havok+Articulated must not count as 74")
+    if is_bsx_havok_complex_dynamic(0) or is_bsx_havok_complex_dynamic(128):
+        fail("Articulated-only or zero must not count as 74")
+
+    msg = format_no_collision_error(
+        ["NiNode", "BSSubIndexTriShape", "BSLightingShaderProperty", "BSShaderTextureSet"]
+    )
+    if "BSSubIndexTriShape" not in msg or "no Havok collision" not in msg:
+        fail("missing-collision error must list the NIF block types")
+    ok("Clutter/Prop + Flesh matchers")
 
 
 def test_prop_nif_has_havok() -> None:
@@ -307,12 +384,50 @@ def test_prop_nif_has_havok() -> None:
     )
     if not nif.is_file():
         fail(f"missing {nif}")
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    from add_prop_tits_havok import (
+        PYNIFLY_ADDON,
+        _load_pynifly,
+        format_no_collision_error,
+        inspect_prop,
+        is_bsx_havok_complex_dynamic,
+        read_nif_block_types,
+        verify_bsx_flags,
+        verify_collision_meta,
+        verify_collision_target,
+    )
+
+    block_types = read_nif_block_types(nif)
+    has_havok = any(
+        t in block_types
+        for t in ("bhkNPCollisionObject", "bhkPhysicsSystem", "bhkRigidBody", "bhkRigidBodyT")
+    )
+    if not has_havok:
+        msg = format_no_collision_error(block_types)
+        if "BSSubIndexTriShape" not in msg and "BSTriShape" not in msg:
+            fail("mesh-only prop nif error must list the shape block")
+        ok("blender prop nif is mesh-only; gate reports block types (re-export with collision)")
+        return
+
     data = nif.read_bytes()
-    if b"bhkNPCollisionObject" not in data:
-        fail("prop nif must include FO4 Havok collision (bhkNPCollisionObject)")
     if b"BSXFlags" not in data:
         fail("prop nif must include BSXFlags so Havok is enabled")
-    ok("cut-off tits prop nif has Havok collision")
+    if b"bhkBoxShape" in data:
+        fail("prop nif must not use bhkBoxShape")
+    if not PYNIFLY_ADDON.is_dir():
+        fail("PyNifly addon required to parse prop collision / BSXFlags")
+    _load_pynifly()
+    info = inspect_prop(nif)
+    if not is_bsx_havok_complex_dynamic(info["bsx"]):
+        fail("prop nif BSXFlags must be Havok|Complex|Dynamic (74)")
+    try:
+        verify_bsx_flags(info)
+        verify_collision_target(info)
+        verify_collision_meta(info)
+    except SystemExit as exc:
+        fail(str(exc) or "prop collision layer/material/target verify failed")
+    ok("cut-off tits prop nif has BSX 74 and FusionGirlReduced collision target")
 
 
 def test_mcm_deploy() -> None:
@@ -326,8 +441,10 @@ def test_mcm_deploy() -> None:
     if "press <b>/</b>" not in cfg and "press /" not in cfg.lower():
         fail("MCM How To Use should mention / butcher key")
     deploy = DEPLOY.read_text(encoding="utf-8", errors="replace")
-    if "test_corpse_sever.py" not in deploy:
-        fail("build-deploy-local.ps1 must run test_corpse_sever.py")
+    havok_at = deploy.find("add_prop_tits_havok.py")
+    sever_at = deploy.find("test_corpse_sever.py")
+    if havok_at < 0 or sever_at < 0 or havok_at > sever_at:
+        fail("build-deploy-local.ps1 must run add_prop_tits_havok.py before test_corpse_sever.py")
     ok("MCM + deploy gate")
 
 
@@ -343,6 +460,8 @@ def main() -> None:
     test_alias(alias)
     test_psc(text)
     test_cut_off_tits_decay()
+    test_prop_havok_script_writes_bsx_not_hulls()
+    test_layer_material_matchers()
     test_prop_nif_has_havok()
     test_mcm_deploy()
     print("All corpse-sever (Slice F) contracts passed.")

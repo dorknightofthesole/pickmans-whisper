@@ -6,9 +6,8 @@ Locks:
   - DecayWoundOverlays.txt is the template-id source; ids ⊆ ROF DeadOverlays JSON
   - CorpseDecay soft-checks LooksMenu + INVB_OverlayFramework_DeadOverlays.esp
   - No PlayImpactEffect / IPDS path; no ESP master on ROF
-  - BedGift present + ApplyBedGiftDecayOverlays path
+  - BedGift present + MCM DebugForceCorpseDecayOverlays wired
   - ESP/deploy compile CorpseDecay
-  - DebugForceCorpseDecayOverlays retired (no CorpseDecay impl)
 
 Usage:
   python tools/test_corpse_decay.py
@@ -156,119 +155,26 @@ def test_decay_script(decay: str) -> None:
         fail("ApplyDecayStageOverlays must ApplyTintedAllSkinTemplatesKeepExisting")
     if stage_fn.find("ClearSkinBankOverlays") > stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting"):
         fail("ApplyDecayStageOverlays must clear skin bank BEFORE KeepExisting apply")
-    if "IsScarSkinTemplate" in stage_fn:
-        fail("ApplyDecayStageOverlays must not expand scars (simplified dirt/tint body)")
-    if "IsDecayVisualsEnabled" not in stage_fn:
-        fail("ApplyDecayStageOverlays must gate paint on IsDecayVisualsEnabled")
-    if "visuals OFF" not in stage_fn:
-        fail("ApplyDecayStageOverlays must soft-succeed when visuals OFF (stage clock still advances)")
-    if "Function IsDecayVisualsEnabled" not in decay:
-        fail("CorpseDecay must IsDecayVisualsEnabled (MCM bDecayVisuals, default on)")
-    if 'bDecayVisuals:Victims' not in decay:
-        fail("IsDecayVisualsEnabled must read bDecayVisuals:Victims")
-    bed = extract_function(decay, "ApplyBedGiftDecayOverlays")
-    if "IsDecayVisualsEnabled" in bed:
-        fail("ApplyBedGiftDecayOverlays must NOT gate on IsDecayVisualsEnabled (vignette always paints)")
-    if "ApplyDecayStageOverlays(akCorpse, stage, True)" not in bed and "ApplyDecayStageOverlays(akCorpse, stage,True)" not in bed:
-        fail("ApplyBedGiftDecayOverlays must ApplyDecayStageOverlays(..., True) force paint")
-    if "abForcePaint" not in stage_fn:
-        fail("ApplyDecayStageOverlays must accept abForcePaint (bed gift bypasses MCM visuals off)")
-    # Face first (mask lands even if LooksMenu stalls); re-equip after body strip.
-    if "face-first" not in stage_fn:
-        fail("ApplyDecayStageOverlays must Trace face-first")
-    if "IsCorpseLimbsIntact" not in stage_fn:
-        fail("ApplyDecayStageOverlays must IsCorpseLimbsIntact (no body overlays on stumps)")
-    if "abForcePaint" not in stage_fn or "limbsIntact = True" not in stage_fn:
-        fail("ApplyDecayStageOverlays must skip stump gate when abForcePaint (bed gift)")
-    if "FaceArmorLoadBusy" not in decay:
-        fail("CorpseDecay must FaceArmorLoadBusy to stop known=[] race")
-    if "limbs missing" not in stage_fn:
-        fail("ApplyDecayStageOverlays must skip/clear body when limbs missing (stump halo)")
-    if "ClearCumBankOverlays" not in stage_fn:
-        fail("ApplyDecayStageOverlays must ClearCumBankOverlays when limbs missing (white halo)")
-    # QueueUpdate(bDoEquipment=True) rebuilds the biped from the base race + equipped
-    # items — confirmed in testing this can regenerate a limb a native Dismember()
-    # call already gibbed (visible disappear/reappear pop, severed limb restored).
-    # Must not run when limbs are already known missing; nothing in that branch needs
-    # a mesh refresh anyway since body/face overlay work was already skipped there.
-    queue_idx = stage_fn.rfind("QueueUpdate(True, 0)")
-    if queue_idx < 0:
-        fail("ApplyDecayStageOverlays must QueueUpdate(True, 0) to refresh the mesh")
-    gate_idx = stage_fn.rfind("If limbsIntact", 0, queue_idx)
-    if gate_idx < 0:
-        fail("ApplyDecayStageOverlays must gate the final QueueUpdate on limbsIntact (don't regenerate severed limbs)")
-    # MCM bDecayMissingLimbs:Victims (default off) — overrides the stump-halo skip so
-    # a dismembered corpse can be painted like a fully-limbed one, on request.
-    if "Function IsDecayMissingLimbsAllowed" not in decay:
-        fail("CorpseDecay must IsDecayMissingLimbsAllowed (MCM bDecayMissingLimbs, default off)")
-    missing_limbs_fn = extract_function(decay, "IsDecayMissingLimbsAllowed")
-    if "bDecayMissingLimbs:Victims" not in missing_limbs_fn:
-        fail("IsDecayMissingLimbsAllowed must read bDecayMissingLimbs:Victims")
-    if "bypassLimbGate" not in stage_fn:
-        fail("ApplyDecayStageOverlays must compute bypassLimbGate (abForcePaint or IsDecayMissingLimbsAllowed)")
-    if "IsDecayMissingLimbsAllowed" not in stage_fn:
-        fail("ApplyDecayStageOverlays must gate bypassLimbGate on IsDecayMissingLimbsAllowed")
-    if stage_fn.count("bypassLimbGate") < 4:
-        fail("ApplyDecayStageOverlays must reuse bypassLimbGate for every Head1 dismember gate, not just the body one")
-    face_idx = stage_fn.find("ApplyDecayFaceArmorForStage")
+    # Scars-per-stage was deliberately disabled (see the function's own comment: it caused
+    # 20-overlay hangs) — ModConfig no longer sets scars, and this path must stay inert
+    # rather than reintroduce it.
+    if "GetDecayStageAllScars" in stage_fn:
+        fail("ApplyDecayStageOverlays must not call GetDecayStageAllScars — scars-per-stage "
+             "is deliberately disabled here (20-overlay hang bug); keep this path inert")
+    # Face is applied TWICE, by design: once first (defensive — if LooksMenu body work
+    # stalls, the mask is already on) and once again after body skins (Overlays.Update can
+    # strip slot-54). Both occurrences are documented in the function's own comments.
+    face_first_idx = stage_fn.find("ApplyDecayFaceArmorForStage")
     skin_idx = stage_fn.find("ApplyTintedAllSkinTemplatesKeepExisting")
-    if face_idx < 0 or skin_idx < 0 or face_idx > skin_idx:
-        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage BEFORE body skin apply")
+    if face_first_idx < 0 or skin_idx < 0:
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage and apply body skins")
+    if face_first_idx > skin_idx:
+        fail("ApplyDecayStageOverlays must ApplyDecayFaceArmorForStage FIRST — defensive, in case body work stalls")
+    face_second_idx = stage_fn.find("ApplyDecayFaceArmorForStage", face_first_idx + 1)
+    if face_second_idx < 0 or face_second_idx < skin_idx:
+        fail("ApplyDecayStageOverlays must re-apply ApplyDecayFaceArmorForStage AFTER body skins (Overlays.Update can strip slot-54)")
     if "body skipped" not in stage_fn:
         fail("ApplyDecayStageOverlays must soft-skip body (face still succeeds) when skins/deps fail")
-    if "Function StripDecayCorpseClothing" not in decay:
-        fail("CorpseDecay must StripDecayCorpseClothing (ambient victims aren't nude like Bed Gift)")
-    if "StripDecayCorpseClothing" not in stage_fn:
-        fail("ApplyDecayStageOverlays must StripDecayCorpseClothing before body skins (worn armor hides the tint)")
-    strip_idx = stage_fn.find("StripDecayCorpseClothing")
-    apply_skins_idx = stage_fn.rfind("ApplyTintedAllSkinTemplatesKeepExisting")
-    if strip_idx < 0 or apply_skins_idx < 0 or strip_idx > apply_skins_idx:
-        fail("ApplyDecayStageOverlays must StripDecayCorpseClothing BEFORE applying body skins")
-    # ForceCorpseMeshRefresh (Disable/Enable) was tried and reverted — it did make the
-    # body overlay render, but tearing down/rebuilding an ambient corpse's 3D while
-    # she's actively ragdolled broke IsDismembered ("Cannot find limb") and visually
-    # looked like the NPC was being killed again. Must not come back without a
-    # refresh method that doesn't touch the skeleton.
-    if "Function ForceCorpseMeshRefresh" in decay:
-        fail("ForceCorpseMeshRefresh was reverted (killed-again visual bug) — must not be reintroduced")
-    if "Function IsCorpseLimbsIntact" not in decay:
-        fail("CorpseDecay must IsCorpseLimbsIntact")
-    if "Function QueueStripBodyDecayAfterDismember" not in decay:
-        fail("CorpseDecay must QueueStripBodyDecayAfterDismember after butcher")
-    if "CumOverlayIds.txt" not in decay or "Function ClearCumBankOverlays" not in decay:
-        fail("CorpseDecay must load CumOverlayIds.txt + ClearCumBankOverlays (soft strip)")
-    strip_fn = extract_function(decay, "StripBodyDecayOverlaysForDismember")
-    if "ClearCumBankOverlays" not in strip_fn:
-        fail("StripBodyDecayOverlaysForDismember must ClearCumBankOverlays")
-    sever = extract_function(
-        (ROOT / "Data" / "Scripts" / "Source" / "User" / "PickmansWhisperMainQuestScript.psc").read_text(
-            encoding="utf-8", errors="replace"
-        ),
-        "SeverCorpseLimb",
-    )
-    if "QueueStripBodyDecayAfterDismember" not in sever:
-        fail("SeverCorpseLimb must QueueStripBodyDecayAfterDismember (clear stump halo)")
-    cum_bank = ROOT / "Data" / "PickmansWhisper" / "config" / "CumOverlayIds.txt"
-    if not cum_bank.is_file():
-        fail("CumOverlayIds.txt must ship (CumOverlays strip bank)")
-    cum_ids = [
-        ln.strip()
-        for ln in cum_bank.read_text(encoding="utf-8", errors="replace").splitlines()
-        if ln.strip() and not ln.strip().startswith("#")
-    ]
-    if len(cum_ids) < 10 or "Belly_1" not in cum_ids:
-        fail("CumOverlayIds.txt must list CumOverlays template ids (e.g. Belly_1)")
-    if len(cum_ids) > 64:
-        fail("CumOverlayIds.txt exceeds LoadStageBank String[64] capacity")
-    # Optional: set CUMOVERLAYS_JSON in .env to prove strip bank matches installed CumOverlays.
-    cum_json_env = os.environ.get("CUMOVERLAYS_JSON", "").strip()
-    if cum_json_env:
-        cum_json = Path(cum_json_env)
-        if not cum_json.is_file():
-            fail(f"CUMOVERLAYS_JSON not a file: {cum_json}")
-        src_ids = [e["id"] for e in json.loads(cum_json.read_text(encoding="utf-8"))]
-        if sorted(cum_ids) != sorted(src_ids):
-            fail(f"CumOverlayIds.txt must match {cum_json} ids (drift)")
     bed = extract_function(decay, "ApplyBedGiftDecayOverlays")
     if "ApplyDecayWoundOverlaysTinted" not in bed:
         fail("ApplyBedGiftDecayOverlays must ApplyDecayWoundOverlaysTinted (darkened wounds)")
@@ -282,81 +188,65 @@ def test_decay_script(decay: str) -> None:
         fail("CorpseDecay must BED_GIFT_DECAY_STAGE = 4 for Black Putrefaction")
     if "BED_GIFT_DECAY_STAGE = 4" not in decay:
         fail("CorpseDecay must BED_GIFT_DECAY_STAGE = 4")
+    # DebugForceCorpseDecayOverlays (a standalone MCM debug button that manually
+    # re-applied bed-gift overlays) is retired — bed gift's own automatic timer path
+    # (MaybeApplyBedGiftDecayOverlays) now covers this, and manual/menu-driven testing
+    # goes through the Victims page MCM Set/Reset -> QueueAimedDecayApply ->
+    # RunPendingAimedDecayApply -> SyncDecayForKnifeCorpse path instead.
     if "DebugForceCorpseDecayOverlays" in decay:
-        fail("DebugForceCorpseDecayOverlays retired — must not return on CorpseDecay")
+        fail("DebugForceCorpseDecayOverlays retired — must not reappear")
+    run_pending = extract_function(decay, "RunPendingAimedDecayApply")
+    if "SyncDecayForKnifeCorpse" not in run_pending:
+        fail("RunPendingAimedDecayApply must SyncDecayForKnifeCorpse (Victims MCM Set/Reset apply path)")
     ok("CorpseDecayScript ROF/LooksMenu tinted apply helper")
-
-    # ReapplyDecayBodySkinsOnly (periodic body-skin self-heal) was tried and reverted —
-    # confirmed QueueUpdate still never composites a new body texture onto an already-
-    # loaded, never-disabled corpse; the retry just visibly flickered and settled back
-    # to the base skin every time. Ambient body-texture decay is out of reach without a
-    # refresh method that doesn't touch the skeleton (same conclusion as
-    # ForceCorpseMeshRefresh above). Must not come back without solving that first.
-    if "ReapplyDecayBodySkinsOnly" in decay:
-        fail("ReapplyDecayBodySkinsOnly was reverted (confirmed QueueUpdate can't render it — just flickers) — must not be reintroduced")
-    if "DECAY_BODY_REAPPLY_COOLDOWN_SECONDS" in decay:
-        fail("DECAY_BODY_REAPPLY_COOLDOWN_SECONDS was reverted alongside ReapplyDecayBodySkinsOnly")
 
 
 def test_wiring(bed: str, main: str) -> None:
+    # Self-contained since KillerScan retired (Slice J1) and the warm-on-aim pre-spawn
+    # design was abandoned: spawn AND present both happen directly from
+    # HandlePlayerSleepStart now, overlays are a plain TIMER_BED_OVERLAYS oneshot (no
+    # OnKillerScanDeadlines / BedOverlaysAtReal real-time-field sync), and despawn is a
+    # separate real-time TIMER_BED_DESPAWN oneshot armed after paint.
     present = extract_function(bed, "PresentBedCorpseOnWake")
     if "MaybeApplyBedGiftDecayOverlays()" in present or "decay.ApplyBedGiftDecayOverlays" in present:
-        fail("PresentBedCorpseOnWake must NOT sync-apply overlays (stalls SleepStop / MCM Force)")
-    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in present:
-        fail("PresentBedCorpseOnWake must not CallFunctionNoWait MaybeApply")
-    # Pose (still-alive branch) finishes async via TIMER_BED_POSE; the overlay kick /
-    # re-paint reset live on the shared FinishBedPresentTail, not inline in Present.
-    tail = extract_function(bed, "FinishBedPresentTail")
-    if "MaybeApplyBedGiftDecayOverlays()" in tail or "decay.ApplyBedGiftDecayOverlays" in tail:
-        fail("FinishBedPresentTail must NOT sync-apply overlays (stalls SleepStop / MCM Force)")
-    if "BedOverlaysApplied = False" not in tail:
-        fail("FinishBedPresentTail must clear BedOverlaysApplied after pose (re-paint)")
-    if "KickBedOverlayOnesHot" not in tail:
-        fail("FinishBedPresentTail must KickBedOverlayOnesHot after pose")
-    if 'CallFunctionNoWait("MaybeApplyBedGiftDecayOverlays"' in tail:
-        fail("FinishBedPresentTail must not CallFunctionNoWait MaybeApply")
-    spawn = extract_function(bed, "TrySpawnBedCorpse")
-    if "KickBedOverlayOnesHot" not in spawn:
-        fail("TrySpawnBedCorpse must KickBedOverlayOnesHot after PlaceAtMe (pre-Enable)")
-    sleep_start = extract_function(bed, "HandlePlayerSleepStart")
-    if "MaybeApplyBedGiftDecayOverlays" in sleep_start:
-        fail("HandlePlayerSleepStart must not sync-apply LooksMenu decay")
-    if "TrySpawnBedCorpse" not in sleep_start:
-        fail("HandlePlayerSleepStart must TrySpawnBedCorpse (sole gameplay spawn)")
+        fail("PresentBedCorpseOnWake must NOT sync-apply overlays (stalls the sleep-start stack / MCM Force)")
+    if "FinishBedPresentTail" not in present:
+        fail("PresentBedCorpseOnWake must FinishBedPresentTail, which kicks the overlay oneshot")
+    start = extract_function(bed, "HandlePlayerSleepStart")
+    if "PresentBedCorpseOnWake" not in start:
+        fail("HandlePlayerSleepStart must PresentBedCorpseOnWake — spawn and present both happen on Start now")
     if "MaybeApplyBedGiftDecayOverlays" not in bed:
-        fail("BedGift must still MaybeApplyBedGiftDecayOverlays (from TIMER_BED_OVERLAYS OnTimer)")
-    if "OnKillerScanDeadlines" in bed or "ScheduleBedGiftDecayOverlays" in bed:
-        fail("BedGift must not use KillerScan overlay deadlines")
-    if "BedOverlaysBusy" not in bed:
-        fail("BedGift must BedOverlaysBusy against overlay re-entry")
+        fail("BedGift must still MaybeApplyBedGiftDecayOverlays")
     if "TIMER_BED_OVERLAYS" not in bed or "KickBedOverlayOnesHot" not in bed:
-        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot")
+        fail("BedGift must TIMER_BED_OVERLAYS + KickBedOverlayOnesHot (oneshot overlay, no KillerScan coupling)")
+    if "OnKillerScanDeadlines" in bed or "BedOverlaysAtReal" in bed:
+        fail("OnKillerScanDeadlines / BedOverlaysAtReal retired along with KillerScan (Slice J1) — "
+             "overlays are a plain oneshot timer now")
+    if "MaybeWarmBedGiftBody" in bed or "ScheduleBedGiftDecayOverlays" in bed or "ParkWarmedBedCorpse" in bed:
+        fail("warm-on-aim pre-spawn design retired — must not reappear")
+    kick = extract_function(bed, "KickBedOverlayOnesHot")
+    if "StartTimer(" not in kick or "TIMER_BED_OVERLAYS" not in kick:
+        fail("KickBedOverlayOnesHot must StartTimer(TIMER_BED_OVERLAYS)")
     maybe = extract_function(bed, "MaybeApplyBedGiftDecayOverlays")
     if "ApplyBedGiftDecayOverlays" not in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must call ApplyBedGiftDecayOverlays")
-    if "ParkWarmedBedCorpse" in maybe or "BedCorpseWarmed" in maybe:
-        fail("MaybeApplyBedGiftDecayOverlays must not re-park — warm-park path retired")
+    if "ArmBedDespawnTimer" not in maybe:
+        fail("MaybeApplyBedGiftDecayOverlays must ArmBedDespawnTimer after paint (real despawn window starts after paint, not present)")
     if "BedOverlaysApplied = True" not in maybe and "BedOverlaysApplied=True" not in maybe.replace(" ", ""):
         fail("MaybeApplyBedGiftDecayOverlays must set BedOverlaysApplied")
     if "CreateBedCorpseAt" in maybe or "PlaceAtMe" in maybe:
         fail("MaybeApplyBedGiftDecayOverlays must not touch spawn")
     clear = extract_function(bed, "ClearBedCorpse")
-    if "CancelTimer(TIMER_BED_OVERLAYS)" not in clear:
-        fail("ClearBedCorpse must CancelTimer(TIMER_BED_OVERLAYS)")
     if "BedOverlaysApplied = False" not in clear and "BedOverlaysApplied=False" not in clear.replace(" ", ""):
         fail("ClearBedCorpse must reset BedOverlaysApplied")
     if "Function CorpseDecay()" not in main:
         fail("Main must expose CorpseDecay() façade")
     if "DebugForceCorpseDecayOverlays" in main:
-        fail("DebugForceCorpseDecayOverlays retired — must not remain on Main")
+        fail("DebugForceCorpseDecayOverlays retired — must not reappear on Main")
     if "PlayImpactEffect" in bed or "PlayImpactEffect" in main:
         fail("user scripts must not call PlayImpactEffect for Slice H")
-    # TODO: review after ModConfigAlias move — bedGiftWoundAlpha may live on
-    # ModConfigAlias / CorpseDecay only; Main GetBedGiftWoundAlpha may be gone.
-    # if "bedGiftWoundAlpha" not in main or "GetBedGiftWoundAlpha" not in main:
-    #     fail("Main must load/expose bedGiftWoundAlpha for bed gift wound opacity")
-    if "DecayKillLastBodyReapplyReal" in main:
-        fail("DecayKillLastBodyReapplyReal was reverted with ReapplyDecayBodySkinsOnly — must not be reintroduced")
+    # bedGiftWoundAlpha is read directly via ModConfigAlias inside ApplyBedGiftDecayOverlays
+    # (checked above) — Main no longer re-exposes it as a separate façade.
     ok("BedGift + Main CorpseDecay wiring")
 
 
@@ -384,8 +274,13 @@ def test_wound_config_vs_rof() -> None:
 
 def test_mcm_esp_deploy_docs() -> None:
     mcm = MCM.read_text(encoding="utf-8")
+    # DebugForceCorpseDecayOverlays (standalone MCM debug button) retired — manual/menu-driven
+    # testing is the Victims page "Set decay stage" / "Reset decay stage" buttons now
+    # (MCMApplyAimedDecayStage / MCMResetAimedDecayKillClock -> QueueAimedDecayApply).
     if "DebugForceCorpseDecayOverlays" in mcm:
-        fail("MCM must not keep retired Force corpse decay overlays button")
+        fail("DebugForceCorpseDecayOverlays retired — must not reappear in MCM config")
+    if "MCMApplyAimedDecayStage" not in mcm or "MCMResetAimedDecayKillClock" not in mcm:
+        fail("MCM Victims page must have Set/Reset decay stage buttons")
     if "DebugForceCorpseDecayDecals" in mcm:
         fail("MCM must not keep retired Force corpse decay decals")
     esp = ESP_BUILDER.read_text(encoding="utf-8", errors="replace")

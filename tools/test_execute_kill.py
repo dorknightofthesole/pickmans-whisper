@@ -257,8 +257,8 @@ def test_esp_builder() -> None:
         fail("ESP builder must attach PickmansWhisperExecuteScript to the Main quest VMAD")
     if "FID_EXECUTE_MSG = 0x0100087B" not in text:
         fail("ESP builder must declare FID_EXECUTE_MSG = 0x0100087B")
-    if "NEXT_OID = 0x0000087F" not in text:
-        fail("ESP builder NEXT_OID must be bumped past mutilated body ARMA/ARMO/STAT")
+    if "NEXT_OID = 0x00000880" not in text:
+        fail("ESP builder NEXT_OID must be bumped past gore SM arm L MISC")
     if "def build_execute_menu_payload" not in text:
         fail("ESP builder must declare build_execute_menu_payload()")
     menu_fn_m = re.search(r"def build_execute_menu_payload.*?return b\"\"\.join\(parts\)", text, re.S)

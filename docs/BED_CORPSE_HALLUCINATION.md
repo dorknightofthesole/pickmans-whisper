@@ -6,7 +6,7 @@
 
 Ephemeral vignette — `DiamondCityResidentF01NoodleMarket` (unnamed female Resident) via `PlaceAtMe`, then `SnapIntoInteraction` + `KillSilent` on the bed (ragdoll fallback if snap fails). Not Necromantic preserve / not permanent.
 
-**Code layout:** Self-contained on `PickmansWhisperBedGiftScript` (sleep events + own timers). Main keeps only shared callbacks (`OnBedGiftStatus`, kill-credit suppress, `IsNonGameplayCorpse`). PlayerAlias re-arms sleep via `GetBedGift()`. **No KillerScan coupling.**
+**Code layout:** Logic lives on `PickmansWhisperBedGiftScript` (attached to the same Main quest). `PickmansWhisperMainQuestScript` keeps thin façades (`HandlePlayerSleep*`, `MaybeWarmBedGiftBody`, MCM debug) so PlayerAlias / killscan / MCM keep calling Main.
 
 ---
 
@@ -14,20 +14,20 @@ Ephemeral vignette — `DiamondCityResidentF01NoodleMarket` (unnamed female Resi
 
 | Topic | Choice |
 |-------|--------|
-| Despawn | BedGift oneshot `TIMER_BED_DESPAWN` (`BED_DESPAWN_SECONDS = 4.0`) after present |
-| Beat | Pure vignette: `BondStarted` + blade equipped + MCM `bBedGift` + `ModConfig.txt` `bedGiftCooldownDays` (default `0.5` ≈ 12h; Debug **Bed gift every sleep** bypasses; default ON) |
+| Despawn | KillerScan pulse count (`BED_DESPAWN_SCANS = 2`) after present |
+| Beat | Pure vignette: `BondStarted` + MCM `bBedGift` + `ModConfig.txt` `bedGiftCooldownDays` (default `0.5` ≈ 12h; Debug **Bed gift every sleep** bypasses; default ON) |
 | Hunger | No gate, no satiation (`KillSilent` credit suppressed; body never enters kill-watch) |
-| One body | **EXPERIMENT**: SleepStart `TrySpawnBedCorpse` then `PresentBedCorpseOnWake` (posed before wake). SleepStop = interrupt cleanup only. Snap may fail while player occupies bed → ragdoll. |
-| Overlay timer | BedGift one-shot `TIMER_BED_OVERLAYS` (does not reschedule from OnTimer). Spawn / Present **arm** it via `KickBedOverlayOnesHot`. |
+| One body | **Primary spawn**: killscan `MaybeWarmBedGiftBody` every tick while bonded. **SleepStart fallback** place+disable only (no Pose/LooksMenu on sleep stack). Present poses on wake. Despawn pulses sync on KillerScan. |
+| Overlay timer | **Experiment:** BedGift one-shot `TIMER_BED_OVERLAYS` (does not reschedule). KillerScan / Present only **arm** it. Recurring timer remains KillerScan-only. |
 | Spawn form | `Fallout4.esm` `DiamondCityResidentF01NoodleMarket` (`0x4DEC`, unnamed Resident; kill via `KillSilent(player)`) |
-| Placement | Prefer `Enable` → wait `Is3DLoaded` → `SnapIntoInteraction(bed)` → settle → `KillSilent` → strip. Fallback if no 3D / snap fails: `KillSilent` + `SetPosition` + ragdoll (never call Snap without 3D). |
+| Placement | Prefer `Enable` → wait `Is3DLoaded` → `SnapIntoInteraction(bed)` → `Utility.Wait(0.5)` → `KillSilent` → strip. Fallback if no 3D / snap fails: `KillSilent` + `SetPosition` + ragdoll (never call Snap without 3D). |
 | Gear | `UnequipAll` + `RemoveAllItems` (before snap + after kill) |
-| Sleep hook | **BedGift** `RegisterForPlayerSleep` (Alias re-arms via `GetBedGift()` every load) |
+| Sleep hook | **PlayerAlias** `RegisterForPlayerSleep` |
 | Voice | Optional `ModConfig.txt` → `bedGiftWakeToast`; requires voice + blade |
 
 Contract: `tools/test_bed_hallucination.py`. MCM Debug: **Force bed gift** / **Clear bed gift**.
 
-Slice H: decay prefers apply while disabled — SleepStart arms `TIMER_BED_OVERLAYS` after PlaceAtMe. Present sync-apply forbidden (stalls SleepStop / MCM Force). See [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
+Slice H: decay applies **before Enable** when possible — deferred timer after warm (parked/disabled), with SleepStart finishing any pending apply during the sleep fade. Wake only Enables an already Black Putrefaction body (Present sync-apply forbidden — stalls SleepStop / MCM Force). See [SLICE_H_CORPSE_DECAY.md](SLICE_H_CORPSE_DECAY.md).
 
 **Note:** `SnapIntoInteraction` fails if the bed seat is occupied. On wake the player has usually left the furniture; if snap still fails, status shows ragdoll fallback.
 
@@ -36,29 +36,29 @@ Slice H: decay prefers apply while disabled — SleepStart arms `TIMER_BED_OVERL
 ## When to spawn (G1)
 
 ```text
-OnPlayerSleepStart (desired sleep >= 3h)
-  → clear stale BedCorpse
-  → TrySpawnBedCorpse (PlaceAtMe + disable)
-  → PresentBedCorpseOnWake (Enable → TIMER_BED_POSE snap/kill → despawn arm + toast)
-  → goal: already posed when player wakes (snap may fail if bed occupied)
+While awake (killscan) — ONLY PlaceAtMe site
+  → MaybeWarmBedGiftBody → PlaceAtMe DiamondCityResidentF01NoodleMarket (alive)
+  → ghost + park disabled under player
+  → ScheduleBedGiftDecayOverlays (BedOverlaysAtReal); KillerScan arms one-shot TIMER_BED_OVERLAYS
+
+OnPlayerSleepStart
+  → save BedAnchor; TrySpawn fallback if warm missed (place+disable only)
+  → schedule overlays if still pending (no LooksMenu on sleep stack)
 
 OnPlayerSleepStop
-  → no-op (must not touch BedCorpse — races SleepStart)
-
-TIMER_BED_OVERLAYS → paint → ArmBedDespawnTimer (~4s after paint)
-  FinishBedPresentTail also arms a long safety despawn if paint never runs
-TIMER_BED_DESPAWN → ClearBedCorpse
+  → if BedCorpse: Enable → wait Is3DLoaded → SnapIntoInteraction → Wait → KillSilent → strip
+  → clear BedOverlaysApplied → KickBedOverlayOnesHot (paint AFTER pose; oneshot OnTimer)
+  → toast → despawn on 2nd KillerScan pulse
 ```
 
-After deploy: quit FO4 to desktop so old suspended stacks die.
+After deploy: quit FO4 to desktop so old suspended stacks (e.g. retired `BedDespawnAtReal`) die.
 
 ---
 
 ## Verify (in-game)
 
-1. Bonded + blade drawn → sleep → wake with corpse posed on bed (or ragdoll fallback).
+1. Bonded → walk ~10s → sleep → wake with corpse posed on bed (or ragdoll fallback).
 2. On snap fail: always get toast `bed SnapIntoInteraction FAILED — ragdoll fallback` (not debug-gated).
-3. After ~`BED_DESPAWN_SECONDS`, she despawns.
+3. On the **2nd KillerScan** deadline pulse after present, she despawns.
 4. Debug force/clear work.
 5. Wake toast only when blade drawn + voice on.
-6. No blade drawn → SleepStart skips spawn (status visible).

@@ -74,6 +74,8 @@ FID_EXECUTE_MSG = 0x0100087B  # PW_ExecuteMenu (Slice W — Decapitate / Smash H
 FID_MUTILATED_BODY_ARMA = 0x0100087C
 FID_MUTILATED_BODY_ARMO = 0x0100087D
 FID_CUT_OFF_TITS_MISC = 0x0100087E
+# Sanity-check MISC: vanilla GoreSuperMutantArmL.nif (race gore NAM1, not a vanilla placeable).
+FID_GORE_SM_ARM_L_MISC = 0x0100087F
 # BOD2 bit 3 = biped 33 Body (slot 30 + 3).
 BOD2_SLOT_33 = struct.pack("<I", 0x00000008)
 RECORD_FLAG_NONPLAYABLE = 0x00000004
@@ -82,8 +84,10 @@ MUTILATED_BODY_MESH_REL = "PickmansWhisper\\Characters\\FemaleBody_Mutilated_Tit
 # Cut surface on this nif: vanilla Materials\Gore\GoreHumanLeg.BGSM (see docs/SLICE_F_CORPSE_SEVER.md).
 CUT_OFF_TITS_PROP_MESH = ROOT / "Data" / "Meshes" / "PickmansWhisper" / "Props" / "FemaleBody_Prop_Tits.nif"
 CUT_OFF_TITS_PROP_MESH_REL = "PickmansWhisper\\Props\\FemaleBody_Prop_Tits.nif"
+# Vanilla BA2 mesh — not shipped in this repo. Path must match Fallout4.esm NAM1.
+GORE_SM_ARM_L_MESH_REL = "Actors\\Supermutant\\CharacterAssets\\GoreSuperMutantArmL.nif"
 # NEXT_OID is the local object counter (no plugin byte); record FormIDs use 0x01…….
-NEXT_OID = 0x0000087F  # == (FID_CUT_OFF_TITS_MISC & 0xFFFFFF) + 1
+NEXT_OID = 0x00000880  # == (FID_GORE_SM_ARM_L_MISC & 0xFFFFFF) + 1
 # Variable AVIF flags/type — mirror Fallout4.esm WorkshopSnapStacks / HC_* vars.
 AVIF_FLAG_VARIABLE_DEFAULT0 = 0x00040000
 AVIF_TYPE_VARIABLE = 8
@@ -807,8 +811,24 @@ def build_cut_off_tits_misc_payload() -> bytes:
     )
 
 
-def collect_mutilated_body_records() -> tuple[bytes, bytes, bytes]:
-    """ARMA + ARMO + MISC for Cut Off Tits. Fail loud if either NIF is missing."""
+def build_gore_sm_arm_l_misc_payload() -> bytes:
+    """MISC sanity spawn — vanilla Super Mutant left-arm gore mesh (Havok compare)."""
+    modt = b"\x04\x00\x00\x00" + (b"\x00" * 16)
+    obnd = struct.pack("<6h", -16, -8, -8, 16, 8, 8)
+    return b"".join(
+        [
+            field(b"EDID", zstr("PickmansWhisper_DebugGoreSuperMutantArmL")),
+            field(b"OBND", obnd),
+            field(b"FULL", zstr("Gore Super Mutant Arm L")),
+            field(b"MODL", zstr(GORE_SM_ARM_L_MESH_REL)),
+            field(b"MODT", modt),
+            field(b"DATA", struct.pack("<If", 0, 3.0)),
+        ]
+    )
+
+
+def collect_mutilated_body_records() -> tuple[bytes, bytes, bytes, bytes]:
+    """ARMA + ARMO + Cut Off Tits MISC + vanilla SM-arm gore MISC."""
     if not MUTILATED_BODY_MESH.is_file():
         raise SystemExit(f"Missing mutilated body NIF: {MUTILATED_BODY_MESH}")
     if not CUT_OFF_TITS_PROP_MESH.is_file():
@@ -828,7 +848,11 @@ def collect_mutilated_body_records() -> tuple[bytes, bytes, bytes]:
     print(
         f"  MISC 0x{FID_CUT_OFF_TITS_MISC:08X} PropCutOffTits -> Meshes\\{CUT_OFF_TITS_PROP_MESH_REL}"
     )
-    return arma, armo, misc
+    gore_misc = record(b"MISC", FID_GORE_SM_ARM_L_MISC, build_gore_sm_arm_l_misc_payload())
+    print(
+        f"  MISC 0x{FID_GORE_SM_ARM_L_MISC:08X} DebugGoreSuperMutantArmL -> Meshes\\{GORE_SM_ARM_L_MESH_REL}"
+    )
+    return arma, armo, misc, gore_misc
 
 
 def build_empty_outfit_payload() -> bytes:
@@ -1097,13 +1121,13 @@ def main() -> None:
     sndr_recs = collect_sndr_records()
     sndr_blob = b"".join(sndr_recs)
     arma_recs, armo_recs = collect_decay_face_armor_records()
-    mut_arma, mut_armo, cut_misc = collect_mutilated_body_records()
+    mut_arma, mut_armo, cut_misc, gore_misc = collect_mutilated_body_records()
     arma_blob = b"".join(arma_recs) + mut_arma
     armo_blob = b"".join(armo_recs) + mut_armo
 
     # 2x QUST + SPEL + GLOB + 2x MGEF hunger + 2x MESG + 2x PERK + OTFT + 4 AVIF
-    # + N SNDR + N ARMA + N ARMO + MISC (proximity cloak MGEF/SPEL chain retired)
-    num_records = 15 + len(sndr_recs) + len(arma_recs) + len(armo_recs) + 3
+    # + N SNDR + N ARMA + N ARMO + 2 MISC (proximity cloak MGEF/SPEL chain retired)
+    num_records = 15 + len(sndr_recs) + len(arma_recs) + len(armo_recs) + 4
     tes4 = build_tes4(num_records=num_records, next_object_id=NEXT_OID)
     out = (
         tes4
@@ -1117,7 +1141,7 @@ def main() -> None:
         + group(b"MESG", msg_rec + msg_execute)
         + group(b"PERK", perk_trade + perk_slavery)
         + group(b"OTFT", otft_empty)
-        + group(b"MISC", cut_misc)
+        + group(b"MISC", cut_misc + gore_misc)
         + group(b"ARMA", arma_blob)
         + group(b"ARMO", armo_blob)
         + group(b"QUST", main_q + player_q)

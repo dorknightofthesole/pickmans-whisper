@@ -17,6 +17,8 @@ String PLUGIN_PW = "PickmansWhisper.esp"
 ; Cut Off Tits — slot-33 body ARMO + weighted MISC prop (builder FormIDs; contract-locked).
 Int FID_MUTILATED_BODY_ARMO = 0x0000087D
 Int FID_CUT_OFF_TITS_MISC = 0x0000087E
+; Sanity check: vanilla GoreSuperMutantArmL.nif spawned beside the tits (same Havok drop).
+Int FID_GORE_SM_ARM_L_MISC = 0x0000087F
 Int CUT_OFF_TITS_ONCE_MAX = 32
 Float CUT_OFF_TITS_PROP_OFFSET_XY = 64.0
 Float CUT_OFF_TITS_PROP_OFFSET_Z = 6.0
@@ -2186,31 +2188,70 @@ Function ReequipMutilatedBodyIfNeeded(Actor akCorpse)
 	Debug.Trace("PickmansWhisper: re-equip mutilated body after limb sever id=" + akCorpse.GetFormID())
 EndFunction
 
-Function SpawnCutOffTitsProp(Actor akCorpse)
+Form Function ResolveGoreSuperMutantArmLMisc()
+	Form misc = Game.GetFormFromFile(FID_GORE_SM_ARM_L_MISC, PLUGIN_PW)
+
+	If !misc
+		SetCorpseDecayStatus("ERROR: gore SM arm L MISC 0x87F missing — rebuild ESP")
+		Debug.Notification("Pickman's Whisper: gore SM arm L prop missing — rebuild ESP")
+		Debug.Trace("PickmansWhisper Error: ResolveGoreSuperMutantArmLMisc GetFormFromFile 0x" + FID_GORE_SM_ARM_L_MISC)
+	EndIf
+
+	Return misc
+EndFunction
+
+; PlaceAtMe + MoveTo + wait for 3D + InitHavok so the MISC can fall like clutter.
+Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float offsetY, Float offsetZ, String label)
 	If !akCorpse
-		Debug.Trace("PickmansWhisper: ERROR SpawnCutOffTitsProp — no corpse")
+		Debug.Trace("PickmansWhisper Error: DropHavokMiscBeside — no corpse (" + label + ")")
 		Return
 	EndIf
 
-	Form misc = ResolveCutOffTitsMisc()
 	If !misc
+		Debug.Trace("PickmansWhisper Error: DropHavokMiscBeside — no form (" + label + ")")
 		Return
 	EndIf
 
 	ObjectReference placed = akCorpse.PlaceAtMe(misc, 1, False, False)
+
 	If !placed
-		SetCorpseDecayStatus("ERROR: PlaceAtMe cut-off tits MISC failed")
-		Debug.Notification("Pickman's Whisper: cut-off tits prop failed to spawn")
-		Debug.Trace("PickmansWhisper: ERROR SpawnCutOffTitsProp PlaceAtMe None id=" + akCorpse.GetFormID())
+		SetCorpseDecayStatus("ERROR: PlaceAtMe " + label + " failed")
+		Debug.Notification("Pickman's Whisper: " + label + " failed to spawn")
+		Debug.Trace("PickmansWhisper Error: DropHavokMiscBeside PlaceAtMe None " + label + " id=" + akCorpse.GetFormID())
 		Return
 	EndIf
 
-	placed.MoveTo(akCorpse, CUT_OFF_TITS_PROP_OFFSET_XY, 0.0, CUT_OFF_TITS_PROP_OFFSET_Z, False)
-	; MoveTo keyframes the ref — re-enable Havok so the weighted MISC can fall.
+	placed.MoveTo(akCorpse, offsetX, offsetY, offsetZ, False)
+
+	; Wait for 3D — InitHavok in the same frame as MoveTo no-ops if Havok is not ready.
+	; Safe here: butcher-menu path, not a hot event stack.
+	Int guard = 0
+
+	While !placed.Is3DLoaded() && guard < 20
+		Utility.Wait(0.1)
+		guard += 1
+	EndWhile
+
+	If !placed.Is3DLoaded()
+		Debug.Trace("PickmansWhisper: WARNING DropHavokMiscBeside — 3D never loaded " + label + " id=" + akCorpse.GetFormID())
+	EndIf
+
 	GardenOfEden.InitHavok(placed)
 	placed.SetMotionType(placed.Motion_Dynamic)
 	placed.ApplyHavokImpulse(0.0, 0.0, -1.0, 8.0)
-	Debug.Trace("PickmansWhisper: spawned cut-off tits MISC beside id=" + akCorpse.GetFormID())
+	Debug.Trace("PickmansWhisper: spawned " + label + " beside id=" + akCorpse.GetFormID())
+EndFunction
+
+Function SpawnCutOffTitsProp(Actor akCorpse)
+	If !akCorpse
+		Debug.Trace("PickmansWhisper Error: SpawnCutOffTitsProp — no corpse")
+		Return
+	EndIf
+
+	DropHavokMiscBeside(akCorpse, ResolveCutOffTitsMisc(), CUT_OFF_TITS_PROP_OFFSET_XY, 0.0, CUT_OFF_TITS_PROP_OFFSET_Z, "cut-off tits")
+
+	; Vanilla Super Mutant left-arm gore — Havok sanity check beside our prop.
+	DropHavokMiscBeside(akCorpse, ResolveGoreSuperMutantArmLMisc(), -CUT_OFF_TITS_PROP_OFFSET_XY, 0.0, CUT_OFF_TITS_PROP_OFFSET_Z, "gore SM arm L")
 EndFunction
 
 ; Butcher Cut Off Tits — instance body swap + dropped MISC. Not Dismember (no breast gore bone).

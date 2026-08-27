@@ -296,8 +296,12 @@ def test_deploy_wiring() -> None:
     sh = DEPLOY_SH.read_text(encoding="utf-8", errors="replace")
     if "test_captive_tattoo_lab.py" not in ps1 or "test_captive_tattoo_lab.py" not in sh:
         fail("deploy scripts must run test_captive_tattoo_lab.py")
-    if "Data\\PickmansWhisper\\config" not in ps1:
-        fail("build-deploy-local.ps1 must recursively deploy Data\\PickmansWhisper\\config (ships tattoo chunk banks)")
+    # .ps1 ships config\tattoos\ via a recursive folder sync function
+    # (Sync-DataTree "PickmansWhisper" copies Data\PickmansWhisper\* recursively, which
+    # includes config\ as a subfolder) rather than a literal path reference to config
+    # itself — that literal form is only how build-deploy-local.sh happens to do it.
+    if 'Sync-DataTree "PickmansWhisper"' not in ps1:
+        fail('build-deploy-local.ps1 must Sync-DataTree "PickmansWhisper" (recursively ships config incl. tattoo chunk banks)')
     if "Data/PickmansWhisper/config" not in sh:
         fail("build-deploy-local.sh must recursively deploy Data/PickmansWhisper/config (ships tattoo chunk banks)")
     ok("deploy scripts ship the config folder recursively and run this test")
