@@ -17,8 +17,6 @@ String PLUGIN_PW = "PickmansWhisper.esp"
 ; Cut Off Tits — slot-33 body ARMO + weighted MISC prop (builder FormIDs; contract-locked).
 Int FID_MUTILATED_BODY_ARMO = 0x0000087D
 Int FID_CUT_OFF_TITS_MISC = 0x0000087E
-; Sanity check: vanilla GoreSuperMutantArmL.nif spawned beside the tits (same Havok drop).
-Int FID_GORE_SM_ARM_L_MISC = 0x0000087F
 Int CUT_OFF_TITS_ONCE_MAX = 32
 Float CUT_OFF_TITS_PROP_OFFSET_XY = 64.0
 Float CUT_OFF_TITS_PROP_OFFSET_Z = 6.0
@@ -2188,18 +2186,6 @@ Function ReequipMutilatedBodyIfNeeded(Actor akCorpse)
 	Debug.Trace("PickmansWhisper: re-equip mutilated body after limb sever id=" + akCorpse.GetFormID())
 EndFunction
 
-Form Function ResolveGoreSuperMutantArmLMisc()
-	Form misc = Game.GetFormFromFile(FID_GORE_SM_ARM_L_MISC, PLUGIN_PW)
-
-	If !misc
-		SetCorpseDecayStatus("ERROR: gore SM arm L MISC 0x87F missing — rebuild ESP")
-		Debug.Notification("Pickman's Whisper: gore SM arm L prop missing — rebuild ESP")
-		Debug.Trace("PickmansWhisper Error: ResolveGoreSuperMutantArmLMisc GetFormFromFile 0x" + FID_GORE_SM_ARM_L_MISC)
-	EndIf
-
-	Return misc
-EndFunction
-
 ; PlaceAtMe + MoveTo + wait for 3D + InitHavok so the MISC can fall like clutter.
 Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float offsetY, Float offsetZ, String label)
 	If !akCorpse
@@ -2249,9 +2235,6 @@ Function SpawnCutOffTitsProp(Actor akCorpse)
 	EndIf
 
 	DropHavokMiscBeside(akCorpse, ResolveCutOffTitsMisc(), CUT_OFF_TITS_PROP_OFFSET_XY, 0.0, CUT_OFF_TITS_PROP_OFFSET_Z, "cut-off tits")
-
-	; Vanilla Super Mutant left-arm gore — Havok sanity check beside our prop.
-	DropHavokMiscBeside(akCorpse, ResolveGoreSuperMutantArmLMisc(), -CUT_OFF_TITS_PROP_OFFSET_XY, 0.0, CUT_OFF_TITS_PROP_OFFSET_Z, "gore SM arm L")
 EndFunction
 
 ; Butcher Cut Off Tits — instance body swap + dropped MISC. Not Dismember (no breast gore bone).

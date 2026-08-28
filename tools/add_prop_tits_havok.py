@@ -6,9 +6,11 @@ Blender is the only source of hull geometry.
 
 This script:
   1. Parses the NIF (collision must already exist from Blender/PyNifly)
-  2. Writes BSXFlags = Havok | Complex | Dynamic (74)
-  3. Points bhkNPCollisionObject Target at FusionGirlReduced (not Scene Root)
-  4. Verifies collision layer is Clutter or Prop, and material is Flesh, when those fields are readable
+  2. Writes BSXFlags = Havok | Dynamic | Articulated (194) — vanilla Baseball/TinCan
+  3. Points bhkNPCollisionObject Target at Scene Root (PlaceAtMe motion root)
+  4. Writes bodyID 0 and SYNC_ON_UPDATE flags (PyNifly leaves bodyID as NODEID_NONE,
+     which FO4 uses as a body-array index and crashes)
+  5. Verifies collision layer is Clutter or Prop, and material is Flesh, when those fields are readable
 """
 from __future__ import annotations
 
@@ -31,12 +33,25 @@ PYNIFLY_ADDON = (
     / "io_scene_nifly"
 )
 
-# NifSkope BSXFlags: Havok (2) + Complex (8) + Dynamic (64) = 74.
+# Vanilla lootable MISC (Baseball.nif / TinCan01.nif): Havok (2) + Dynamic (64) + Articulated (128) = 194.
+# 74 (Havok|Complex|Dynamic) is the gore-piece pattern and does not fall as clutter.
 BSX_HAVOK = 2
-BSX_COMPLEX = 8
 BSX_DYNAMIC = 64
-BSX_HAVOK_COMPLEX_DYNAMIC = BSX_HAVOK | BSX_COMPLEX | BSX_DYNAMIC
-COLLISION_TARGET_NAME = "FusionGirlReduced"
+BSX_ARTICULATED = 128
+BSX_LOOT_CLUTTER = BSX_HAVOK | BSX_DYNAMIC | BSX_ARTICULATED
+COLLISION_TARGET_NAME = "Scene Root"
+COLLISION_TARGET_BLOCK = "NiNode"
+
+# On-disk bhkNPCollisionObject is 14 bytes: Target u32, Flags u16, Data u32, BodyID u32.
+# PyNifly defaults BodyID to NODEID_NONE (0xFFFFFFFF). FO4 CreateInstance uses that as a
+# packfile body index and access-violates (Buffout: MISC PickmansWhisper_PropCutOffTits).
+NP_BODY_INDEX_NONE = 0xFFFFFFFF
+NP_BODY_INDEX = 0
+# bhkCOFlags.SYNC_ON_UPDATE — vanilla FO4 NP (GoreSuperMutantArmL pieces).
+NP_COLLISION_FLAGS = 128
+# Cut cap — SSOT path (docs/SLICE_F_CORPSE_SEVER.md). Blender re-export can drop it.
+GORE_CAP_BGSM = r"Materials\Gore\GoreHumanLeg.BGSM"
+GORE_CAP_SHAPE = "SeveredTitsBack002"
 
 # Bethesda collision layers (same numbering on FO4 COLU / SkyrimCollisionLayer).
 LAYER_CLUTTER = 4
@@ -375,6 +390,8 @@ def inspect_prop(path: Path) -> dict:
     ):
         classic_count = 1
 
+    disk = read_np_collision_disk(path)
+    gore = _inspect_gore_cap(nif)
     info = {
         "bsx": int(bsx.flags) if bsx is not None else None,
         "np_count": np_count,
@@ -384,6 +401,13 @@ def inspect_prop(path: Path) -> dict:
         "packfile_blobs": blobs,
         "block_types": block_types,
         "collision_targets": collision_targets,
+        "np_body_id": disk.get("body_id"),
+        "np_flags": disk.get("flags"),
+        "gore_has_cap": gore["has_cap"],
+        "gore_facegen": gore["facegen"],
+        "gore_double_sided": gore["double_sided"],
+        "gore_skin_tint": gore["gore_skin_tint"],
+        "gore_shader_type": gore["gore_shader_type"],
     }
     del nif
     return info
@@ -422,8 +446,8 @@ def verify_collision_meta(info: dict) -> None:
         return
 
     usable = _usable_layers(info["layers"])
-    if usable and not any(is_clutter_or_prop_layer(layer) for layer in usable):
-        found = ", ".join(_enum_name(layer) for layer in usable)
+    if not any(is_clutter_or_prop_layer(layer) for layer in usable):
+        found = ", ".join(_enum_name(layer) for layer in (info["layers"] or [])) or "<missing>"
         raise SystemExit(
             "PickmansWhisper Error: collision layer must be Clutter or Prop; "
             f"found {found}"
@@ -437,9 +461,9 @@ def verify_collision_meta(info: dict) -> None:
         )
 
 
-def is_bsx_havok_complex_dynamic(flags) -> bool:
-    """True if BSXFlags is exactly Havok | Complex | Dynamic (74)."""
-    return _as_int(flags) == BSX_HAVOK_COMPLEX_DYNAMIC
+def is_bsx_loot_clutter(flags) -> bool:
+    """True if BSXFlags is exactly Havok | Dynamic | Articulated (194)."""
+    return _as_int(flags) == BSX_LOOT_CLUTTER
 
 
 def verify_bsx_flags(info: dict) -> None:
@@ -447,10 +471,10 @@ def verify_bsx_flags(info: dict) -> None:
         raise SystemExit(
             "PickmansWhisper Error: BSXFlags missing after write"
         )
-    if not is_bsx_havok_complex_dynamic(info["bsx"]):
+    if not is_bsx_loot_clutter(info["bsx"]):
         raise SystemExit(
             "PickmansWhisper Error: BSXFlags must be "
-            f"{BSX_HAVOK_COMPLEX_DYNAMIC} (Havok|Complex|Dynamic); "
+            f"{BSX_LOOT_CLUTTER} (Havok|Dynamic|Articulated, vanilla junk); "
             f"found {info['bsx']}"
         )
 
@@ -471,18 +495,31 @@ def verify_collision_target(info: dict) -> None:
         )
 
 
-def _fusion_girl_reduced(nif):
-    matches = [s for s in nif.shapes if s.name == COLLISION_TARGET_NAME]
-    if not matches:
+def verify_np_instance_fields(info: dict) -> None:
+    """Reject NODEID_NONE bodyID — FO4 CreateInstance crashes on that sentinel."""
+    if info.get("np_count", 0) == 0:
+        return
+    body_id = info.get("np_body_id")
+    if body_id is None or body_id == NP_BODY_INDEX_NONE:
         raise SystemExit(
-            f"PickmansWhisper Error: shape {COLLISION_TARGET_NAME!r} missing"
+            "PickmansWhisper Error: bhkNPCollisionObject bodyID is NODEID_NONE "
+            "(FO4 CreateInstance crash)"
         )
-    if len(matches) != 1:
+    flags = info.get("np_flags")
+    if flags != NP_COLLISION_FLAGS:
         raise SystemExit(
-            "PickmansWhisper Error: expected one "
-            f"{COLLISION_TARGET_NAME!r} shape, found {len(matches)}"
+            "PickmansWhisper Error: bhkNPCollisionObject flags must be "
+            f"SYNC_ON_UPDATE ({NP_COLLISION_FLAGS}); found {flags}"
         )
-    return matches[0]
+
+
+def _collision_host(nif):
+    root = nif.root
+    if not root or getattr(root, "name", "") != COLLISION_TARGET_NAME:
+        raise SystemExit(
+            f"PickmansWhisper Error: nif root must be named {COLLISION_TARGET_NAME!r}"
+        )
+    return root
 
 
 def _np_collision_owner(nif):
@@ -499,12 +536,168 @@ def _np_collision_owner(nif):
     )
 
 
+def _iter_np_body_layer_pack_offsets(packfile: bytes) -> list[int]:
+    """Offsets of BodyCInfo collision-layer bytes inside a Havok packfile."""
+    from io_scene_nifly.pyn.bhk_autounpack import (
+        parse_local_fixups,
+        parse_section_headers,
+        parse_virtual_fixups,
+        u32,
+    )
+
+    hdrs = parse_section_headers(packfile)
+    if "__data__" not in hdrs or "__classnames__" not in hdrs:
+        return []
+    data_hdr = hdrs["__data__"]
+    data_start = data_hdr.abs_start
+    fixups = parse_local_fixups(packfile, data_hdr)
+    objects = parse_virtual_fixups(packfile, data_hdr, hdrs["__classnames__"].abs_start)
+    offsets = []
+    for rel, cls in objects:
+        if "hknpPhysicsSystemData" not in cls:
+            continue
+        psd_abs = data_start + rel
+        body_count = u32(packfile, psd_abs + 0x40 + 8) & 0x3FFFFFFF
+        body_arr = fixups.get(rel + 0x40)
+        if body_arr is None or body_count == 0:
+            continue
+        for i in range(body_count):
+            body_abs = data_start + body_arr + i * 0x60
+            if body_abs + 0x11 > len(packfile):
+                continue
+            offsets.append(body_abs + 0x10)
+    return offsets
+
+
+def _physics_system_pack(parsed: dict) -> tuple[int, bytes]:
+    """Return (file offset of packfile bytes, packfile) for the unique physics system."""
+    ids = [i for i, name in enumerate(parsed["types"]) if name == "bhkPhysicsSystem"]
+    if len(ids) != 1:
+        raise SystemExit(
+            "PickmansWhisper Error: expected one bhkPhysicsSystem; "
+            f"found {len(ids)}"
+        )
+    i = ids[0]
+    start = parsed["starts"][i]
+    size = parsed["sizes"][i]
+    if size < 8:
+        raise SystemExit(f"PickmansWhisper Error: bhkPhysicsSystem block too small ({size})")
+    num = int.from_bytes(parsed["data"][start : start + 4], "little")
+    payload_off = start + 4
+    if payload_off + num > len(parsed["data"]) or num + 4 > size:
+        raise SystemExit("PickmansWhisper Error: bhkPhysicsSystem data length mismatch")
+    return payload_off, bytes(parsed["data"][payload_off : payload_off + num])
+
+
+def _is_gore_cap_shader(shader) -> bool:
+    name = (getattr(shader, "name", "") or "").replace("\\", "/").lower()
+    return "gorehumanleg" in name
+
+
+def _is_gore_cap_shape(shape) -> bool:
+    name = getattr(shape, "name", "") or ""
+    return name == GORE_CAP_SHAPE or name.startswith(GORE_CAP_SHAPE + ":")
+
+
+def restore_gore_cap_material(nif) -> None:
+    """Point the cut cap at GoreHumanLeg.BGSM if Blender exported skin on both shapes."""
+    found = False
+    for shape in nif.shapes:
+        if not _is_gore_cap_shape(shape):
+            continue
+        found = True
+        sp = getattr(shape, "shader", None)
+        if sp is None:
+            raise SystemExit(
+                f"PickmansWhisper Error: {GORE_CAP_SHAPE} has no shader to restore GoreHumanLeg"
+            )
+        sp.name = GORE_CAP_BGSM
+    if not found:
+        raise SystemExit(
+            f"PickmansWhisper Error: missing cut cap shape {GORE_CAP_SHAPE!r}"
+        )
+
+
+def _inspect_gore_cap(nif) -> dict:
+    from io_scene_nifly.pyn.nifconstants import BSLSPShaderType, ShaderFlags1, ShaderFlags2
+
+    has_cap = False
+    facegen = None
+    double_sided = None
+    shader_type = None
+    for shape in nif.shapes:
+        if not _is_gore_cap_shape(shape):
+            continue
+        has_cap = True
+        sp = getattr(shape, "shader", None)
+        if sp is None:
+            continue
+        props = sp.properties
+        if hasattr(props, "Shader_Type"):
+            shader_type = int(props.Shader_Type)
+        if not hasattr(props, "Shader_Flags_1"):
+            continue
+        flags1 = int(props.Shader_Flags_1)
+        flags2 = int(props.Shader_Flags_2)
+        facegen = bool(flags1 & int(ShaderFlags1.FACEGEN_RGB_TINT))
+        double_sided = bool(flags2 & int(ShaderFlags2.DOUBLE_SIDED))
+        has_cap = has_cap or _is_gore_cap_shader(sp)
+    return {
+        "has_cap": has_cap,
+        "facegen": facegen,
+        "double_sided": double_sided,
+        "gore_shader_type": shader_type,
+        "gore_skin_tint": shader_type == int(BSLSPShaderType.Skin_Tint),
+    }
+
+
+def patch_gore_cap_shader(nif) -> None:
+    """MISC has no actor tint. Skin Tint + FACEGEN on a dropped mesh does not draw."""
+    from io_scene_nifly.pyn.nifconstants import BSLSPShaderType, ShaderFlags1, ShaderFlags2
+
+    for shape in nif.shapes:
+        if not _is_gore_cap_shape(shape):
+            continue
+        sp = getattr(shape, "shader", None)
+        if sp is None:
+            continue
+        props = sp.properties
+        if not hasattr(props, "shaderflags1_clear"):
+            continue
+        props.Shader_Type = int(BSLSPShaderType.Default)
+        if hasattr(props, "bslspShaderType"):
+            props.bslspShaderType = int(BSLSPShaderType.Default)
+        props.shaderflags1_clear(ShaderFlags1.FACEGEN_RGB_TINT)
+        props.shaderflags1_clear(ShaderFlags1.SKINNED)
+        props.shaderflags2_set(ShaderFlags2.DOUBLE_SIDED)
+        sp.write_properties()
+
+
+def verify_gore_cap_shader(info: dict) -> None:
+    if not info.get("gore_has_cap"):
+        raise SystemExit(
+            f"PickmansWhisper Error: missing cut cap shape {GORE_CAP_SHAPE!r}"
+        )
+    if info.get("gore_skin_tint"):
+        raise SystemExit(
+            "PickmansWhisper Error: cut cap must not use Skin Tint (invisible on a MISC)"
+        )
+    if info.get("gore_facegen"):
+        raise SystemExit(
+            "PickmansWhisper Error: cut cap must not use FACEGEN_RGB_TINT on a MISC"
+        )
+    if not info.get("gore_double_sided"):
+        raise SystemExit(
+            "PickmansWhisper Error: cut cap must be DOUBLE_SIDED"
+        )
+
+
 def apply_bsx_and_retarget(path: Path) -> None:
-    """Write BSXFlags 74, hang collision on FusionGirlReduced, patch NP Target.
+    """Write BSXFlags 194, hang collision on Scene Root, patch NP Target/body/flags/layer.
 
     PyNifly setBlock on bhkNPCollisionObject is routed to the physics-system
-    setter and fails, so the 14-byte Target link is patched in the file after save.
-    Hull / packfile bytes are not rewritten.
+    setter and fails, so the 14-byte NP block and BodyCInfo layer byte are
+    patched in the file after save. Hull verts are not rewritten.
     """
     from io_scene_nifly.pyn.nifconstants import NODEID_NONE
     from io_scene_nifly.pyn.pynifly import BSXFlags, NifFile
@@ -513,56 +706,170 @@ def apply_bsx_and_retarget(path: Path) -> None:
     root = nif.root
     bsx = root.get_extra_data(blockname="BSXFlags")
     if bsx is None:
-        BSXFlags.New(nif, name="BSX", flags=BSX_HAVOK_COMPLEX_DYNAMIC, parent=root)
+        BSXFlags.New(nif, name="BSX", flags=BSX_LOOT_CLUTTER, parent=root)
     else:
-        bsx.flags = BSX_HAVOK_COMPLEX_DYNAMIC
+        bsx.flags = BSX_LOOT_CLUTTER
 
-    fusion = _fusion_girl_reduced(nif)
+    host = _collision_host(nif)
     owner, coll = _np_collision_owner(nif)
-    fusion.properties.collisionID = coll.id
-    fusion.write_properties()
-    if owner.id != fusion.id:
+    host.properties.collisionID = coll.id
+    host.write_properties()
+    if owner.id != host.id:
         owner.properties.collisionID = NODEID_NONE
         owner.write_properties()
 
+    restore_gore_cap_material(nif)
+    patch_gore_cap_shader(nif)
+
     nif.save()
     del nif
+    patch_bsx_loot_flags(path)
     patch_np_collision_target(path, COLLISION_TARGET_NAME)
+    patch_np_collision_flags(path)
+    patch_np_body_id(path)
+    patch_np_clutter_layer(path)
+    patch_gore_cap_shader_type(path)
 
 
-def patch_np_collision_target(path: Path, target_name: str) -> None:
-    """Set the unique bhkNPCollisionObject Target link to the named BSTriShape."""
+def patch_np_clutter_layer(path: Path) -> None:
+    """Write COLU Clutter into BodyCInfo layer bytes. Does not touch hull verts."""
     parsed = parse_nif_header(path)
-    types = parsed["types"]
-    np_ids = [i for i, name in enumerate(types) if name == "bhkNPCollisionObject"]
+    payload_off, pack = _physics_system_pack(parsed)
+    layer_offs = _iter_np_body_layer_pack_offsets(pack)
+    if not layer_offs:
+        raise SystemExit(
+            "PickmansWhisper Error: no BodyCInfo layer bytes to patch as Clutter"
+        )
+    blob = bytearray(parsed["data"])
+    for rel in layer_offs:
+        blob[payload_off + rel] = LAYER_CLUTTER
+    path.write_bytes(bytes(blob))
+
+
+def patch_gore_cap_shader_type(path: Path) -> None:
+    """Force the cut-cap lighting shader to Default, not Skin Tint (type 5)."""
+    parsed = parse_nif_header(path)
+    shader_i = None
+    for i, block_type in enumerate(parsed["types"]):
+        if block_type != "BSTriShape":
+            continue
+        start = parsed["starts"][i]
+        name_id = int.from_bytes(parsed["data"][start : start + 4], "little")
+        name = (
+            parsed["strings"][name_id]
+            if 0 <= name_id < len(parsed["strings"])
+            else ""
+        )
+        if name != GORE_CAP_SHAPE and not name.startswith(GORE_CAP_SHAPE + ":"):
+            continue
+        for j in range(i + 1, len(parsed["types"])):
+            if parsed["types"][j] == "BSLightingShaderProperty":
+                shader_i = j
+                break
+        break
+    if shader_i is None:
+        raise SystemExit(
+            f"PickmansWhisper Error: no lighting shader after {GORE_CAP_SHAPE}"
+        )
+    start = parsed["starts"][shader_i]
+    blob = bytearray(parsed["data"])
+    blob[start : start + 4] = (0).to_bytes(4, "little")
+    path.write_bytes(bytes(blob))
+
+
+def patch_bsx_loot_flags(path: Path) -> None:
+    """Write Havok|Dynamic|Articulated (194) into the unique BSXFlags block."""
+    parsed = parse_nif_header(path)
+    bsx_ids = [i for i, name in enumerate(parsed["types"]) if name == "BSXFlags"]
+    if len(bsx_ids) != 1:
+        raise SystemExit(
+            f"PickmansWhisper Error: expected one BSXFlags block; found {len(bsx_ids)}"
+        )
+    i = bsx_ids[0]
+    size = parsed["sizes"][i]
+    if size < 8:
+        raise SystemExit(f"PickmansWhisper Error: BSXFlags block too small ({size})")
+    start = parsed["starts"][i]
+    blob = bytearray(parsed["data"])
+    blob[start + 4 : start + 8] = int(BSX_LOOT_CLUTTER).to_bytes(4, "little")
+    path.write_bytes(bytes(blob))
+
+
+def _nif_blocks_named(parsed: dict, block_type: str, target_name: str) -> list[int]:
+    found = []
+    strings = parsed["strings"]
+    for i, name in enumerate(parsed["types"]):
+        if name != block_type:
+            continue
+        start = parsed["starts"][i]
+        name_id = int.from_bytes(parsed["data"][start : start + 4], "little")
+        if 0 <= name_id < len(strings) and strings[name_id] == target_name:
+            found.append(i)
+    return found
+
+
+def _unique_np_block(parsed: dict) -> tuple[int, int, int]:
+    """Return (block_index, start, size) for the unique 14-byte NP collision block."""
+    np_ids = [i for i, name in enumerate(parsed["types"]) if name == "bhkNPCollisionObject"]
     if len(np_ids) != 1:
         raise SystemExit(
             "PickmansWhisper Error: expected one bhkNPCollisionObject; "
             f"found {len(np_ids)}"
         )
-    fusion_ids = []
-    for i, name in enumerate(types):
-        if name != "BSTriShape":
-            continue
-        start = parsed["starts"][i]
-        name_id = int.from_bytes(parsed["data"][start : start + 4], "little")
-        strings = parsed["strings"]
-        if 0 <= name_id < len(strings) and strings[name_id] == target_name:
-            fusion_ids.append(i)
-    if len(fusion_ids) != 1:
-        raise SystemExit(
-            f"PickmansWhisper Error: expected one {target_name!r} BSTriShape; "
-            f"found {len(fusion_ids)}"
-        )
     np_i = np_ids[0]
     size = parsed["sizes"][np_i]
-    if size < 4:
+    if size < 14:
         raise SystemExit(
             f"PickmansWhisper Error: bhkNPCollisionObject block too small ({size})"
         )
-    start = parsed["starts"][np_i]
+    return np_i, parsed["starts"][np_i], size
+
+
+def read_np_collision_disk(path: Path) -> dict:
+    """Read Target/Flags/Data/BodyID from the unique NP block. Never writes."""
+    parsed = parse_nif_header(path)
+    if "bhkNPCollisionObject" not in parsed["types"]:
+        return {}
+    _, start, _ = _unique_np_block(parsed)
+    blob = parsed["data"][start : start + 14]
+    return {
+        "target": int.from_bytes(blob[0:4], "little"),
+        "flags": int.from_bytes(blob[4:6], "little"),
+        "data_id": int.from_bytes(blob[6:10], "little"),
+        "body_id": int.from_bytes(blob[10:14], "little"),
+    }
+
+
+def patch_np_collision_target(path: Path, target_name: str) -> None:
+    """Set the unique bhkNPCollisionObject Target link to Scene Root (NiNode)."""
+    parsed = parse_nif_header(path)
+    host_ids = _nif_blocks_named(parsed, COLLISION_TARGET_BLOCK, target_name)
+    if len(host_ids) != 1:
+        raise SystemExit(
+            f"PickmansWhisper Error: expected one {target_name!r} {COLLISION_TARGET_BLOCK}; "
+            f"found {len(host_ids)}"
+        )
+    _, start, _ = _unique_np_block(parsed)
     blob = bytearray(parsed["data"])
-    blob[start : start + 4] = int(fusion_ids[0]).to_bytes(4, "little")
+    blob[start : start + 4] = int(host_ids[0]).to_bytes(4, "little")
+    path.write_bytes(bytes(blob))
+
+
+def patch_np_collision_flags(path: Path) -> None:
+    """Write SYNC_ON_UPDATE into the unique bhkNPCollisionObject Flags field."""
+    parsed = parse_nif_header(path)
+    _, start, _ = _unique_np_block(parsed)
+    blob = bytearray(parsed["data"])
+    blob[start + 4 : start + 6] = int(NP_COLLISION_FLAGS).to_bytes(2, "little")
+    path.write_bytes(bytes(blob))
+
+
+def patch_np_body_id(path: Path) -> None:
+    """Write body index 0 so FO4 does not CreateInstance with NODEID_NONE."""
+    parsed = parse_nif_header(path)
+    _, start, _ = _unique_np_block(parsed)
+    blob = bytearray(parsed["data"])
+    blob[start + 10 : start + 14] = int(NP_BODY_INDEX).to_bytes(4, "little")
     path.write_bytes(bytes(blob))
 
 
@@ -584,14 +891,17 @@ def main() -> int:
         info = inspect_prop(NIF_PATH)
         verify_bsx_flags(info)
         verify_collision_target(info)
+        verify_np_instance_fields(info)
         verify_collision_meta(info)
+        verify_gore_cap_shader(info)
     except SystemExit as exc:
         print(exc, file=sys.stderr)
         return 1
     targets = ", ".join(info.get("collision_targets") or []) or "<none>"
     print(
-        f"wrote {NIF_PATH.name}: BSXFlags={info['bsx']} (Havok|Complex|Dynamic), "
-        f"np target={targets}, np={info['np_count']} classic={info['classic_count']}"
+        f"wrote {NIF_PATH.name}: BSXFlags={info['bsx']} (Havok|Dynamic|Articulated), "
+        f"np target={targets}, bodyID={info.get('np_body_id')}, flags={info.get('np_flags')}, "
+        f"layers={info.get('layers')}, np={info['np_count']} classic={info['classic_count']}"
     )
     return 0
 

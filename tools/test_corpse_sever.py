@@ -281,8 +281,8 @@ def test_cut_off_tits_decay() -> None:
         fail("CorpseDecay must use mutilated body ARMO local FormID 0x87D")
     if "FID_CUT_OFF_TITS_MISC = 0x0000087E" not in decay:
         fail("CorpseDecay must use cut-off tits MISC local FormID 0x87E")
-    if "FID_GORE_SM_ARM_L_MISC = 0x0000087F" not in decay:
-        fail("CorpseDecay must use gore SM arm L MISC local FormID 0x87F")
+    if "FID_GORE_SM_ARM_L_MISC" in decay or "ResolveGoreSuperMutantArmLMisc" in decay:
+        fail("CorpseDecay must not spawn or resolve the gore SM arm L sanity MISC")
     apply = extract_function(decay, "ApplyMutilatedBodyOnCorpse")
     if re.search(r"\bDismember\s*\(", apply):
         fail("ApplyMutilatedBodyOnCorpse must not call Dismember")
@@ -294,9 +294,9 @@ def test_cut_off_tits_decay() -> None:
         fail("ApplyMutilatedBodyOnCorpse must skip if already latched")
     spawn = extract_function(decay, "SpawnCutOffTitsProp")
     if "DropHavokMiscBeside" not in spawn:
-        fail("SpawnCutOffTitsProp must DropHavokMiscBeside for each prop")
-    if "ResolveGoreSuperMutantArmLMisc" not in spawn:
-        fail("SpawnCutOffTitsProp must also spawn GoreSuperMutantArmL sanity MISC")
+        fail("SpawnCutOffTitsProp must DropHavokMiscBeside the cut-off tits MISC")
+    if "ResolveGoreSuperMutantArmLMisc" in spawn or "gore SM arm" in spawn:
+        fail("SpawnCutOffTitsProp must not spawn GoreSuperMutantArmL")
     drop = extract_function(decay, "DropHavokMiscBeside")
     if "PlaceAtMe" not in drop:
         fail("DropHavokMiscBeside must PlaceAtMe the MISC")
@@ -329,17 +329,27 @@ def test_prop_havok_script_writes_bsx_not_hulls() -> None:
             fail(f"add_prop_tits_havok.py must not generate Havok hulls ({token})")
     if "nif.save(" not in src:
         fail("add_prop_tits_havok.py must save BSXFlags + collision target")
-    if "patch_np_collision_target" not in src:
-        fail("add_prop_tits_havok.py must patch bhkNPCollisionObject Target (DLL setBlock cannot)")
-    if "BSX_HAVOK_COMPLEX_DYNAMIC" not in src or "COLLISION_TARGET_NAME" not in src:
-        fail("add_prop_tits_havok.py must write Havok|Complex|Dynamic and FusionGirlReduced target")
+    if "patch_np_collision_target" not in src or "patch_bsx_loot_flags" not in src:
+        fail("add_prop_tits_havok.py must patch bhkNPCollisionObject Target and BSXFlags 194")
+    if "patch_np_body_id" not in src or "patch_np_collision_flags" not in src:
+        fail("add_prop_tits_havok.py must patch NP bodyID and SYNC_ON_UPDATE flags")
+    if "patch_np_clutter_layer" not in src or "patch_gore_cap_shader" not in src:
+        fail("add_prop_tits_havok.py must patch Clutter layer and GoreHumanLeg cap flags")
+    if "restore_gore_cap_material" not in src or "GORE_CAP_BGSM" not in src:
+        fail("add_prop_tits_havok.py must restore GoreHumanLeg.BGSM on the cut cap")
+    if "patch_gore_cap_shader_type" not in src:
+        fail("add_prop_tits_havok.py must clear Skin Tint on the cut cap")
+    if "NP_BODY_INDEX_NONE" not in src or "verify_np_instance_fields" not in src:
+        fail("add_prop_tits_havok.py must reject NODEID_NONE bodyID")
+    if "BSX_LOOT_CLUTTER" not in src or "COLLISION_TARGET_NAME" not in src:
+        fail("add_prop_tits_havok.py must write Havok|Dynamic|Articulated and Scene Root target")
     if "is_clutter_or_prop_layer" not in src:
         fail("add_prop_tits_havok.py must verify Clutter/Prop")
     if "is_flesh_material" not in src:
         fail("add_prop_tits_havok.py must verify Flesh material")
     if "format_no_collision_error" not in src:
         fail("add_prop_tits_havok.py must report actual NIF block types when collision is missing")
-    ok("prop Havok script writes BSX 74 + FusionGirlReduced target; does not bake hulls")
+    ok("prop Havok script writes BSX 194 + Scene Root target; does not bake hulls")
 
 
 def test_layer_material_matchers() -> None:
@@ -356,14 +366,14 @@ def test_layer_material_matchers() -> None:
         fail("Flesh/Skin material must be accepted")
     if is_flesh_material("WOOD") or is_flesh_material("STONE"):
         fail("Wood/Stone must not pass as Flesh")
-    from add_prop_tits_havok import format_no_collision_error, is_bsx_havok_complex_dynamic
+    from add_prop_tits_havok import format_no_collision_error, is_bsx_loot_clutter
 
-    if not is_bsx_havok_complex_dynamic(74):
-        fail("Havok|Complex|Dynamic (74) must pass")
-    if is_bsx_havok_complex_dynamic(2) or is_bsx_havok_complex_dynamic(130):
-        fail("Havok-only or Havok+Articulated must not count as 74")
-    if is_bsx_havok_complex_dynamic(0) or is_bsx_havok_complex_dynamic(128):
-        fail("Articulated-only or zero must not count as 74")
+    if not is_bsx_loot_clutter(194):
+        fail("Havok|Dynamic|Articulated (194) must pass")
+    if is_bsx_loot_clutter(74) or is_bsx_loot_clutter(130):
+        fail("gore 74 or Havok+Articulated 130 must not count as loot clutter 194")
+    if is_bsx_loot_clutter(0) or is_bsx_loot_clutter(128):
+        fail("Articulated-only or zero must not count as 194")
 
     msg = format_no_collision_error(
         ["NiNode", "BSSubIndexTriShape", "BSLightingShaderProperty", "BSShaderTextureSet"]
@@ -391,11 +401,13 @@ def test_prop_nif_has_havok() -> None:
         _load_pynifly,
         format_no_collision_error,
         inspect_prop,
-        is_bsx_havok_complex_dynamic,
+        is_bsx_loot_clutter,
         read_nif_block_types,
         verify_bsx_flags,
         verify_collision_meta,
         verify_collision_target,
+        verify_gore_cap_shader,
+        verify_np_instance_fields,
     )
 
     block_types = read_nif_block_types(nif)
@@ -419,15 +431,17 @@ def test_prop_nif_has_havok() -> None:
         fail("PyNifly addon required to parse prop collision / BSXFlags")
     _load_pynifly()
     info = inspect_prop(nif)
-    if not is_bsx_havok_complex_dynamic(info["bsx"]):
-        fail("prop nif BSXFlags must be Havok|Complex|Dynamic (74)")
+    if not is_bsx_loot_clutter(info["bsx"]):
+        fail("prop nif BSXFlags must be Havok|Dynamic|Articulated (194)")
     try:
         verify_bsx_flags(info)
         verify_collision_target(info)
+        verify_np_instance_fields(info)
         verify_collision_meta(info)
+        verify_gore_cap_shader(info)
     except SystemExit as exc:
         fail(str(exc) or "prop collision layer/material/target verify failed")
-    ok("cut-off tits prop nif has BSX 74 and FusionGirlReduced collision target")
+    ok("cut-off tits prop nif has BSX 194, Scene Root target, and a usable NP bodyID")
 
 
 def test_mcm_deploy() -> None:

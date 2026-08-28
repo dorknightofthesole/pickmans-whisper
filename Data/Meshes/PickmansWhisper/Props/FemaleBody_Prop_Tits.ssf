@@ -1,0 +1,14 @@
+{
+   "FusionGirlReduced": {
+      "BaseBoneName": "DISABLED",
+      "DeltaBones": [
+         {
+            "BoneName": "LArm_UpperArm",
+            "BoneDeltaList": [
+               262656
+            ]
+         }
+      ],
+      "uiNumDeltas": 1
+   }
+}

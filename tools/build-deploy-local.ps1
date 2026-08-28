@@ -158,7 +158,7 @@ if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "test_named_kill_voice.py failed with exit code $LASTEXITCODE"
 }
 
-Write-Host "==> Cut Off Tits prop Havok (BSX 74 Havok|Complex|Dynamic; FusionGirlReduced target)"
+Write-Host "==> Cut Off Tits prop Havok (BSX 194 Havok|Dynamic|Articulated; Scene Root target)"
 & python (Join-Path $Root "tools\add_prop_tits_havok.py")
 if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
   throw "add_prop_tits_havok.py failed with exit code $LASTEXITCODE"
