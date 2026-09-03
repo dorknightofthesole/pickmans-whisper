@@ -11,8 +11,14 @@ This script:
   4. Writes bodyID 0 and ACTIVE|SET_LOCAL|SYNC_ON_UPDATE flags (PyNifly leaves
      bodyID as NODEID_NONE, which FO4 uses as a body-array index and crashes;
      gore-only SYNC_ON_UPDATE does not simulate world clutter)
-  5. Writes box inertia from the existing hull AABB (PyNifly leaves Ixx=Iyy=Izz=0)
-  6. Verifies collision layer is Clutter or Prop, and material is Flesh, when those fields are readable
+  5. Grows the short hknpMotionCinfo array to its real 0x70 element size and
+     links each body to its motion (PyNifly leaves the motion id invalid, which
+     makes the body static: it collides and loots but never falls or pushes)
+  6. Writes inverse inertia from the existing hull AABB (PyNifly leaves it 0)
+  7. Verifies collision layer is Clutter or Prop, and material is Flesh, when those fields are readable
+
+See docs/Severed_Part_Guide.md for the whole pipeline and docs/SLICE_F_CORPSE_SEVER.md
+for the field-by-field diff against vanilla GoreSuperMutantArmL.nif.
 """
 from __future__ import annotations
 
@@ -58,6 +64,33 @@ NP_COLLISION_FLAGS = NP_CO_ACTIVE | NP_CO_SET_LOCAL | NP_CO_SYNC_ON_UPDATE
 # Cut cap — SSOT path (docs/SLICE_F_CORPSE_SEVER.md). Blender re-export can drop it.
 GORE_CAP_BGSM = r"Materials\Gore\GoreHumanLeg.BGSM"
 GORE_CAP_SHAPE = "SeveredTitsBack002"
+
+# hknpPhysicsSystemData array slots (Havok 2014.1), measured against vanilla
+# Meshes/Actors/Supermutant/CharacterAssets/GoreSuperMutantArmL.nif.
+PSD_MOTION_CINFOS = 0x30
+PSD_BODY_CINFOS = 0x40
+
+# sizeof(hknpMotionCinfo). Blender's exporter stops after centerOfMassWorld and
+# allocates only 0x40, so the engine reads m_orientation out of the bodyCinfo
+# array that follows and gets 0x7FFFFFFF (NaN) for two of its components.
+MOTION_CINFO_STRIDE = 0x70
+MOTION_CINFO_INV_MASS = 0x04
+MOTION_CINFO_INV_INERTIA = 0x20
+MOTION_CINFO_ORIENTATION = 0x40
+
+# Havok stores 1/I here, not I — the sibling field at +0x04 is 1/mass. Across all
+# three vanilla gore bodies, stored * boxInertia == 2/3 on every axis.
+INV_INERTIA_BOX_FACTOR = 2.0 / 3.0
+
+BODY_CINFO_STRIDE = 0x60
+BODY_CINFO_MOTION_ID = 0x0C
+BODY_CINFO_LAYER = 0x10
+BODY_CINFO_ORIENTATION = 0x40
+
+# hknpBodyCinfo::m_motionId default. A body left on this sentinel has no motion,
+# which is exactly how Havok spells "static": it collides and can be looted, but
+# never falls and cannot be pushed.
+MOTION_ID_INVALID = 0x7FFFFFFF
 
 # Bethesda collision layers (same numbering on FO4 COLU / SkyrimCollisionLayer).
 LAYER_CLUTTER = 4
@@ -194,6 +227,7 @@ def parse_nif_header(path: Path) -> dict:
         for i in range(num_blocks)
     ]
     off += num_blocks * 2
+    sizes_off = off
     sizes = [
         int.from_bytes(data[off + i * 4 : off + i * 4 + 4], "little")
         for i in range(num_blocks)
@@ -221,6 +255,7 @@ def parse_nif_header(path: Path) -> dict:
         "data": data,
         "types": types,
         "sizes": sizes,
+        "sizes_off": sizes_off,
         "starts": starts,
         "strings": strings,
     }
@@ -406,6 +441,7 @@ def inspect_prop(path: Path) -> dict:
         classic_count = 1
 
     disk = read_np_collision_disk(path)
+    motion = read_np_motion_disk(path)
     gore = _inspect_gore_cap(nif)
     info = {
         "bsx": read_bsx_disk_flags(path),
@@ -424,6 +460,11 @@ def inspect_prop(path: Path) -> dict:
         "gore_skin_tint": gore["gore_skin_tint"],
         "gore_shader_type": gore["gore_shader_type"],
         "np_inertia": inertias,
+        "np_motion_alloc": motion.get("motion_alloc") or {},
+        "np_motion_ids": motion.get("motion_ids") or [],
+        "np_inv_inertia": motion.get("inv_inertia") or [],
+        "np_inv_inertia_expected": motion.get("inv_inertia_expected") or [],
+        "np_motion_orientations": motion.get("motion_orientations") or [],
     }
     del nif
     return info
@@ -530,19 +571,73 @@ def verify_np_instance_fields(info: dict) -> None:
 
 
 def verify_np_inertia(info: dict) -> None:
-    """Reject an all-zero inertia tensor — Havok will not simulate that body."""
+    """Reject inertia Havok cannot simulate: missing, zero, or stored as I not 1/I."""
     if info.get("np_count", 0) == 0:
         return
     tensors = info.get("np_inertia") or []
     if not tensors:
         raise SystemExit(
-            "PickmansWhisper Error: dyn_inertia missing — Havok will not simulate"
+            "PickmansWhisper Error: hknpMotionCinfo missing — Havok will not simulate"
         )
     for tensor in tensors:
         if all(abs(v) <= 1e-12 for v in tensor):
             raise SystemExit(
-                "PickmansWhisper Error: dyn_inertia Ixx/Iyy/Izz are all zero — "
-                "Havok will not simulate a pushable body"
+                "PickmansWhisper Error: inverse inertia is all zero — that is infinite "
+                "inertia, so the body can never rotate"
+            )
+
+    got = info.get("np_inv_inertia") or []
+    want = info.get("np_inv_inertia_expected") or []
+    for i, (have, expect) in enumerate(zip(got, want)):
+        for axis, (a, b) in enumerate(zip(have, expect)):
+            if b <= 0.0 or abs(a - b) > max(1e-4, abs(b) * 1e-3):
+                raise SystemExit(
+                    f"PickmansWhisper Error: motion[{i}] axis {axis} inverse inertia is "
+                    f"{a:.6g}, expected {b:.6g} — Havok stores 1/I here, not I"
+                )
+
+
+def verify_motion_cinfo_stride(info: dict) -> None:
+    """Reject a short hknpMotionCinfo array — Havok reads NaN past its end."""
+    if info.get("np_count", 0) == 0:
+        return
+    alloc = info.get("np_motion_alloc") or {}
+    if not alloc:
+        raise SystemExit(
+            "PickmansWhisper Error: no hknpMotionCinfo array — the body has no motion"
+        )
+    if alloc["allocated"] < alloc["needed"]:
+        raise SystemExit(
+            f"PickmansWhisper Error: hknpMotionCinfo array is {alloc['allocated']} bytes "
+            f"for {alloc['count']} element(s); Havok reads {alloc['needed']} and would "
+            "take m_orientation from the bodyCinfo array"
+        )
+    for i, quat in enumerate(info.get("np_motion_orientations") or []):
+        if not 0.75 <= sum(v * v for v in quat) <= 1.25:
+            raise SystemExit(
+                f"PickmansWhisper Error: motion[{i}] orientation {quat} is not a unit "
+                "quaternion — Havok will produce NaN transforms"
+            )
+
+
+def verify_body_motion_ids(info: dict) -> None:
+    """Reject bodies left on the default motion id — that is how Havok spells static."""
+    if info.get("np_count", 0) == 0:
+        return
+    ids = info.get("np_motion_ids") or []
+    if not ids:
+        raise SystemExit("PickmansWhisper Error: no hknpBodyCinfo to check for a motion")
+    motions = len(info.get("np_inv_inertia") or [])
+    for i, motion_id in enumerate(ids):
+        if motion_id == MOTION_ID_INVALID:
+            raise SystemExit(
+                f"PickmansWhisper Error: body[{i}] motionId is the invalid sentinel — "
+                "the prop would collide and loot but never fall or push"
+            )
+        if motion_id >= motions:
+            raise SystemExit(
+                f"PickmansWhisper Error: body[{i}] motionId {motion_id} has no matching "
+                f"motion (only {motions})"
             )
 
 
@@ -569,70 +664,92 @@ def _np_collision_owner(nif):
     )
 
 
-def _iter_np_body_layer_pack_offsets(packfile: bytes) -> list[int]:
-    """Offsets of BodyCInfo collision-layer bytes inside a Havok packfile."""
+def _pack_layout(packfile: bytes):
+    """(data section header, local fixups, virtual fixups) for a Havok packfile."""
     from io_scene_nifly.pyn.bhk_autounpack import (
         parse_local_fixups,
         parse_section_headers,
         parse_virtual_fixups,
-        u32,
     )
 
     hdrs = parse_section_headers(packfile)
     if "__data__" not in hdrs or "__classnames__" not in hdrs:
-        return []
+        return None, {}, []
     data_hdr = hdrs["__data__"]
-    data_start = data_hdr.abs_start
-    fixups = parse_local_fixups(packfile, data_hdr)
-    objects = parse_virtual_fixups(packfile, data_hdr, hdrs["__classnames__"].abs_start)
-    offsets = []
-    for rel, cls in objects:
-        if "hknpPhysicsSystemData" not in cls:
-            continue
-        psd_abs = data_start + rel
-        body_count = u32(packfile, psd_abs + 0x40 + 8) & 0x3FFFFFFF
-        body_arr = fixups.get(rel + 0x40)
-        if body_arr is None or body_count == 0:
-            continue
-        for i in range(body_count):
-            body_abs = data_start + body_arr + i * 0x60
-            if body_abs + 0x11 > len(packfile):
-                continue
-            offsets.append(body_abs + 0x10)
-    return offsets
-
-
-def _iter_dyn_inertia_abs(packfile: bytes) -> list[int]:
-    """Packfile-absolute starts of each 0x40 dyn_inertia blob."""
-    from io_scene_nifly.pyn.bhk_autounpack import (
-        parse_local_fixups,
-        parse_section_headers,
-        parse_virtual_fixups,
-        u32,
+    return (
+        data_hdr,
+        parse_local_fixups(packfile, data_hdr),
+        parse_virtual_fixups(packfile, data_hdr, hdrs["__classnames__"].abs_start),
     )
 
-    hdrs = parse_section_headers(packfile)
-    if "__data__" not in hdrs or "__classnames__" not in hdrs:
+
+def _iter_psd_arrays(packfile: bytes, slot: int, stride: int) -> list[int]:
+    """Packfile-absolute start of every element of one hknpPhysicsSystemData array."""
+    from io_scene_nifly.pyn.bhk_autounpack import u32
+
+    data_hdr, fixups, objects = _pack_layout(packfile)
+    if data_hdr is None:
         return []
-    data_hdr = hdrs["__data__"]
     data_start = data_hdr.abs_start
-    fixups = parse_local_fixups(packfile, data_hdr)
-    objects = parse_virtual_fixups(packfile, data_hdr, hdrs["__classnames__"].abs_start)
     offsets = []
     for rel, cls in objects:
         if "hknpPhysicsSystemData" not in cls:
             continue
-        psd_abs = data_start + rel
-        count = u32(packfile, psd_abs + 0x30 + 8) & 0x3FFFFFFF
-        arr = fixups.get(rel + 0x30)
+        count = u32(packfile, data_start + rel + slot + 8) & 0x3FFFFFFF
+        arr = fixups.get(rel + slot)
         if arr is None or count == 0:
             continue
         for i in range(count):
-            start = data_start + arr + i * 0x40
-            if start + 0x2C > len(packfile):
+            start = data_start + arr + i * stride
+            if start + stride > len(packfile):
                 continue
             offsets.append(start)
     return offsets
+
+
+def _iter_body_cinfo_abs(packfile: bytes) -> list[int]:
+    """Packfile-absolute start of each hknpBodyCinfo."""
+    return _iter_psd_arrays(packfile, PSD_BODY_CINFOS, BODY_CINFO_STRIDE)
+
+
+def _iter_np_body_layer_pack_offsets(packfile: bytes) -> list[int]:
+    """Offsets of BodyCInfo collision-layer bytes inside a Havok packfile."""
+    return [abs_off + BODY_CINFO_LAYER for abs_off in _iter_body_cinfo_abs(packfile)]
+
+
+def _iter_dyn_inertia_abs(packfile: bytes) -> list[int]:
+    """Packfile-absolute starts of each hknpMotionCinfo blob."""
+    return _iter_psd_arrays(packfile, PSD_MOTION_CINFOS, MOTION_CINFO_STRIDE)
+
+
+def _motion_cinfo_alloc(packfile: bytes) -> dict:
+    """Where the hknpMotionCinfo array lives and how many bytes it was given.
+
+    The allocation is the run up to the next array the packfile points at, so a
+    short-writing exporter is detectable without trusting a declared size.
+    """
+    from io_scene_nifly.pyn.bhk_autounpack import u32
+
+    data_hdr, fixups, objects = _pack_layout(packfile)
+    if data_hdr is None:
+        return {}
+    for rel, cls in objects:
+        if "hknpPhysicsSystemData" not in cls:
+            continue
+        count = u32(packfile, data_hdr.abs_start + rel + PSD_MOTION_CINFOS + 8) & 0x3FFFFFFF
+        arr = fixups.get(rel + PSD_MOTION_CINFOS)
+        if arr is None or count == 0:
+            continue
+        data_end = data_hdr.local_fix - data_hdr.abs_start
+        later = [dst for dst in fixups.values() if dst > arr] + [data_end]
+        return {
+            "psd_rel": rel,
+            "arr_rel": arr,
+            "count": count,
+            "allocated": min(later) - arr,
+            "needed": count * MOTION_CINFO_STRIDE,
+        }
+    return {}
 
 
 def _np_inertia_tensors(packfile: bytes) -> list[tuple[float, float, float]]:
@@ -821,11 +938,11 @@ def verify_gore_cap_shader(info: dict) -> None:
 
 
 def apply_bsx_and_retarget(path: Path) -> None:
-    """Write BSXFlags 194, hang collision on Scene Root, patch NP Target/body/flags/layer/inertia.
+    """Write BSXFlags 194, hang collision on Scene Root, patch NP Target/body/flags/layer/motion.
 
     PyNifly setBlock on bhkNPCollisionObject is routed to the physics-system
-    setter and fails, so the 14-byte NP block, BodyCInfo layer byte, and
-    dyn_inertia tensor are patched in the file after save. Hull verts are not rewritten.
+    setter and fails, so the 14-byte NP block and everything inside the Havok
+    packfile are patched in the file after save. Hull verts are not rewritten.
     """
     from io_scene_nifly.pyn.nifconstants import NODEID_NONE
     from io_scene_nifly.pyn.pynifly import BSXFlags, NifFile
@@ -854,12 +971,154 @@ def apply_bsx_and_retarget(path: Path) -> None:
     patch_np_collision_target(path, COLLISION_TARGET_NAME)
     patch_np_collision_flags(path)
     patch_np_body_id(path)
+    # Resize the motion array before anything reads offsets inside it, then give
+    # the body a motion to follow — those two are what make the prop dynamic.
+    patch_motion_cinfo_stride(path)
+    patch_body_motion_id(path)
     patch_np_clutter_layer(path)
     patch_np_inertia_from_hull(path)
     patch_gore_cap_shader_type(path)
     # nif.save() writes gore-style 74 (Havok|Complex|Dynamic). Write loot 194 last
     # so a later PyNifly open cannot be the source of truth for verification.
     patch_bsx_loot_flags(path)
+
+
+def _write_physics_system_pack(path: Path, parsed: dict, new_pack: bytes) -> None:
+    """Splice a resized Havok packfile back into the NIF, fixing both length fields."""
+    ids = [i for i, name in enumerate(parsed["types"]) if name == "bhkPhysicsSystem"]
+    if len(ids) != 1:
+        raise SystemExit(
+            f"PickmansWhisper Error: expected one bhkPhysicsSystem; found {len(ids)}"
+        )
+    i = ids[0]
+    start = parsed["starts"][i]
+    old_size = parsed["sizes"][i]
+    old_num = int.from_bytes(parsed["data"][start : start + 4], "little")
+    grow = len(new_pack) - old_num
+
+    blob = bytearray(parsed["data"])
+    blob[start : start + old_size] = len(new_pack).to_bytes(4, "little") + new_pack
+
+    # The NIF block-size table is a second length field; leaving it stale makes
+    # every block after this one unreadable.
+    size_at = parsed["sizes_off"] + i * 4
+    blob[size_at : size_at + 4] = (old_size + grow).to_bytes(4, "little")
+    path.write_bytes(bytes(blob))
+
+
+def patch_motion_cinfo_stride(path: Path) -> None:
+    """Grow a short-written hknpMotionCinfo array to the real 0x70 element size.
+
+    Blender writes 0x40 per element, so Havok reads m_orientation (+0x40) out of
+    the bodyCinfo array that follows and gets a NaN quaternion. The array is
+    re-emitted at the end of the data section rather than expanded in place, so
+    no existing fixup offset has to move.
+    """
+    from io_scene_nifly.pyn.bhk_autounpack import parse_section_headers
+
+    parsed = parse_nif_header(path)
+    payload_off, pack = _physics_system_pack(parsed)
+    alloc = _motion_cinfo_alloc(pack)
+    if not alloc:
+        raise SystemExit(
+            "PickmansWhisper Error: no hknpMotionCinfo array — Havok has no motion to attach"
+        )
+    if alloc["allocated"] >= alloc["needed"]:
+        return
+
+    count = alloc["count"]
+    old_stride = alloc["allocated"] // count
+    if old_stride <= 0:
+        raise SystemExit(
+            f"PickmansWhisper Error: hknpMotionCinfo allocation {alloc['allocated']} "
+            f"cannot hold {count} element(s)"
+        )
+
+    hdrs = parse_section_headers(pack)
+    data_hdr = hdrs["__data__"]
+    for name, hdr in hdrs.items():
+        if name != "__data__" and hdr.abs_start > data_hdr.abs_start:
+            raise SystemExit(
+                f"PickmansWhisper Error: section {name!r} follows __data__; cannot append"
+            )
+
+    bodies = _iter_body_cinfo_abs(pack)
+    new_arr = bytearray(alloc["needed"])
+    for i in range(count):
+        src = data_hdr.abs_start + alloc["arr_rel"] + i * old_stride
+        keep = min(old_stride, MOTION_CINFO_STRIDE)
+        dst = i * MOTION_CINFO_STRIDE
+        new_arr[dst : dst + keep] = pack[src : src + keep]
+
+        # Vanilla keeps the motion orientation equal to its body's; anything
+        # unnormalised here feeds NaN straight into the solver.
+        quat = (0.0, 0.0, 0.0, 1.0)
+        if i < len(bodies):
+            body_q = struct.unpack_from("<4f", pack, bodies[i] + BODY_CINFO_ORIENTATION)
+            if sum(v * v for v in body_q) > 0.25:
+                quat = body_q
+        struct.pack_into("<4f", new_arr, dst + MOTION_CINFO_ORIENTATION, *quat)
+
+    insert_at = data_hdr.local_fix
+    if (insert_at - data_hdr.abs_start) % 16 or len(new_arr) % 16:
+        raise SystemExit(
+            "PickmansWhisper Error: hknpMotionCinfo append would break 16-byte alignment"
+        )
+    new_dst = insert_at - data_hdr.abs_start
+
+    new_pack = bytearray(pack)
+    new_pack[insert_at:insert_at] = new_arr
+
+    # Everything the section header points at (fixup tables, exports, imports,
+    # end) sits after the data content, so each offset shifts by the new bytes.
+    sec_base = None
+    for i in range(3):
+        base = 0x40 + i * 0x40
+        if new_pack[base : base + 19].split(b"\x00")[0] == b"__data__":
+            sec_base = base
+            break
+    if sec_base is None:
+        raise SystemExit("PickmansWhisper Error: no __data__ section header to re-offset")
+    for field in (0x18, 0x1C, 0x20, 0x24, 0x28, 0x2C):
+        at = sec_base + field
+        cur = int.from_bytes(new_pack[at : at + 4], "little")
+        new_pack[at : at + 4] = (cur + len(new_arr)).to_bytes(4, "little")
+
+    # Repoint the array at its new home. The fixup table moved, so re-read it.
+    moved = parse_section_headers(bytes(new_pack))["__data__"]
+    want_src = alloc["psd_rel"] + PSD_MOTION_CINFOS
+    pos = moved.local_fix
+    while pos + 8 <= moved.global_fix:
+        if int.from_bytes(new_pack[pos : pos + 4], "little") == want_src:
+            new_pack[pos + 4 : pos + 8] = int(new_dst).to_bytes(4, "little")
+            break
+        pos += 8
+    else:
+        raise SystemExit(
+            "PickmansWhisper Error: no local fixup for the hknpMotionCinfo array"
+        )
+
+    _write_physics_system_pack(path, parsed, bytes(new_pack))
+
+
+def patch_body_motion_id(path: Path) -> None:
+    """Point every hknpBodyCinfo at its motion. Without this the body is static."""
+    parsed = parse_nif_header(path)
+    payload_off, pack = _physics_system_pack(parsed)
+    bodies = _iter_body_cinfo_abs(pack)
+    motions = len(_iter_dyn_inertia_abs(pack))
+    if not bodies:
+        raise SystemExit("PickmansWhisper Error: no hknpBodyCinfo to link to a motion")
+    if motions < len(bodies):
+        raise SystemExit(
+            f"PickmansWhisper Error: {len(bodies)} body/bodies but only {motions} motion(s)"
+        )
+
+    blob = bytearray(parsed["data"])
+    for i, abs_off in enumerate(bodies):
+        at = payload_off + abs_off + BODY_CINFO_MOTION_ID
+        blob[at : at + 4] = int(i).to_bytes(4, "little")
+    path.write_bytes(bytes(blob))
 
 
 def patch_np_clutter_layer(path: Path) -> None:
@@ -877,30 +1136,38 @@ def patch_np_clutter_layer(path: Path) -> None:
     path.write_bytes(bytes(blob))
 
 
+def _inverse_box_inertia(pack: bytes, abs_off: int) -> tuple[float, float, float]:
+    """m_inverseInertiaLocal for one hknpMotionCinfo, derived from the hull AABB."""
+    inv_mass = struct.unpack_from("<f", pack, abs_off + MOTION_CINFO_INV_MASS)[0]
+    if inv_mass <= 0.0:
+        raise SystemExit(
+            "PickmansWhisper Error: hknpMotionCinfo inverse mass is 0 — cannot derive inertia"
+        )
+    ixx, iyy, izz = _box_inertia(1.0 / inv_mass, *_hull_half_extents(pack))
+    if ixx <= 0.0 or iyy <= 0.0 or izz <= 0.0:
+        raise SystemExit("PickmansWhisper Error: derived box inertia is zero")
+    return (
+        INV_INERTIA_BOX_FACTOR / ixx,
+        INV_INERTIA_BOX_FACTOR / iyy,
+        INV_INERTIA_BOX_FACTOR / izz,
+    )
+
+
 def patch_np_inertia_from_hull(path: Path) -> None:
-    """Write box inertia from the existing hull AABB. Does not rewrite hull verts."""
+    """Write m_inverseInertiaLocal from the hull AABB. Does not rewrite hull verts."""
     parsed = parse_nif_header(path)
     payload_off, pack = _physics_system_pack(parsed)
     starts = _iter_dyn_inertia_abs(pack)
     if not starts:
         raise SystemExit(
-            "PickmansWhisper Error: no dyn_inertia blob to patch from hull AABB"
+            "PickmansWhisper Error: no hknpMotionCinfo to patch from hull AABB"
         )
-    hx, hy, hz = _hull_half_extents(pack)
     blob = bytearray(parsed["data"])
     for abs_off in starts:
-        inv_mass = struct.unpack_from("<f", pack, abs_off + 4)[0]
-        if inv_mass <= 0.0:
-            raise SystemExit(
-                "PickmansWhisper Error: dyn_inertia inv_mass is 0 — cannot derive inertia"
-            )
-        mass = 1.0 / inv_mass
-        ixx, iyy, izz = _box_inertia(mass, hx, hy, hz)
-        if ixx <= 0.0 or iyy <= 0.0 or izz <= 0.0:
-            raise SystemExit(
-                "PickmansWhisper Error: derived box inertia is zero"
-            )
-        struct.pack_into("<fff", blob, payload_off + abs_off + 0x20, ixx, iyy, izz)
+        inv = _inverse_box_inertia(pack, abs_off)
+        struct.pack_into(
+            "<fff", blob, payload_off + abs_off + MOTION_CINFO_INV_INERTIA, *inv
+        )
     path.write_bytes(bytes(blob))
 
 
@@ -946,6 +1213,36 @@ def read_bsx_disk_flags(path: Path) -> int | None:
         return None
     start = parsed["starts"][i]
     return int.from_bytes(parsed["data"][start + 4 : start + 8], "little")
+
+
+def read_np_motion_disk(path: Path) -> dict:
+    """Read motion linkage + inertia from the NIF bytes the game loads. Never writes."""
+    from io_scene_nifly.pyn.bhk_autounpack import u32
+
+    parsed = parse_nif_header(path)
+    if "bhkPhysicsSystem" not in parsed["types"]:
+        return {}
+    try:
+        _, pack = _physics_system_pack(parsed)
+    except SystemExit:
+        return {}
+
+    motions = _iter_dyn_inertia_abs(pack)
+    return {
+        "motion_alloc": _motion_cinfo_alloc(pack),
+        "motion_ids": [
+            u32(pack, abs_off + BODY_CINFO_MOTION_ID) for abs_off in _iter_body_cinfo_abs(pack)
+        ],
+        "inv_inertia": [
+            struct.unpack_from("<fff", pack, abs_off + MOTION_CINFO_INV_INERTIA)
+            for abs_off in motions
+        ],
+        "inv_inertia_expected": [_inverse_box_inertia(pack, abs_off) for abs_off in motions],
+        "motion_orientations": [
+            struct.unpack_from("<4f", pack, abs_off + MOTION_CINFO_ORIENTATION)
+            for abs_off in motions
+        ],
+    }
 
 
 def patch_bsx_loot_flags(path: Path) -> None:
@@ -1063,6 +1360,8 @@ def main() -> int:
         verify_bsx_flags(info)
         verify_collision_target(info)
         verify_np_instance_fields(info)
+        verify_motion_cinfo_stride(info)
+        verify_body_motion_ids(info)
         verify_np_inertia(info)
         verify_collision_meta(info)
         verify_gore_cap_shader(info)
@@ -1073,7 +1372,8 @@ def main() -> int:
     print(
         f"wrote {NIF_PATH.name}: BSXFlags={info['bsx']} (Havok|Dynamic|Articulated), "
         f"np target={targets}, bodyID={info.get('np_body_id')}, flags={info.get('np_flags')}, "
-        f"inertia={info.get('np_inertia')}, layers={info.get('layers')}, "
+        f"motionIds={info.get('np_motion_ids')}, invInertia={info.get('np_inv_inertia')}, "
+        f"layers={info.get('layers')}, "
         f"np={info['np_count']} classic={info['classic_count']}"
     )
     return 0

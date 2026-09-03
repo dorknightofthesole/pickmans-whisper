@@ -363,7 +363,15 @@ def test_prop_havok_script_writes_bsx_not_hulls() -> None:
     if "patch_np_body_id" not in src or "patch_np_collision_flags" not in src:
         fail("add_prop_tits_havok.py must patch NP bodyID and collision flags")
     if "patch_np_inertia_from_hull" not in src or "verify_np_inertia" not in src:
-        fail("add_prop_tits_havok.py must patch dyn_inertia from the hull AABB")
+        fail("add_prop_tits_havok.py must patch inverse inertia from the hull AABB")
+    if "INV_INERTIA_BOX_FACTOR" not in src or "_inverse_box_inertia" not in src:
+        fail("add_prop_tits_havok.py must store 1/I, not I — Havok reads inverse inertia")
+    if "patch_motion_cinfo_stride" not in src or "verify_motion_cinfo_stride" not in src:
+        fail("add_prop_tits_havok.py must grow the short hknpMotionCinfo array to 0x70")
+    if "patch_body_motion_id" not in src or "verify_body_motion_ids" not in src:
+        fail("add_prop_tits_havok.py must link hknpBodyCinfo to its motion (else static)")
+    if "MOTION_ID_INVALID" not in src or "MOTION_CINFO_ORIENTATION" not in src:
+        fail("add_prop_tits_havok.py must reject the invalid motion id and write orientation")
     if "read_bsx_disk_flags" not in src:
         fail("add_prop_tits_havok.py must verify BSXFlags from on-disk bytes")
     if "patch_np_clutter_layer" not in src or "patch_gore_cap_shader" not in src:
@@ -416,6 +424,60 @@ def test_layer_material_matchers() -> None:
     ok("Clutter/Prop + Flesh matchers")
 
 
+def test_prop_havok_verifiers_catch_static_body() -> None:
+    """The three defects that made the prop float: short motion, no motion id, I not 1/I."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    from add_prop_tits_havok import (
+        MOTION_CINFO_STRIDE,
+        MOTION_ID_INVALID,
+        verify_body_motion_ids,
+        verify_motion_cinfo_stride,
+        verify_np_inertia,
+    )
+
+    def rejects(fn, info, why: str) -> None:
+        try:
+            fn(info)
+        except SystemExit:
+            return
+        fail(why)
+
+    good_alloc = {"count": 1, "allocated": MOTION_CINFO_STRIDE, "needed": MOTION_CINFO_STRIDE}
+    base = {
+        "np_count": 1,
+        "np_motion_alloc": dict(good_alloc),
+        "np_motion_ids": [0],
+        "np_motion_orientations": [(0.0, 0.0, 0.0, 1.0)],
+        "np_inertia": [(40.0, 19.0, 20.0)],
+        "np_inv_inertia": [(40.0, 19.0, 20.0)],
+        "np_inv_inertia_expected": [(40.0, 19.0, 20.0)],
+    }
+    verify_motion_cinfo_stride(base)
+    verify_body_motion_ids(base)
+    verify_np_inertia(base)
+
+    short = dict(base, np_motion_alloc={"count": 1, "allocated": 0x40, "needed": MOTION_CINFO_STRIDE})
+    rejects(verify_motion_cinfo_stride, short, "a 0x40 hknpMotionCinfo array must be rejected")
+
+    nan_quat = dict(base, np_motion_orientations=[(0.0, 0.0, float("nan"), float("nan"))])
+    rejects(verify_motion_cinfo_stride, nan_quat, "a non-unit motion orientation must be rejected")
+
+    static = dict(base, np_motion_ids=[MOTION_ID_INVALID])
+    rejects(verify_body_motion_ids, static, "the invalid motion id sentinel must be rejected")
+
+    dangling = dict(base, np_motion_ids=[3])
+    rejects(verify_body_motion_ids, dangling, "a motion id with no matching motion must be rejected")
+
+    zero = dict(base, np_inertia=[(0.0, 0.0, 0.0)], np_inv_inertia=[(0.0, 0.0, 0.0)])
+    rejects(verify_np_inertia, zero, "all-zero inverse inertia must be rejected")
+
+    # Storing I where Havok wants 1/I is what shipped; it must never pass again.
+    direct = dict(base, np_inertia=[(0.025, 0.05, 0.05)], np_inv_inertia=[(0.025, 0.05, 0.05)])
+    rejects(verify_np_inertia, direct, "direct inertia must not pass as inverse inertia")
+
+    ok("prop Havok verifiers reject short motion array, static motion id, and direct inertia")
+
+
 def test_prop_nif_has_havok() -> None:
     nif = (
         ROOT
@@ -439,7 +501,9 @@ def test_prop_nif_has_havok() -> None:
         verify_bsx_flags,
         verify_collision_meta,
         verify_collision_target,
+        verify_body_motion_ids,
         verify_gore_cap_shader,
+        verify_motion_cinfo_stride,
         verify_np_inertia,
         verify_np_instance_fields,
     )
@@ -471,12 +535,14 @@ def test_prop_nif_has_havok() -> None:
         verify_bsx_flags(info)
         verify_collision_target(info)
         verify_np_instance_fields(info)
+        verify_motion_cinfo_stride(info)
+        verify_body_motion_ids(info)
         verify_np_inertia(info)
         verify_collision_meta(info)
         verify_gore_cap_shader(info)
     except SystemExit as exc:
         fail(str(exc) or "prop collision layer/material/target/inertia verify failed")
-    ok("cut-off tits prop nif has BSX 194, Scene Root target, usable NP bodyID, and non-zero inertia")
+    ok("cut-off tits prop nif has BSX 194, Scene Root target, usable NP bodyID, a full-size motion linked to the body, and inverse inertia")
 
 
 def test_mcm_deploy() -> None:
@@ -518,6 +584,7 @@ def main() -> None:
     test_cut_off_tits_decay()
     test_prop_havok_script_writes_bsx_not_hulls()
     test_layer_material_matchers()
+    test_prop_havok_verifiers_catch_static_body()
     test_prop_nif_has_havok()
     test_mcm_deploy()
     print("All corpse-sever (Slice F) contracts passed.")
