@@ -315,7 +315,34 @@ def test_cut_off_tits_decay() -> None:
         fail("ReequipMutilatedBodyIfNeeded must not spawn a second prop")
     if "EquipItem" not in reeq:
         fail("ReequipMutilatedBodyIfNeeded must EquipItem the mutilated ARMO")
-    ok("CorpseDecay Cut Off Tits apply + one-shot MISC + Havok drop + re-equip")
+
+    # Decay strips her bare so body skins render, which also destroys the slot-33
+    # Cut Off Tits body. Without a restore she reverts to an intact body.
+    restore = extract_function(decay, "RestoreMutilatedBodyAfterDecay")
+    if not restore:
+        fail("CorpseDecay must define RestoreMutilatedBodyAfterDecay")
+    if "WasCutOffTitsApplied" not in restore:
+        fail("RestoreMutilatedBodyAfterDecay must only act on corpses that got Cut Off Tits")
+    if "EquipItem" not in restore or "AddItem" not in restore:
+        fail("RestoreMutilatedBodyAfterDecay must AddItem + EquipItem the mutilated ARMO")
+
+    stage = extract_function(decay, "ApplyDecayStageOverlays")
+    if "RestoreMutilatedBodyAfterDecay" not in stage:
+        fail(
+            "ApplyDecayStageOverlays must RestoreMutilatedBodyAfterDecay — "
+            "StripDecayCorpseClothing removes the custom body"
+        )
+    # Match the calls, not the comments that name them.
+    restore_at = stage.find("RestoreMutilatedBodyAfterDecay(akCorpse)")
+    queue_at = stage.find("akCorpse.QueueUpdate(")
+    if restore_at < 0:
+        fail("ApplyDecayStageOverlays must call RestoreMutilatedBodyAfterDecay(akCorpse)")
+    if queue_at >= 0 and restore_at > queue_at:
+        fail(
+            "RestoreMutilatedBodyAfterDecay must run before QueueUpdate "
+            "(QueueUpdate rebuilds the biped from equipped items)"
+        )
+    ok("CorpseDecay Cut Off Tits apply + one-shot MISC + Havok drop + re-equip + decay body restore")
 
 
 def test_prop_havok_script_writes_bsx_not_hulls() -> None:

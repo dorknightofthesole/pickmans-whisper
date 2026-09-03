@@ -506,7 +506,9 @@ Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join
 
 # Full mod data trees (config + whispers; decay Materials/Meshes/Textures; F4SE when present).
 # Copy file-by-file. Copy-Item -Recurse -Force does not reliably overwrite existing dest
-# files — the cut-off tits nif stayed at an old hash after the inertia patch.
+# files - the cut-off tits nif stayed at an old hash after the inertia patch.
+# Keep this file pure ASCII: it has no BOM, so Windows PowerShell reads it as cp1252 and
+# a UTF-8 em dash decodes to a smart quote that terminates strings early.
 function Sync-Tree([string]$SrcTree, [string]$DstTree) {
   if (-not (Test-Path $SrcTree)) {
     throw "Deploy source missing $SrcTree"
@@ -550,10 +552,10 @@ if (-not (Test-Path $propNifDst)) {
   throw "Deploy missing Meshes\PickmansWhisper\Props\FemaleBody_Prop_Tits.nif"
 }
 if ((Get-FileHash $propNifSrc).Hash -ne (Get-FileHash $propNifDst).Hash) {
-  throw "Deploy FemaleBody_Prop_Tits.nif hash mismatch — dest was not overwritten"
+  throw "Deploy FemaleBody_Prop_Tits.nif hash mismatch - dest was not overwritten"
 }
 
-# Recursive — Desperate top-level .xwm plus E5 Necromantic\Start|End clips.
+# Recursive - Desperate top-level .xwm plus E5 Necromantic\Start|End clips.
 $soundSrc = Join-Path $Root "Data\Sound\PickmansWhisper"
 $soundDeploy = Join-Path $Deploy "Sound\PickmansWhisper"
 if (Test-Path $soundSrc) {

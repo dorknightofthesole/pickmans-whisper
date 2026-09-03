@@ -2186,6 +2186,40 @@ Function ReequipMutilatedBodyIfNeeded(Actor akCorpse)
 	Debug.Trace("PickmansWhisper: re-equip mutilated body after limb sever id=" + akCorpse.GetFormID())
 EndFunction
 
+; Decay paints body skins on bare skin, so StripDecayCorpseClothing UnequipAll +
+; RemoveAllItems her — which also destroys the slot-33 Cut Off Tits body and reverts
+; her to an intact one. Put the custom body back so decay layers on top of it instead
+; of replacing it. Must run BEFORE QueueUpdate: that rebuilds the biped from whatever
+; is equipped at that moment.
+Function RestoreMutilatedBodyAfterDecay(Actor akCorpse)
+	If !akCorpse || !WasCutOffTitsApplied(akCorpse)
+		Return
+	EndIf
+
+	Form armor = ResolveMutilatedBodyArmor()
+	If !armor
+		Return
+	EndIf
+
+	; Trust inventory, not IsEquipped — dead actors report IsEquipped=false while worn.
+	; Present means the decay strip did not take it; re-equipping every sync would
+	; churn her 3D for nothing.
+	If akCorpse.GetItemCount(armor) > 0
+		Return
+	EndIf
+
+	akCorpse.AddItem(armor, 1, True)
+	akCorpse.EquipItem(armor, True, True)
+
+	If akCorpse.GetItemCount(armor) <= 0
+		SetCorpseDecayStatus("ERROR: mutilated body restore failed after decay strip")
+		Debug.Trace("PickmansWhisper Error: RestoreMutilatedBodyAfterDecay AddItem id=" + akCorpse.GetFormID())
+		Return
+	EndIf
+
+	Debug.Trace("PickmansWhisper: restored mutilated body after decay strip id=" + akCorpse.GetFormID())
+EndFunction
+
 ; PlaceAtMe disabled + MoveTo + Enable + wait for 3D + InitHavok so the MISC can fall like clutter.
 Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float offsetY, Float offsetZ, String label)
 	If !akCorpse
@@ -2435,6 +2469,10 @@ Bool Function ApplyDecayStageOverlays(Actor akCorpse, Int aiStage, Bool abForceP
 			faceStatus = LastCorpseDecayStatus
 		EndIf
 	EndIf
+
+	; Same reason as the face mask above: the body strip took her Cut Off Tits body.
+	; Restore before the QueueUpdate below rebuilds the biped from equipped items.
+	RestoreMutilatedBodyAfterDecay(akCorpse)
 
 	; Overlays.Add/Update reliably shows on Bed Gift's corpse because it's always
 	; disabled beforehand (PrepareCorpseForOverlays' Enable() call forces a mesh
