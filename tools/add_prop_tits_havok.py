@@ -8,9 +8,11 @@ This script:
   1. Parses the NIF (collision must already exist from Blender/PyNifly)
   2. Writes BSXFlags = Havok | Dynamic | Articulated (194) — vanilla Baseball/TinCan
   3. Points bhkNPCollisionObject Target at Scene Root (PlaceAtMe motion root)
-  4. Writes bodyID 0 and SYNC_ON_UPDATE flags (PyNifly leaves bodyID as NODEID_NONE,
-     which FO4 uses as a body-array index and crashes)
-  5. Verifies collision layer is Clutter or Prop, and material is Flesh, when those fields are readable
+  4. Writes bodyID 0 and ACTIVE|SET_LOCAL|SYNC_ON_UPDATE flags (PyNifly leaves
+     bodyID as NODEID_NONE, which FO4 uses as a body-array index and crashes;
+     gore-only SYNC_ON_UPDATE does not simulate world clutter)
+  5. Writes box inertia from the existing hull AABB (PyNifly leaves Ixx=Iyy=Izz=0)
+  6. Verifies collision layer is Clutter or Prop, and material is Flesh, when those fields are readable
 """
 from __future__ import annotations
 
@@ -47,8 +49,12 @@ COLLISION_TARGET_BLOCK = "NiNode"
 # packfile body index and access-violates (Buffout: MISC PickmansWhisper_PropCutOffTits).
 NP_BODY_INDEX_NONE = 0xFFFFFFFF
 NP_BODY_INDEX = 0
-# bhkCOFlags.SYNC_ON_UPDATE — vanilla FO4 NP (GoreSuperMutantArmL pieces).
-NP_COLLISION_FLAGS = 128
+# bhkCOFlags: ACTIVE | SET_LOCAL | SYNC_ON_UPDATE. Gore pieces use SYNC only (128);
+# world clutter needs ACTIVE or the body will not take gravity/pushes.
+NP_CO_ACTIVE = 1
+NP_CO_SET_LOCAL = 8
+NP_CO_SYNC_ON_UPDATE = 128
+NP_COLLISION_FLAGS = NP_CO_ACTIVE | NP_CO_SET_LOCAL | NP_CO_SYNC_ON_UPDATE
 # Cut cap — SSOT path (docs/SLICE_F_CORPSE_SEVER.md). Blender re-export can drop it.
 GORE_CAP_BGSM = r"Materials\Gore\GoreHumanLeg.BGSM"
 GORE_CAP_SHAPE = "SeveredTitsBack002"
@@ -350,6 +356,15 @@ def inspect_prop(path: Path) -> dict:
     classic_count = 0
     collision_targets = []
     blobs = _physics_blobs(nif)
+    inertias = []
+    for raw in blobs:
+        inertias.extend(_np_inertia_tensors(raw))
+    if not inertias:
+        try:
+            _, pack = _physics_system_pack(parse_nif_header(path))
+            inertias.extend(_np_inertia_tensors(pack))
+        except SystemExit:
+            pass
 
     for node in _iter_nodes(nif):
         co = getattr(node, "collision_object", None)
@@ -393,7 +408,7 @@ def inspect_prop(path: Path) -> dict:
     disk = read_np_collision_disk(path)
     gore = _inspect_gore_cap(nif)
     info = {
-        "bsx": int(bsx.flags) if bsx is not None else None,
+        "bsx": read_bsx_disk_flags(path),
         "np_count": np_count,
         "classic_count": classic_count,
         "layers": layers,
@@ -408,6 +423,7 @@ def inspect_prop(path: Path) -> dict:
         "gore_double_sided": gore["double_sided"],
         "gore_skin_tint": gore["gore_skin_tint"],
         "gore_shader_type": gore["gore_shader_type"],
+        "np_inertia": inertias,
     }
     del nif
     return info
@@ -509,8 +525,25 @@ def verify_np_instance_fields(info: dict) -> None:
     if flags != NP_COLLISION_FLAGS:
         raise SystemExit(
             "PickmansWhisper Error: bhkNPCollisionObject flags must be "
-            f"SYNC_ON_UPDATE ({NP_COLLISION_FLAGS}); found {flags}"
+            f"ACTIVE|SET_LOCAL|SYNC_ON_UPDATE ({NP_COLLISION_FLAGS}); found {flags}"
         )
+
+
+def verify_np_inertia(info: dict) -> None:
+    """Reject an all-zero inertia tensor — Havok will not simulate that body."""
+    if info.get("np_count", 0) == 0:
+        return
+    tensors = info.get("np_inertia") or []
+    if not tensors:
+        raise SystemExit(
+            "PickmansWhisper Error: dyn_inertia missing — Havok will not simulate"
+        )
+    for tensor in tensors:
+        if all(abs(v) <= 1e-12 for v in tensor):
+            raise SystemExit(
+                "PickmansWhisper Error: dyn_inertia Ixx/Iyy/Izz are all zero — "
+                "Havok will not simulate a pushable body"
+            )
 
 
 def _collision_host(nif):
@@ -567,6 +600,101 @@ def _iter_np_body_layer_pack_offsets(packfile: bytes) -> list[int]:
                 continue
             offsets.append(body_abs + 0x10)
     return offsets
+
+
+def _iter_dyn_inertia_abs(packfile: bytes) -> list[int]:
+    """Packfile-absolute starts of each 0x40 dyn_inertia blob."""
+    from io_scene_nifly.pyn.bhk_autounpack import (
+        parse_local_fixups,
+        parse_section_headers,
+        parse_virtual_fixups,
+        u32,
+    )
+
+    hdrs = parse_section_headers(packfile)
+    if "__data__" not in hdrs or "__classnames__" not in hdrs:
+        return []
+    data_hdr = hdrs["__data__"]
+    data_start = data_hdr.abs_start
+    fixups = parse_local_fixups(packfile, data_hdr)
+    objects = parse_virtual_fixups(packfile, data_hdr, hdrs["__classnames__"].abs_start)
+    offsets = []
+    for rel, cls in objects:
+        if "hknpPhysicsSystemData" not in cls:
+            continue
+        psd_abs = data_start + rel
+        count = u32(packfile, psd_abs + 0x30 + 8) & 0x3FFFFFFF
+        arr = fixups.get(rel + 0x30)
+        if arr is None or count == 0:
+            continue
+        for i in range(count):
+            start = data_start + arr + i * 0x40
+            if start + 0x2C > len(packfile):
+                continue
+            offsets.append(start)
+    return offsets
+
+
+def _np_inertia_tensors(packfile: bytes) -> list[tuple[float, float, float]]:
+    tensors = []
+    for start in _iter_dyn_inertia_abs(packfile):
+        ixx, iyy, izz = struct.unpack_from("<fff", packfile, start + 0x20)
+        tensors.append((ixx, iyy, izz))
+    return tensors
+
+
+def _hull_half_extents(packfile: bytes) -> tuple[float, float, float]:
+    """Half-extents of the existing hull AABB. Does not rewrite hull verts."""
+    from io_scene_nifly.pyn.bhk_autounpack import parse_bytes
+
+    try:
+        shapes = parse_bytes(packfile)
+    except Exception as exc:
+        raise SystemExit(
+            f"PickmansWhisper Error: cannot read hull AABB for inertia ({exc})"
+        ) from exc
+    verts: list[tuple[float, float, float]] = []
+    extra = 0.0
+    stack = list(shapes)
+    while stack:
+        shape = stack.pop()
+        verts.extend(shape.verts or [])
+        extra = max(extra, float(getattr(shape, "convex_radius", 0.0) or 0.0))
+        radius = float(getattr(shape, "sphere_radius", 0.0) or 0.0)
+        if radius > 0.0 and not (shape.verts or []):
+            verts.extend(
+                (
+                    (-radius, 0.0, 0.0),
+                    (radius, 0.0, 0.0),
+                    (0.0, -radius, 0.0),
+                    (0.0, radius, 0.0),
+                    (0.0, 0.0, -radius),
+                    (0.0, 0.0, radius),
+                )
+            )
+        stack.extend(shape.children or [])
+    if not verts:
+        raise SystemExit(
+            "PickmansWhisper Error: hull has no verts — cannot derive inertia from AABB"
+        )
+    xs = [v[0] for v in verts]
+    ys = [v[1] for v in verts]
+    zs = [v[2] for v in verts]
+    hx = (max(xs) - min(xs)) * 0.5 + extra
+    hy = (max(ys) - min(ys)) * 0.5 + extra
+    hz = (max(zs) - min(zs)) * 0.5 + extra
+    min_half = 1e-4
+    return (max(hx, min_half), max(hy, min_half), max(hz, min_half))
+
+
+def _box_inertia(
+    mass: float, hx: float, hy: float, hz: float
+) -> tuple[float, float, float]:
+    ax, ay, az = hx * 2.0, hy * 2.0, hz * 2.0
+    ixx = mass / 12.0 * (ay * ay + az * az)
+    iyy = mass / 12.0 * (ax * ax + az * az)
+    izz = mass / 12.0 * (ax * ax + ay * ay)
+    return (ixx, iyy, izz)
 
 
 def _physics_system_pack(parsed: dict) -> tuple[int, bytes]:
@@ -693,11 +821,11 @@ def verify_gore_cap_shader(info: dict) -> None:
 
 
 def apply_bsx_and_retarget(path: Path) -> None:
-    """Write BSXFlags 194, hang collision on Scene Root, patch NP Target/body/flags/layer.
+    """Write BSXFlags 194, hang collision on Scene Root, patch NP Target/body/flags/layer/inertia.
 
     PyNifly setBlock on bhkNPCollisionObject is routed to the physics-system
-    setter and fails, so the 14-byte NP block and BodyCInfo layer byte are
-    patched in the file after save. Hull verts are not rewritten.
+    setter and fails, so the 14-byte NP block, BodyCInfo layer byte, and
+    dyn_inertia tensor are patched in the file after save. Hull verts are not rewritten.
     """
     from io_scene_nifly.pyn.nifconstants import NODEID_NONE
     from io_scene_nifly.pyn.pynifly import BSXFlags, NifFile
@@ -723,12 +851,15 @@ def apply_bsx_and_retarget(path: Path) -> None:
 
     nif.save()
     del nif
-    patch_bsx_loot_flags(path)
     patch_np_collision_target(path, COLLISION_TARGET_NAME)
     patch_np_collision_flags(path)
     patch_np_body_id(path)
     patch_np_clutter_layer(path)
+    patch_np_inertia_from_hull(path)
     patch_gore_cap_shader_type(path)
+    # nif.save() writes gore-style 74 (Havok|Complex|Dynamic). Write loot 194 last
+    # so a later PyNifly open cannot be the source of truth for verification.
+    patch_bsx_loot_flags(path)
 
 
 def patch_np_clutter_layer(path: Path) -> None:
@@ -743,6 +874,33 @@ def patch_np_clutter_layer(path: Path) -> None:
     blob = bytearray(parsed["data"])
     for rel in layer_offs:
         blob[payload_off + rel] = LAYER_CLUTTER
+    path.write_bytes(bytes(blob))
+
+
+def patch_np_inertia_from_hull(path: Path) -> None:
+    """Write box inertia from the existing hull AABB. Does not rewrite hull verts."""
+    parsed = parse_nif_header(path)
+    payload_off, pack = _physics_system_pack(parsed)
+    starts = _iter_dyn_inertia_abs(pack)
+    if not starts:
+        raise SystemExit(
+            "PickmansWhisper Error: no dyn_inertia blob to patch from hull AABB"
+        )
+    hx, hy, hz = _hull_half_extents(pack)
+    blob = bytearray(parsed["data"])
+    for abs_off in starts:
+        inv_mass = struct.unpack_from("<f", pack, abs_off + 4)[0]
+        if inv_mass <= 0.0:
+            raise SystemExit(
+                "PickmansWhisper Error: dyn_inertia inv_mass is 0 — cannot derive inertia"
+            )
+        mass = 1.0 / inv_mass
+        ixx, iyy, izz = _box_inertia(mass, hx, hy, hz)
+        if ixx <= 0.0 or iyy <= 0.0 or izz <= 0.0:
+            raise SystemExit(
+                "PickmansWhisper Error: derived box inertia is zero"
+            )
+        struct.pack_into("<fff", blob, payload_off + abs_off + 0x20, ixx, iyy, izz)
     path.write_bytes(bytes(blob))
 
 
@@ -775,6 +933,19 @@ def patch_gore_cap_shader_type(path: Path) -> None:
     blob = bytearray(parsed["data"])
     blob[start : start + 4] = (0).to_bytes(4, "little")
     path.write_bytes(bytes(blob))
+
+
+def read_bsx_disk_flags(path: Path) -> int | None:
+    """Read BSXFlags integerData from the NIF bytes the game loads. Never writes."""
+    parsed = parse_nif_header(path)
+    ids = [i for i, name in enumerate(parsed["types"]) if name == "BSXFlags"]
+    if len(ids) != 1:
+        return None
+    i = ids[0]
+    if parsed["sizes"][i] < 8:
+        return None
+    start = parsed["starts"][i]
+    return int.from_bytes(parsed["data"][start + 4 : start + 8], "little")
 
 
 def patch_bsx_loot_flags(path: Path) -> None:
@@ -856,7 +1027,7 @@ def patch_np_collision_target(path: Path, target_name: str) -> None:
 
 
 def patch_np_collision_flags(path: Path) -> None:
-    """Write SYNC_ON_UPDATE into the unique bhkNPCollisionObject Flags field."""
+    """Write ACTIVE|SET_LOCAL|SYNC_ON_UPDATE into the unique NP Flags field."""
     parsed = parse_nif_header(path)
     _, start, _ = _unique_np_block(parsed)
     blob = bytearray(parsed["data"])
@@ -892,6 +1063,7 @@ def main() -> int:
         verify_bsx_flags(info)
         verify_collision_target(info)
         verify_np_instance_fields(info)
+        verify_np_inertia(info)
         verify_collision_meta(info)
         verify_gore_cap_shader(info)
     except SystemExit as exc:
@@ -901,7 +1073,8 @@ def main() -> int:
     print(
         f"wrote {NIF_PATH.name}: BSXFlags={info['bsx']} (Havok|Dynamic|Articulated), "
         f"np target={targets}, bodyID={info.get('np_body_id')}, flags={info.get('np_flags')}, "
-        f"layers={info.get('layers')}, np={info['np_count']} classic={info['classic_count']}"
+        f"inertia={info.get('np_inertia')}, layers={info.get('layers')}, "
+        f"np={info['np_count']} classic={info['classic_count']}"
     )
     return 0
 

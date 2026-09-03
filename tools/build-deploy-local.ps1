@@ -505,14 +505,26 @@ Copy-Item -Force (Join-Path $Root "Data\MCM\Config\PickmansWhisper\settings.ini"
 Copy-Item -Force (Join-Path $Root "Data\MCM\Settings\PickmansWhisper.ini") (Join-Path $Deploy "MCM\Settings\")
 
 # Full mod data trees (config + whispers; decay Materials/Meshes/Textures; F4SE when present).
-function Sync-DataTree([string]$Rel) {
-  $srcTree = Join-Path $Root ("Data\" + $Rel)
-  $dstTree = Join-Path $Deploy $Rel
-  if (-not (Test-Path $srcTree)) {
-    throw "Deploy source missing Data\$Rel"
+# Copy file-by-file. Copy-Item -Recurse -Force does not reliably overwrite existing dest
+# files — the cut-off tits nif stayed at an old hash after the inertia patch.
+function Sync-Tree([string]$SrcTree, [string]$DstTree) {
+  if (-not (Test-Path $SrcTree)) {
+    throw "Deploy source missing $SrcTree"
   }
-  New-Item -ItemType Directory -Force -Path $dstTree | Out-Null
-  Copy-Item -Force -Recurse (Join-Path $srcTree "*") $dstTree
+  New-Item -ItemType Directory -Force -Path $DstTree | Out-Null
+  $srcRoot = (Resolve-Path $SrcTree).Path.TrimEnd("\")
+  Get-ChildItem -LiteralPath $srcRoot -Recurse -File | ForEach-Object {
+    $relFile = $_.FullName.Substring($srcRoot.Length).TrimStart("\")
+    $destFile = Join-Path $DstTree $relFile
+    $destDir = Split-Path -Parent $destFile
+    if (-not (Test-Path $destDir)) {
+      New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+    }
+    Copy-Item -LiteralPath $_.FullName -Destination $destFile -Force
+  }
+}
+function Sync-DataTree([string]$Rel) {
+  Sync-Tree (Join-Path $Root ("Data\" + $Rel)) (Join-Path $Deploy $Rel)
 }
 Sync-DataTree "PickmansWhisper"
 Sync-DataTree "Materials"
@@ -532,13 +544,20 @@ $decayTex = Join-Path $Deploy "Textures\PickmansWhisper\Decay\Necro_Bruising01_d
 if (-not (Test-Path $decayTex)) {
   throw "Deploy missing Textures\PickmansWhisper\Decay\*.DDS"
 }
+$propNifSrc = Join-Path $Root "Data\Meshes\PickmansWhisper\Props\FemaleBody_Prop_Tits.nif"
+$propNifDst = Join-Path $Deploy "Meshes\PickmansWhisper\Props\FemaleBody_Prop_Tits.nif"
+if (-not (Test-Path $propNifDst)) {
+  throw "Deploy missing Meshes\PickmansWhisper\Props\FemaleBody_Prop_Tits.nif"
+}
+if ((Get-FileHash $propNifSrc).Hash -ne (Get-FileHash $propNifDst).Hash) {
+  throw "Deploy FemaleBody_Prop_Tits.nif hash mismatch — dest was not overwritten"
+}
 
 # Recursive — Desperate top-level .xwm plus E5 Necromantic\Start|End clips.
 $soundSrc = Join-Path $Root "Data\Sound\PickmansWhisper"
 $soundDeploy = Join-Path $Deploy "Sound\PickmansWhisper"
 if (Test-Path $soundSrc) {
-  New-Item -ItemType Directory -Force -Path $soundDeploy | Out-Null
-  Copy-Item -Force -Recurse (Join-Path $soundSrc "*") $soundDeploy
+  Sync-Tree $soundSrc $soundDeploy
 }
 $endItDeployed = Join-Path $Deploy "Sound\PickmansWhisper\EndIt.xwm"
 if (-not (Test-Path $endItDeployed)) {

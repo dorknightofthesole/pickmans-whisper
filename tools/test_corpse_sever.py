@@ -298,12 +298,14 @@ def test_cut_off_tits_decay() -> None:
     if "ResolveGoreSuperMutantArmLMisc" in spawn or "gore SM arm" in spawn:
         fail("SpawnCutOffTitsProp must not spawn GoreSuperMutantArmL")
     drop = extract_function(decay, "DropHavokMiscBeside")
-    if "PlaceAtMe" not in drop:
-        fail("DropHavokMiscBeside must PlaceAtMe the MISC")
+    if "PlaceAtMe(misc, 1, False, True)" not in drop:
+        fail("DropHavokMiscBeside must PlaceAtMe initially disabled")
     if "MoveTo" not in drop:
         fail("DropHavokMiscBeside must MoveTo offset beside the corpse")
+    if "Enable(" not in drop:
+        fail("DropHavokMiscBeside must Enable after MoveTo so Havok inits at the drop point")
     if "InitHavok" not in drop:
-        fail("DropHavokMiscBeside must InitHavok after MoveTo")
+        fail("DropHavokMiscBeside must InitHavok after Enable")
     if "SetMotionType" not in drop or "Motion_Dynamic" not in drop:
         fail("DropHavokMiscBeside must SetMotionType Dynamic so the prop can fall")
     if "ApplyHavokImpulse" not in drop:
@@ -332,7 +334,11 @@ def test_prop_havok_script_writes_bsx_not_hulls() -> None:
     if "patch_np_collision_target" not in src or "patch_bsx_loot_flags" not in src:
         fail("add_prop_tits_havok.py must patch bhkNPCollisionObject Target and BSXFlags 194")
     if "patch_np_body_id" not in src or "patch_np_collision_flags" not in src:
-        fail("add_prop_tits_havok.py must patch NP bodyID and SYNC_ON_UPDATE flags")
+        fail("add_prop_tits_havok.py must patch NP bodyID and collision flags")
+    if "patch_np_inertia_from_hull" not in src or "verify_np_inertia" not in src:
+        fail("add_prop_tits_havok.py must patch dyn_inertia from the hull AABB")
+    if "read_bsx_disk_flags" not in src:
+        fail("add_prop_tits_havok.py must verify BSXFlags from on-disk bytes")
     if "patch_np_clutter_layer" not in src or "patch_gore_cap_shader" not in src:
         fail("add_prop_tits_havok.py must patch Clutter layer and GoreHumanLeg cap flags")
     if "restore_gore_cap_material" not in src or "GORE_CAP_BGSM" not in src:
@@ -407,6 +413,7 @@ def test_prop_nif_has_havok() -> None:
         verify_collision_meta,
         verify_collision_target,
         verify_gore_cap_shader,
+        verify_np_inertia,
         verify_np_instance_fields,
     )
 
@@ -437,11 +444,12 @@ def test_prop_nif_has_havok() -> None:
         verify_bsx_flags(info)
         verify_collision_target(info)
         verify_np_instance_fields(info)
+        verify_np_inertia(info)
         verify_collision_meta(info)
         verify_gore_cap_shader(info)
     except SystemExit as exc:
-        fail(str(exc) or "prop collision layer/material/target verify failed")
-    ok("cut-off tits prop nif has BSX 194, Scene Root target, and a usable NP bodyID")
+        fail(str(exc) or "prop collision layer/material/target/inertia verify failed")
+    ok("cut-off tits prop nif has BSX 194, Scene Root target, usable NP bodyID, and non-zero inertia")
 
 
 def test_mcm_deploy() -> None:
@@ -459,6 +467,13 @@ def test_mcm_deploy() -> None:
     sever_at = deploy.find("test_corpse_sever.py")
     if havok_at < 0 or sever_at < 0 or havok_at > sever_at:
         fail("build-deploy-local.ps1 must run add_prop_tits_havok.py before test_corpse_sever.py")
+    if "Copy-Item -Force -Recurse (Join-Path $srcTree" in deploy:
+        fail(
+            "Sync-DataTree must not Copy-Item -Recurse (it skips existing dest files; "
+            "the cut-off tits nif stayed stale)"
+        )
+    if "Get-FileHash" not in deploy or "FemaleBody_Prop_Tits.nif" not in deploy:
+        fail("deploy must hash-check FemaleBody_Prop_Tits.nif after copy")
     ok("MCM + deploy gate")
 
 

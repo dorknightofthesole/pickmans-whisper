@@ -2186,7 +2186,7 @@ Function ReequipMutilatedBodyIfNeeded(Actor akCorpse)
 	Debug.Trace("PickmansWhisper: re-equip mutilated body after limb sever id=" + akCorpse.GetFormID())
 EndFunction
 
-; PlaceAtMe + MoveTo + wait for 3D + InitHavok so the MISC can fall like clutter.
+; PlaceAtMe disabled + MoveTo + Enable + wait for 3D + InitHavok so the MISC can fall like clutter.
 Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float offsetY, Float offsetZ, String label)
 	If !akCorpse
 		Debug.Trace("PickmansWhisper Error: DropHavokMiscBeside — no corpse (" + label + ")")
@@ -2198,7 +2198,8 @@ Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float off
 		Return
 	EndIf
 
-	ObjectReference placed = akCorpse.PlaceAtMe(misc, 1, False, False)
+	; Initially disabled: MoveTo on a live 3D MISC keyframes it, and kicks never take.
+	ObjectReference placed = akCorpse.PlaceAtMe(misc, 1, False, True)
 
 	If !placed
 		SetCorpseDecayStatus("ERROR: PlaceAtMe " + label + " failed")
@@ -2208,8 +2209,9 @@ Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float off
 	EndIf
 
 	placed.MoveTo(akCorpse, offsetX, offsetY, offsetZ, False)
+	placed.Enable(False)
 
-	; Wait for 3D — InitHavok in the same frame as MoveTo no-ops if Havok is not ready.
+	; Wait for 3D — InitHavok in the same frame as Enable no-ops if Havok is not ready.
 	; Safe here: butcher-menu path, not a hot event stack.
 	Int guard = 0
 
@@ -2223,7 +2225,7 @@ Function DropHavokMiscBeside(Actor akCorpse, Form misc, Float offsetX, Float off
 	EndIf
 
 	GardenOfEden.InitHavok(placed)
-	placed.SetMotionType(placed.Motion_Dynamic)
+	placed.SetMotionType(placed.Motion_Dynamic, True)
 	placed.ApplyHavokImpulse(0.0, 0.0, -1.0, 8.0)
 	Debug.Trace("PickmansWhisper: spawned " + label + " beside id=" + akCorpse.GetFormID())
 EndFunction
