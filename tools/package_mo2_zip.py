@@ -144,7 +144,7 @@ def stage() -> None:
     if docs.is_dir():
         copy_tree_contents(docs, STAGING / "docs")
 
-    for name in ("README.md", "meta.ini"):
+    for name in ("README.md", "CHANGELOG.md", "meta.ini"):
         src = ROOT / name
         if src.is_file():
             shutil.copy2(src, STAGING / name)
@@ -168,6 +168,7 @@ def stage() -> None:
         "AAF",
         "docs",
         "README.md",
+        "CHANGELOG.md",
         "meta.ini",
     ):
         require_file_or_dir(STAGING / src_name, src_name)

@@ -126,7 +126,7 @@ Int TIMER_DECAY_ADVANCE = 17
 Float RENAME_PROMPT_DELAY = 2.5
 String Property PendingRenamePrompt = "" Auto
 Float Property PendingRenameAtReal = 0.0 Auto
-String MOD_VERSION = "1.3.0"
+String MOD_VERSION = "1.4.0"
 Actor LastButcherCorpse = None ; last valid sever target (floor corpses miss camera rays)
 Float BUTCHER_CORPSE_RADIUS = 500.0 ; slightly > Necromantic 350; floor corpses need slack
 Float BUTCHER_FACING_DEG = 75.0 ; yaw cone for faced-corpse fallback
@@ -274,8 +274,8 @@ Function ClearCollection(RefCollectionAlias akCollection)
 EndFunction
 
 Event OnQuestInit()
-	DEBUG_BUILD = "1.3.0-KO"
-	Debug.Trace("PickmansWhisper: === v1.3.0 Killer Orchestrator loaded ===")
+	DEBUG_BUILD = MOD_VERSION + "-SEV"
+	Debug.Trace("PickmansWhisper: === v" + MOD_VERSION + " Butcher props loaded ===")
 	ToastDebug("PW OnQuestInit FIRED [" + DEBUG_BUILD + "]")
 	PlayerRef = Game.GetPlayer()
 	InvalidateDebugToastCache()

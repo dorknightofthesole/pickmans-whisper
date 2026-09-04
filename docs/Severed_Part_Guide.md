@@ -15,7 +15,7 @@ Only the world-side half needs Havok. Parts that FO4 already has a gore bone for
 
 ---
 
-## Step 1: Blender — two shapes and a hull
+## Step 1: Blender — two shapes and a collision box
 
 The prop NIF needs exactly three things.
 
@@ -23,9 +23,49 @@ The prop NIF needs exactly three things.
 2. **A flesh shape and a cut-cap shape**, as separate shapes so they can carry different materials. Cut Off Tits uses `SeveredTits001:5` (flesh) and `SeveredTitsBack002` (the cut surface).
    - The cap shape name is a **contract**: `GORE_CAP_SHAPE` in `tools/add_prop_tits_havok.py` matches it exactly or as a `Name:0` prefix. Rename the shape in Blender and the build fails loudly with `missing cut cap shape`.
    - Cap the hole. An open mesh reads as a hollow shell from behind.
-3. **A convex-hull collision body**, exported by PyNifly. The Python tooling **never** generates hull geometry — Blender is the only source of hull verts, and the patcher is explicitly tested to not bake them.
-   - **Fit the hull to the visible mesh.** Ours does not (mesh spans x `[-26.7, 10.2]` centred at `-8.2`; hull spans about `[-10.5, 10.5]` centred at `0`), so the shovable volume sits offset from what's drawn. Check this before calling a part done.
-   - Set the body **mass** here. This is Havok mass (stored as `1/mass` in the packfile), separate from the MISC inventory weight in Step 4 — they both happen to be `3` today.
+3. **A third object: a box wrapping the part.** This is the collision body, and it is a separate mesh alongside the two visible shapes — add a Cube, scale it around the part, and put the physics on **the cube**. The visible meshes get no rigid body and no custom properties. PyNifly exports the cube as a convex polytope. The Python tooling **never** generates collision geometry; Blender is the only source of those verts, and the patcher is explicitly tested to not bake them.
+   - Ours is exactly that: **8 verts, 12 faces**, convex radius `0.01`, **21.08 × 10.43 × 12.29** game units.
+   - A box is not the only option — any convex mesh exports identically, and a tighter shape settles more believably. If you use a real hull instead, mind the **255-vertex** ceiling (`ConvexPolytopeShape: at most 255 vertices (u8 FVI)` — an assert, so it fails loudly).
+   - **Check the box against both visible shapes.** Ours wraps the cut cap well (cap x `[-10.3, 9.9]` vs box x `[-10.5, 10.5]`) but not the flesh, which runs out to x `-26.7` — centre `-8.2` against the box's `0`. Roughly the far half of what's drawn has no collision under it. Worth fixing before calling a part done.
+   - Set the body **mass** on the box. This is Havok mass (stored as `1/mass` in the packfile), separate from the MISC inventory weight in Step 4 — they both happen to be `3` today.
+
+### Wiring the box so PyNifly exports FO4 physics
+
+Four things route the box into the FO4 `bhkNPCollisionObject` + `bhkPhysicsSystem` path. Miss any one and the export is silently wrong in a different way. Custom properties go on the **box** object (Object Properties ▸ Custom Properties).
+
+| What | Where | If you skip it |
+| --- | --- | --- |
+| `pynRigidBody` = `bhkPhysicsSystem` | custom prop on the box | You get Skyrim-style `bhkCollisionObject` / `bhkRigidBody` instead, and the patcher aborts with no NP collision |
+| `pynCollisionShapeType` = `polytope` | custom prop on the box | Export drops to its legacy path, which packs verts and faces with **no physics block at all** — no mass, no damping, no motion arrays |
+| **Rigid Body, type Active** | `Object ▸ Rigid Body ▸ Add Active`, on the box | `is_dynamic` goes false and the motion + inertia arrays are written with **count 0**. There is no motion for the patcher to repair, so the part is static however correct everything else is |
+| A link from the node that hosts it | a **`COPY_TRANSFORMS` constraint** on that node's object, targeting the box (PyNifly calls it `bhkCollisionConstraint`), **or** custom prop `pynCollisionTarget` = the box's object name | The exporter never finds the box and writes no collision at all |
+
+Three things about that constraint, because it is the least obvious part of the setup:
+
+- **`COPY_TRANSFORMS` is the only constraint type PyNifly reads.** Blender's own **Rigid Body Constraint** is never looked at on export — it does nothing for the NIF.
+- **It decides where the collision lands.** PyNifly attaches the collision to whichever object carries the link. Our tree is `Scene Root` → `SeveredTits001` → the two `BSTriShape`s, and the export puts the collision below the root, which is why `patch_np_collision_target` moves it back onto `Scene Root` (step 2 of the patch order). You do not have to get this right in Blender, but do not be surprised when NifSkope shows it on the wrong node.
+- **Every `COPY_TRANSFORMS` with a target exports as another collision.** The exporter loops over all of them, so a leftover constraint from unrelated rigging quietly doubles the collision. Ours ends up with exactly one NP block; if `np_count` comes back above 1, look here first.
+
+Blender's native rigid-body fields are the ones that do survive export: **Mass** (written as `1/mass`), Friction, Restitution, and both Damping values. With **Margin** enabled its Collision Margin becomes the Havok convex radius; otherwise `collision_radius` from the FO4 Physics panel is used. Ours came through as `0.01`.
+
+Two more properties of the box mesh:
+
+- **Verts are baked in world space.** The box's own location, rotation, and scale are exactly what the collision volume becomes, and it does not need to be parented to the visible mesh — so the fit problem above is fixed by scaling and moving the box in the viewport, nothing more.
+- The object's **name is free**. On the FO4 path PyNifly dispatches on the `pynCollisionShapeType` tag, not on a `bhkConvexVerticesShape*` name prefix like the Skyrim path. Ours arrives in the packfile as `Polytope_standalone_0x1c0`, a name the decoder invents.
+
+### The FO4 Physics panel is mostly a trap
+
+Object Properties also gains a **FO4 Physics** group (`inertia`, `gravity_factor`, `max_lin_vel`, `max_ang_vel`, `material_hex`, `collision_radius`) and a **Collision Object** group (`flags`). Gravity factor, the velocity caps, and the material bytes are honoured. The `flags` string is parsed and exported too, so `ACTIVE|SET_LOCAL|SYNC_ON_UPDATE` can be typed there — though the patcher forces `137` regardless.
+
+**Do not try to fix the physics with the `inertia` field.** It defaults to `(0,0,0)`, and the exporter writes whatever you type straight into `m_inverseInertiaLocal` — a field that holds `1/I`, not `I`. A correct inertia tensor entered there lands ~2400x too small while looking deliberately authored. Leave it at zero and let the patcher compute `1/I` from the collision box (Step 3).
+
+### What no amount of Blender fiddling can fix
+
+The three defects in Step 3 are baked into the exporter's byte templates, which is why the patcher has to exist. In the PyNifly addon:
+
+- **bodyID** — `nif/collision.py`: the non-compound NP export calls `add_collision()` with no `body_id`, so it keeps `NODEID_NONE`. Only the compound path plumbs `pynCollisionBodyID` through.
+- **motion stride** — `pyn/bhk_autopack.py`: `_DYN_INERTIA_TEMPLATE` is `0x40` bytes behind `assert len(...) == 0x40`. The engine wants `0x70`.
+- **motion id** — same file: `_BODY_CINFO` carries `0x7FFFFFFF` at `+0x0C`, under the comment *"one static body at identity transform."*
 
 ---
 
@@ -65,6 +105,48 @@ It dumps blocks, `BSXFlags`, the NP block, node/mesh bounds, and the decoded pac
 ### Why the inertia constant is 2/3
 
 `INV_INERTIA_BOX_FACTOR` is not a fudge. Using the correct `0x70` stride, `stored × boxInertia` comes out to exactly `2/3` on all nine axes across the three vanilla gore bodies — a constant that only holds if the field is inverse inertia. If a future reference disagrees, re-measure rather than nudging the number.
+
+### What the patcher writes, in order
+
+`apply_bsx_and_retarget` runs all of this against the exported NIF. Order matters where noted.
+
+1. Via PyNifly: `BSXFlags = 194`, collision host retarget, `restore_gore_cap_material`, `patch_gore_cap_shader` — then `nif.save()`.
+2. `patch_np_collision_target` — `bhkNPCollisionObject` Target → `Scene Root`.
+3. `patch_np_collision_flags` — `ACTIVE|SET_LOCAL|SYNC_ON_UPDATE` (137). Gore pieces use `SYNC_ON_UPDATE` alone; world clutter needs `ACTIVE`.
+4. `patch_np_body_id` — bodyID `0`.
+5. `patch_motion_cinfo_stride` — grow the motion array. **Must run before anything reads offsets inside it.**
+6. `patch_body_motion_id` — link each body to its motion.
+7. `patch_np_clutter_layer` — collision layer Clutter.
+8. `patch_np_inertia_from_hull` — inverse inertia from the collision box AABB (the code calls the collision shape the "hull" throughout; ours happens to be a box).
+9. `patch_gore_cap_shader_type` — cap shader → Default.
+10. `patch_bsx_loot_flags` — **last**, because `nif.save()` rewrites BSX to gore-pattern `74`.
+
+Everything from 2 down is raw byte surgery on the saved file: PyNifly routes `setBlock` on `bhkNPCollisionObject` to the physics-system setter, where it fails. For the same reason `read_bsx_disk_flags` reads BSX back from the bytes on disk — PyNifly's in-memory `bsx.flags` happily reported `194` while the file on disk held `74`.
+
+### How the motion array is grown
+
+Expanding an array inside a Havok packfile in place would mean shifting every fixup offset after it. Instead the array is **re-emitted at the end of the `__data__` section**, so nothing that already exists has to move. What does change:
+
+- the `__data__` section header offsets (`+0x18`…`+0x2C`: local/global/virtual fixups, exports, imports, end) shift by the added bytes;
+- that array's own local fixup is repointed at the new offset;
+- **both** NIF length fields — the `bhkPhysicsSystem` block's `u32` byte count *and* its entry in the NIF block-size table. Leaving the second one stale makes every block after it unreadable.
+
+Each element keeps its original bytes and gains a real `m_orientation`, copied from its body (identity if the body's is degenerate). The old bytes stay behind as unreferenced padding. Appends must stay 16-byte aligned; the patcher throws rather than break that.
+
+### What the gate enforces
+
+These run in `test_corpse_sever.py` against the built NIF, so a re-export cannot quietly put the part back to static:
+
+| Verifier | Rejects |
+| --- | --- |
+| `verify_motion_cinfo_stride` | a short motion array; any non-unit motion orientation |
+| `verify_body_motion_ids` | the invalid motion-id sentinel; ids with no matching motion |
+| `verify_np_inertia` | missing, all-zero, or direct `I` where `1/I` belongs |
+| `verify_np_instance_fields` | `NODEID_NONE` bodyID; wrong NP collision flags |
+| `verify_bsx_flags`, `verify_collision_target` | BSX ≠ 194; collision not on `Scene Root` |
+| `verify_collision_meta`, `verify_gore_cap_shader` | non-Clutter layer, non-Flesh material, missing cap shape, cap still Skin Tint / FACEGEN, cap not double-sided |
+
+`verify_np_inertia` recomputes the expected `1/I` from the collision box and compares, so it is a law check rather than a pinned constant. There is also a pure-Python test that feeds each defect to its verifier and asserts it is rejected — that one runs even if the NIF is absent.
 
 ---
 
@@ -142,7 +224,7 @@ In-game check, in order:
 | Part vanishes or teleports oddly | NaN in the motion — short `hknpMotionCinfo` array, non-unit orientation |
 | CTD on spawn (Buffout names the MISC) | `bhkNPCollisionObject` bodyID left as `NODEID_NONE` |
 | Cut surface invisible | Cap shader is Skin Tint / FACEGEN_RGB_TINT, or the cap lost `GoreHumanLeg.BGSM` |
-| Sits inside the floor or shoves from the wrong spot | Hull does not match the visible mesh (Step 1) |
+| Sits inside the floor or shoves from the wrong spot | Collision box does not match the visible mesh (Step 1) |
 | Change had no effect at all | Deployed NIF hash differs from source, or the game was not restarted |
 
 ---

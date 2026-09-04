@@ -10,7 +10,7 @@ Aim reticule at a dead adult female, wield **Pickman's Blade**, press **`/`** (`
 - Gore: force dismember, **no** ForceBloodyMess (True gibs/explodes heads), **no** force-explode.
 - Skip while `NecroSceneActive`. Blade-not-drawn / bad aim toast (not silent).
 - MSG `PW_SeverLimbMenu` FormID `0x806` in `PickmansWhisper.esp`.
-- **Cut Off Tits** (implemented — awaiting in-game confirm): ARMA/ARMO `0x87C`/`0x87D` + weighted MISC `0x87E` (Havok drop). Debug SM-arm MISC `0x87F` remains in the ESP (FormID stability) but is **not** spawned.
+- **Cut Off Tits** (**verified in-game** — falls, rests, loots, pushable): ARMA/ARMO `0x87C`/`0x87D` + weighted MISC `0x87E` (Havok drop). Debug SM-arm MISC `0x87F` remains in the ESP (FormID stability) but is **not** spawned.
 
 ### Cut Off Tits assets
 

@@ -116,6 +116,9 @@ SRC_WIN="$(to_win_path "$SRC")"
 OUT_WIN="$(to_win_path "$PEX_OUT")"
 FLAGS_WIN="$(to_win_path "$STUBS/Institute_Papyrus_Flags.flg")"
 
+echo "==> Mod version sync contract test (fomod/info.xml is the source)"
+python "$ROOT/tools/test_version_sync.py" || exit 1
+
 echo "==> Stub native honesty contract test"
 python "$ROOT/tools/test_stub_natives.py" || exit 1
 

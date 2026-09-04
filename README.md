@@ -4,7 +4,7 @@ Fallout 4 companion mod: a voice that bonds with the wielder of **Pickman's Blad
 
 Suite arc (surface → commitment): **Occult Pact** → **Pickman's Whisper** → **Necromantic**. Soft load order when using all three; no compile-time coupling between mods.
 
-Slice status and planned work: [docs/ROADMAP.md](docs/ROADMAP.md). Product rules: [docs/DIRECTION.md](docs/DIRECTION.md).
+Slice status and planned work: [docs/ROADMAP.md](docs/ROADMAP.md). Product rules: [docs/DIRECTION.md](docs/DIRECTION.md). Per-release summary: [CHANGELOG.md](CHANGELOG.md).
 
 ## Core features
 
